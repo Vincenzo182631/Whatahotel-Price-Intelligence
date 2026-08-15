@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hotel detail — embedded widget example</title>
+
+    <!--
+      INTEGRATION REFERENCE.
+
+      This is a mock host page: a plausible hotel-detail layout that exists only
+      to show the widget in the context it will actually live in. The demo
+      harness (/) surrounds the widget with controls and debugging affordances
+      that no real page has, which makes it a poor guide to how the widget reads
+      beside a booking flow.
+
+      The entire integration is three things:
+
+        1. <link rel="stylesheet" href="/widget.css">
+        2. <script src="/widget.js"></script>
+        3. WahPriceIntelligence.mount(element, { hotelId, checkIn, checkOut, … })
+
+      The widget is framework-free and brings no dependencies. It styles itself
+      inside .wah-pi, so it does not inherit or leak page styles.
+    -->
+    <link rel="stylesheet" href="/widget.css" />
+    <style>
+      :root {
+        --ink: #1a1d24;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --gold: #9a7b44;
+        --gold-solid: #8c6d3f;
+        --bg: #faf9f7;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        line-height: 1.55;
+      }
+      .serif {
+        font-family: ui-serif, Georgia, 'Times New Roman', serif;
+      }
+
+      /* ── chrome ───────────────────────────────────────────────────────── */
+      header.site {
+        background: #fff;
+        border-bottom: 1px solid var(--line);
+        padding: 0 24px;
+      }
+      .site-inner {
+        max-width: 1120px;
+        margin: 0 auto;
+        height: 64px;
+        display: flex;
+        align-items: center;
+        gap: 28px;
+      }
+      .wordmark {
+        font-size: 1.15rem;
+        letter-spacing: 0.02em;
+        font-weight: 600;
+      }
+      .wordmark span {
+        color: var(--gold-solid);
+      }
+      nav.site a {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 0.88rem;
+        margin-right: 20px;
+      }
+      .site-right {
+        margin-left: auto;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+
+      /* ── hero ─────────────────────────────────────────────────────────── */
+      .hero {
+        height: 260px;
+        background:
+          linear-gradient(115deg, rgba(20, 32, 48, 0.62), rgba(20, 32, 48, 0.15)),
+          linear-gradient(160deg, #2e5f7d 0%, #4b8ca8 40%, #86bcc9 75%, #cfe3e0 100%);
+        display: flex;
+        align-items: flex-end;
+      }
+      .hero-inner {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 0 24px 26px;
+        width: 100%;
+        color: #fff;
+      }
+      .stars {
+        letter-spacing: 3px;
+        color: #e8c88a;
+        font-size: 0.9rem;
+      }
+      .hero h1 {
+        margin: 6px 0 4px;
+        font-size: 2.1rem;
+        font-weight: 500;
+      }
+      .hero .where {
+        opacity: 0.9;
+        font-size: 0.95rem;
+      }
+
+      /* ── layout ───────────────────────────────────────────────────────── */
+      .wrap {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 28px 24px 72px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 32px;
+        align-items: start;
+      }
+      @media (max-width: 900px) {
+        .wrap {
+          grid-template-columns: 1fr;
+        }
+      }
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 20px 22px;
+        margin-bottom: 20px;
+      }
+      h2 {
+        font-size: 1.05rem;
+        margin: 0 0 14px;
+        font-weight: 600;
+      }
+      .amenities {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .chip {
+        font-size: 0.78rem;
+        color: #4b5563;
+        background: #f3f4f6;
+        border-radius: 999px;
+        padding: 4px 11px;
+      }
+
+      /* ── room rows ────────────────────────────────────────────────────── */
+      .room {
+        display: flex;
+        gap: 16px;
+        padding: 16px 0;
+        border-top: 1px solid var(--line);
+      }
+      .room:first-of-type {
+        border-top: 0;
+      }
+      .room .thumb {
+        width: 108px;
+        height: 78px;
+        border-radius: 8px;
+        flex: none;
+        background: linear-gradient(150deg, #d9cdbb, #b9a68c);
+      }
+      .room.b .thumb {
+        background: linear-gradient(150deg, #c6d5df, #93b0c3);
+      }
+      .room.c .thumb {
+        background: linear-gradient(150deg, #d8ccd5, #ad9bb0);
+      }
+      .room h3 {
+        margin: 0 0 3px;
+        font-size: 0.98rem;
+        font-weight: 600;
+      }
+      .room p {
+        margin: 0;
+        font-size: 0.84rem;
+        color: var(--muted);
+      }
+      .room .price {
+        margin-left: auto;
+        text-align: right;
+        flex: none;
+      }
+      .room .amount {
+        font-size: 1.2rem;
+        font-weight: 600;
+      }
+      .room .per {
+        font-size: 0.76rem;
+        color: var(--muted);
+      }
+      .btn {
+        display: inline-block;
+        margin-top: 8px;
+        background: var(--gold-solid);
+        color: #fff;
+        border: 0;
+        border-radius: 7px;
+        padding: 8px 16px;
+        font: inherit;
+        font-size: 0.86rem;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .btn.ghost {
+        background: #fff;
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+      .selected {
+        outline: 2px solid var(--gold-solid);
+        outline-offset: 6px;
+        border-radius: 6px;
+      }
+
+      /* ── the widget's slot ────────────────────────────────────────────── */
+      .pi-slot {
+        margin-top: 14px;
+      }
+      .pi-label {
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+
+      /* ── booking sidebar ──────────────────────────────────────────────── */
+      aside .card {
+        position: sticky;
+        top: 20px;
+      }
+      .stay-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.88rem;
+        padding: 7px 0;
+      }
+      .stay-row + .stay-row {
+        border-top: 1px dashed var(--line);
+      }
+      .total {
+        font-weight: 700;
+        font-size: 1.05rem;
+      }
+      .perk {
+        font-size: 0.83rem;
+        color: #3f6b46;
+        background: #eef7f0;
+        border-radius: 7px;
+        padding: 9px 11px;
+        margin-top: 12px;
+      }
+      footer {
+        border-top: 1px solid var(--line);
+        background: #fff;
+        padding: 22px 24px;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      footer .inner {
+        max-width: 1120px;
+        margin: 0 auto;
+      }
+      /* Demo-only strip. A production host page would not carry this. */
+      .demo-note {
+        background: #fff4e5;
+        border-bottom: 1px solid #f0c896;
+        color: #6b4a00;
+        font-size: 0.8rem;
+        padding: 8px 24px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="demo-note" id="demoNote">Mock host page — for previewing the embedded widget.</div>
+
+    <header class="site">
+      <div class="site-inner">
+        <div class="wordmark">Whata<span>Hotel</span></div>
+        <nav class="site">
+          <a href="#">Destinations</a><a href="#">Collections</a><a href="#">Offers</a>
+        </nav>
+        <div class="site-right">Preferred partner rates · Advisor support</div>
+      </div>
+    </header>
+
+    <div class="hero">
+      <div class="hero-inner">
+        <div class="stars">★★★★★</div>
+        <h1 class="serif" id="hotelName">—</h1>
+        <div class="where" id="hotelWhere">—</div>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <main>
+        <div class="card">
+          <h2>About this hotel</h2>
+          <p style="margin: 0; font-size: 0.92rem; color: #374151">
+            Booked through WhataHotel, this stay includes our preferred-partner benefits at no extra
+            cost — the same rate you would pay direct, with more included.
+          </p>
+          <div class="amenities">
+            <span class="chip">Oceanfront</span><span class="chip">Spa</span
+            ><span class="chip">2 restaurants</span><span class="chip">Pool</span
+            ><span class="chip">Fitness centre</span><span class="chip">Valet parking</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Choose your room</h2>
+
+          <div class="room selected" id="roomA">
+            <div class="thumb"></div>
+            <div>
+              <h3 id="roomAName">—</h3>
+              <p>King bed · 42 m² · Breakfast for two included</p>
+            </div>
+            <div class="price">
+              <div class="amount" id="roomAPrice">—</div>
+              <div class="per">per night</div>
+              <button class="btn">Select</button>
+            </div>
+          </div>
+
+          <!-- ── THE WIDGET ────────────────────────────────────────────────
+               Sits with the room it describes, under the price it is about.
+               Nothing else on the page needs to know it exists. -->
+          <div class="pi-slot">
+            <div class="pi-label">Is this a good rate?</div>
+            <div id="price-intelligence"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Other rooms</h2>
+          <div class="room b">
+            <div class="thumb"></div>
+            <div>
+              <h3>Deluxe Ocean View</h3>
+              <p>King bed · 48 m² · Breakfast for two included</p>
+            </div>
+            <div class="price">
+              <div class="amount">$812</div>
+              <div class="per">per night</div>
+              <button class="btn ghost">Select</button>
+            </div>
+          </div>
+          <div class="room c">
+            <div class="thumb"></div>
+            <div>
+              <h3>One Bedroom Suite</h3>
+              <p>King bed · 76 m² · Breakfast · Lounge access</p>
+            </div>
+            <div class="price">
+              <div class="amount">$1,240</div>
+              <div class="per">per night</div>
+              <button class="btn ghost">Select</button>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <aside>
+        <div class="card">
+          <h2>Your stay</h2>
+          <div class="stay-row"><span>Check in</span><strong id="ciLabel">—</strong></div>
+          <div class="stay-row"><span>Check out</span><strong id="coLabel">—</strong></div>
+          <div class="stay-row"><span>Guests</span><strong>2 adults</strong></div>
+          <div class="stay-row"><span id="nightsLabel">—</span><strong id="totalLabel">—</strong></div>
+          <div class="stay-row total"><span>Total</span><span id="grandTotal">—</span></div>
+          <div class="perk">
+            <strong>Included with WhataHotel</strong><br />Daily breakfast for two · $100 property
+            credit · Room upgrade when available · Early check-in / late check-out
+          </div>
+          <button class="btn" style="width: 100%; margin-top: 14px; padding: 11px">
+            Reserve this rate
+          </button>
+          <button class="btn ghost" style="width: 100%; margin-top: 8px; padding: 11px">
+            Speak to an advisor
+          </button>
+        </div>
+      </aside>
+    </div>
+
+    <footer>
+      <div class="inner">
+        WhataHotel is operated by Lorraine Travel. Rates shown include taxes and fees.
+      </div>
+    </footer>
+
+    <script src="/widget.js"></script>
+    <script>
+      // Stay context. A real page already knows these from its own booking flow;
+      // here they come from the query string so the example can be pointed at
+      // any hotel and dates.
+      var qs = new URLSearchParams(location.search);
+      var hotelId = qs.get('hotel_id') || '1326';
+      var checkIn = qs.get('check_in') || '2026-08-22';
+      var checkOut = qs.get('check_out') || '2026-08-25';
+
+      var nights = Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86400000);
+      var fmtDate = function (d) {
+        return new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          timeZone: 'UTC',
+        });
+      };
+      document.getElementById('ciLabel').textContent = fmtDate(checkIn);
+      document.getElementById('coLabel').textContent = fmtDate(checkOut);
+      document.getElementById('nightsLabel').textContent = nights + ' nights';
+
+      // Everything below is the host page filling in its own content from the
+      // same API the widget uses. A real site would use its own inventory.
+      Promise.all([
+        fetch('/api/v1/hotels/' + encodeURIComponent(hotelId)).then(function (r) {
+          return r.json();
+        }),
+        fetch(
+          '/api/v1/hotels/' +
+            encodeURIComponent(hotelId) +
+            '/room-types?check_in=' +
+            checkIn +
+            '&check_out=' +
+            checkOut,
+        ).then(function (r) {
+          return r.json();
+        }),
+        fetch('/api/v1/health').then(function (r) {
+          return r.json();
+        }),
+      ]).then(function (res) {
+        var hotel = res[0],
+          rooms = res[1].room_types || [],
+          health = res[2];
+
+        document.getElementById('hotelName').textContent = hotel.name || 'Hotel';
+        document.getElementById('hotelWhere').textContent =
+          (hotel.destination || '') + (hotel.star_rating ? ' · ' + hotel.star_rating + '-star' : '');
+
+        var room = rooms[0];
+        if (room) {
+          document.getElementById('roomAName').textContent = room.name;
+          document.getElementById('roomAPrice').textContent = WahPriceIntelligence.formatMoney(
+            room.nightly,
+          );
+          var total = room.nightly.amount_minor * nights;
+          document.getElementById('totalLabel').textContent = WahPriceIntelligence.formatMoney({
+            amount_minor: total,
+            currency: room.nightly.currency,
+          });
+          document.getElementById('grandTotal').textContent = WahPriceIntelligence.formatMoney({
+            amount_minor: total,
+            currency: room.nightly.currency,
+          });
+        }
+
+        // Same lesson as the harness banner: say what the data actually is
+        // rather than asserting something fixed. A production page would not
+        // carry this strip at all — it exists because this one is a mock.
+        var note = document.getElementById('demoNote');
+        if (health && health.data && health.data.provenance === 'SYNTHETIC') {
+          note.textContent =
+            'Mock host page · SYNTHETIC data — every rate and score below is fabricated for development.';
+        } else if (health && health.data && health.data.provenance === 'MIXED') {
+          note.style.background = '#fdecec';
+          note.style.color = '#7a0016';
+          note.textContent =
+            'Mock host page · MIXED data — this database holds both fabricated and real rates. Nothing here is trustworthy.';
+        } else {
+          note.textContent = 'Mock host page · live data from the WhataHotel API.';
+        }
+
+        // ── The integration, in one call. ──
+        WahPriceIntelligence.mount(document.getElementById('price-intelligence'), {
+          hotelId: hotelId,
+          roomTypeId: room ? room.room_type_id : undefined,
+          checkIn: checkIn,
+          checkOut: checkOut,
+          adults: 2,
+          include: 'explanation,history',
+          bookUrl: '#reserve',
+          advisorUrl: '#advisor',
+        });
+      });
+    </script>
+  </body>
+</html>
