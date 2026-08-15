@@ -39,6 +39,8 @@ export type {
   RefundGroup,
 } from './normalize/ratePlan.js';
 
+export { buildDistribution } from './baseline/distribution.js';
+export type { BuildDistributionOptions, DistributionObservation } from './baseline/distribution.js';
 export {
   BASELINE_LEVELS,
   LEAD_BUCKETS,

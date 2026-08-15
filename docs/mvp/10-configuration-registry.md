@@ -151,6 +151,13 @@ Not engine inputs — the measurable goals the runbook (doc 02 §4) evaluates ag
 
 | Key | Target | Meaning |
 |---|---|---|
+| `calibration.outcome_horizon_days` | 14 | How far forward outcomes are measured after an analysis |
+| `calibration.material_drop_pct` | 2.0 | A drop smaller than this is noise, not a missed opportunity |
+| `calibration.stability_price_tolerance_pct` | 1.0 | Price moves under this count as "unchanged" for the stability check — exact equality makes the metric unmeasurable on any hotel that reprices daily |
+| `calibration.factor_correlation_max` | 0.60 | Above this, two factors are measuring the same thing |
+| `calibration.target_score_mean` | 50 | Where a healthy score distribution should centre |
+| `calibration.target_score_mean_tolerance` | 12 | Allowed drift from that centre |
+| `calibration.min_sample_size` | 30 | Below this a metric is reported but not judged |
 | `calibration.book_now_regret_rate_max` | 0.10 | Share of BOOK_NOW rates beaten by a lower rate within 14 days |
 | `calibration.wait_success_rate_min` | 0.60 | Share of WAIT recommendations where the price actually fell within 14 days |
 | `calibration.score_stability_max_delta` | 10 | Maximum score movement on re-run absent a real price change |

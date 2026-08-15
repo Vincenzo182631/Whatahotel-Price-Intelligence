@@ -153,7 +153,9 @@ function captureDaysAgo() {
   const days = new Set();
   for (let d = 0; d <= RECENT_DAILY_DAYS; d += 1) days.add(d);
   for (let i = 1; i <= OLDER_SAMPLES; i += 1) {
-    days.add(RECENT_DAILY_DAYS + Math.round((i / OLDER_SAMPLES) * (OLDER_SPAN_DAYS - RECENT_DAILY_DAYS)));
+    days.add(
+      RECENT_DAILY_DAYS + Math.round((i / OLDER_SAMPLES) * (OLDER_SPAN_DAYS - RECENT_DAILY_DAYS)),
+    );
   }
   return [...days].sort((a, b) => a - b);
 }
@@ -201,7 +203,16 @@ async function main() {
 
   process.stdout.write('• Ingesting … ');
   const result = await withTransaction((client) =>
-    ingestRecords(records, { sourceCode: SYNTHETIC_SOURCE_CODE, captureSlotMinutes: 60, maxNights: 30, sanityBandMultiple: 8 }, client),
+    ingestRecords(
+      records,
+      {
+        sourceCode: SYNTHETIC_SOURCE_CODE,
+        captureSlotMinutes: 60,
+        maxNights: 30,
+        sanityBandMultiple: 8,
+      },
+      client,
+    ),
   );
   console.log(
     `inserted ${result.inserted.toLocaleString()}, duplicate ${result.duplicate}, rejected ${result.rejected}` +
@@ -216,7 +227,9 @@ async function main() {
   });
   console.log(
     `${rollup.rowsWritten.toLocaleString()} rows ` +
-      `(${Object.entries(rollup.levelCounts).map(([k, v]) => `${k}:${v}`).join(' ')}) ` +
+      `(${Object.entries(rollup.levelCounts)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(' ')}) ` +
       `in ${(rollup.durationMs / 1000).toFixed(1)}s`,
   );
 

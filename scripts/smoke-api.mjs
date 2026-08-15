@@ -134,14 +134,23 @@ async function main() {
       Math.abs((d.factors ?? []).reduce((s, f) => s + f.weight_applied, 0) - 1) < 1e-6,
   );
 
-  check('price is in minor units with a currency', d.price?.nightly?.amount_minor > 0 && d.price?.nightly?.currency);
+  check(
+    'price is in minor units with a currency',
+    d.price?.nightly?.amount_minor > 0 && d.price?.nightly?.currency,
+  );
   check('tax basis is explicit', typeof d.price?.tax_basis === 'string');
   check('data_as_of is present', typeof d.data_as_of === 'string');
-  check('config and engine versions are reported', d.config_version >= 1 && Boolean(d.engine_version));
+  check(
+    'config and engine versions are reported',
+    d.config_version >= 1 && Boolean(d.engine_version),
+  );
 
   check('history series returned', (d.history?.series ?? []).length > 0);
   check('history gaps are explicit', Array.isArray(d.history?.gaps));
-  check('explanation rendered', typeof d.explanation?.text === 'string' && d.explanation.text.length > 20);
+  check(
+    'explanation rendered',
+    typeof d.explanation?.text === 'string' && d.explanation.text.length > 20,
+  );
   check(
     'explanation generator is declared',
     ['MODEL', 'TEMPLATE'].includes(d.explanation?.generator),
@@ -156,7 +165,9 @@ async function main() {
   check('stored analysis carries the factor breakdown', (debug.body?.factors ?? []).length === 6);
 
   // ── error paths ───────────────────────────────────────────────────────
-  const missing = await get('/api/v1/price-intelligence?hotel_id=NOPE&check_in=2030-01-01&check_out=2030-01-04');
+  const missing = await get(
+    '/api/v1/price-intelligence?hotel_id=NOPE&check_in=2030-01-01&check_out=2030-01-04',
+  );
   check('unknown hotel returns 404', missing.status === 404, `got ${missing.status}`);
 
   const backwards = await get(

@@ -20,6 +20,13 @@ export async function findComparableRates(
   adults: number,
   children: number,
   currency: string,
+  /**
+   * The SUBJECT's comparability class. Comparables are restricted to it: a comp
+   * discounting its non-refundable room-only rate is not evidence about
+   * flexible bed-and-breakfast pricing, and mixing them puts noise straight
+   * into factor F2. Required by docs/mvp/01 §4.
+   */
+  comparabilityClass: string,
   limit: number,
   maxAgeHours: number,
   q?: Queryable,
@@ -40,6 +47,7 @@ export async function findComparableRates(
          JOIN comps ON comps.hotel_id = o.hotel_id
         WHERE o.check_in = $2 AND o.nights = $3 AND o.adults = $4
           AND o.children = $5 AND o.currency = $6 AND o.is_available
+          AND o.comparability_class = $9
           AND o.observed_at >= now() - ($8 || ' hours')::interval
         ORDER BY o.hotel_id, o.room_type_id, o.observed_at DESC
      ),
@@ -57,7 +65,7 @@ export async function findComparableRates(
         AND b.comparability_class = ch.comparability_class
         AND b.currency = $6 AND b.baseline_level = 'L3'
       ORDER BY h.name`,
-    [hotelId, checkIn, nights, adults, children, currency, limit, maxAgeHours],
+    [hotelId, checkIn, nights, adults, children, currency, limit, maxAgeHours, comparabilityClass],
   );
 
   return rows.map((row) => ({

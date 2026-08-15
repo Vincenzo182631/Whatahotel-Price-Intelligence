@@ -119,6 +119,19 @@ VALUES (
       "maxTrendPct": 0
     }
   },
+  "calibration": {
+    "outcomeHorizonDays": 14,
+    "materialDropPct": 2,
+    "bookNowRegretRateMax": 0.1,
+    "waitSuccessRateMin": 0.6,
+    "scoreStabilityMaxDelta": 10,
+    "stabilityPriceTolerancePct": 1,
+    "insufficientDataRateMax": 0.25,
+    "factorCorrelationMax": 0.6,
+    "targetScoreMean": 50,
+    "targetScoreMeanTolerance": 12,
+    "minSampleSize": 30
+  },
   "explanation": {
     "enabled": false,
     "temperature": 0.3,

@@ -21,6 +21,7 @@
 | 08 | [`08-ui.md`](./08-ui.md) | Exact customer-facing information |
 | 09 | [`09-implementation-plan.md`](./09-implementation-plan.md) | Milestones and module tree |
 | 10 | [`10-configuration-registry.md`](./10-configuration-registry.md) | Every tunable weight and threshold in one place |
+| 11 | [`11-calibration-tooling.md`](./11-calibration-tooling.md) | M7 — replay harness, metrics, weight sweep |
 
 ---
 

@@ -138,6 +138,7 @@ export async function loadScoringInput(
     request.adults,
     request.children,
     request.currency,
+    chosen.comparabilityClass,
     Math.max(config.confidence.coverageTargetComps, config.score.market.minComps) + 3,
     config.rec.maxCurrentAgeHours,
     q,

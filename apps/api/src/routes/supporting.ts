@@ -220,6 +220,15 @@ export const comparablesHandler: Handler = async (_req, res, ctx) => {
   const limit = optionalInt(ctx.url, 'limit', 6, 1, 20);
 
   const { config } = await loadActiveConfig();
+
+  // Comparables are class-specific, so the endpoint needs to know which class
+  // the caller means. Default to the room the analysis would have picked.
+  const rooms = await findAvailableRoomTypes(hotel.id, checkIn, nights, adults, children, currency);
+  const requestedClass = ctx.url.searchParams.get('comparability_class');
+  const comparabilityClass = requestedClass ?? rooms[0]?.comparabilityClass;
+  if (!comparabilityClass)
+    throw new ApiError('NO_CURRENT_RATE', 'No available rate for these dates.');
+
   const comps = await findComparableRates(
     hotel.id,
     checkIn,
@@ -227,6 +236,7 @@ export const comparablesHandler: Handler = async (_req, res, ctx) => {
     adults,
     children,
     currency,
+    comparabilityClass,
     limit,
     config.rec.maxCurrentAgeHours,
   );

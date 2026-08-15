@@ -15,9 +15,9 @@ The product answers one question: **is this rate actually a good deal?** It answ
 | M4 · Scoring engine | ✅ |
 | M5 · Explanation layer | ✅ template path; model path behind a config flag |
 | M6 · API and widget | ✅ |
-| M7 · Calibration | Not started — needs real data |
+| M7 · Calibration tooling | ✅ harness built; **calibration itself needs real data** |
 
-174 tests passing (scenarios, property invariants, unit, and integration against PostgreSQL), 9 schema behaviour checks, 38 API smoke checks.
+202 tests passing (scenarios, property invariants, unit, and integration against PostgreSQL), 9 schema behaviour checks, 38 API smoke checks.
 
 **Two things to be clear about:**
 
@@ -34,10 +34,11 @@ npm run db:up                              # PostgreSQL 16 on port 5433
 npm run db:reset                           # migrate + seed reference data
 ALLOW_SYNTHETIC_SEED=1 npm run db:seed-dev # synthetic rates, rollups, comp sets
 
-npm test                                   # 174 tests
+npm test                                   # 202 tests
 npm run db:check                           # schema behaviour checks
 npm run api                                # http://localhost:3000
 npm run smoke                              # API contract checks
+npm run calibrate -- --sweep               # calibration runbook
 ```
 
 Then open <http://localhost:3000> for the widget demo harness.
@@ -70,5 +71,6 @@ The full MVP specification is in [`docs/mvp/`](./docs/mvp/). Start with [`docs/m
 | [08](./docs/mvp/08-ui.md) | Customer-facing information |
 | [09](./docs/mvp/09-implementation-plan.md) | Milestones and module tree |
 | [10](./docs/mvp/10-configuration-registry.md) | Every tunable weight and threshold |
+| [11](./docs/mvp/11-calibration-tooling.md) | Calibration harness, metrics and weight sweep |
 
 Working notes for contributors: [`CLAUDE.md`](./CLAUDE.md).

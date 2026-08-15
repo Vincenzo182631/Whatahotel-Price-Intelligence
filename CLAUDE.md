@@ -23,6 +23,7 @@ npm run config:seed      # regenerate the scoring-config seed from defaults.ts
 ALLOW_SYNTHETIC_SEED=1 npm run db:seed-dev   # synthetic rates + rollups + comps
 npm run api              # http://localhost:3000 (widget demo at /)
 npm run smoke            # API contract checks against a running server
+npm run calibrate -- --sweep --report out.md   # calibration runbook (doc 11)
 ```
 
 Integration tests run only when `DATABASE_URL` is set; they skip otherwise so
@@ -34,6 +35,7 @@ Integration tests run only when `DATABASE_URL` is set; they skip otherwise so
 packages/core/     pure scoring engine — NO I/O of any kind
 packages/data/     the ONLY SQL in the project
 packages/ingest/   adapters, pipeline, rollups, comp sets, scheduler
+packages/calibration/  point-in-time replay, metrics, weight sweep
 apps/api/          Node http server (docs/mvp/06)
 apps/web/public/   framework-free embeddable widget (docs/mvp/08)
 db/migrations/     schema (docs/mvp/05)
@@ -69,6 +71,13 @@ engine.
    `packages/core/src/config/defaults.ts`, are versioned in `scoring_config`,
    and every `analysis` row records the version that produced it. They are
    starting priors and have **not** been calibrated against real data.
+7. **Synthetic data never leaves development.** `scripts/seed-dev.mjs` fabricates
+   rates so the pipeline can be exercised. It refuses to run without
+   `ALLOW_SYNTHETIC_SEED=1`, because once synthetic rows are in
+   `rate_observation` they are indistinguishable from real ones. Do not remove
+   that guard, and do not point it at anything but a local database.
+8. **The calibration sweep never writes config.** It emits a suggestion.
+   Activating a configuration is a reviewed decision with evidence attached.
 
 ## Adding or changing a factor
 
@@ -78,11 +87,6 @@ engine.
 4. Re-run the scenario suite — band or recommendation changes in S1–S9 must be
    explained before merging.
 
-7. **Synthetic data never leaves development.** `scripts/seed-dev.mjs` fabricates
-   rates so the pipeline can be exercised. It refuses to run without
-   `ALLOW_SYNTHETIC_SEED=1`, because once synthetic rows are in
-   `rate_observation` they are indistinguishable from real ones. Do not remove
-   that guard, and do not point it at anything but a local database.
 
 ## Current state
 
@@ -97,4 +101,14 @@ blocked on U1–U18 in `docs/mvp/README.md`. Writing it without real payloads wo
 produce an adapter that compiles and silently mis-maps every rate — the failure
 mode with no symptom until the scores are already wrong.
 
-Also outstanding: M7 calibration, which needs real data.
+M7 tooling is built (`npm run calibrate`), but **calibration itself needs real
+data**. Running it against the synthetic seed exercises the harness and nothing
+more — the report says so in a banner, and the CLI exits 0 on a synthetic FAIL
+so it cannot redden a build with a meaningless failure.
+
+Two open items the harness surfaced, both awaiting a product decision rather
+than an implementation:
+- **F5 is an affine function of F1** (`docs/mvp/02` §3, F5). It adds no
+  independent signal. Remove it from the score, or redefine it. Not changed
+  unilaterally.
+- The weights in config v1 remain uncalibrated priors.

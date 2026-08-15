@@ -28,7 +28,8 @@
     "db:seed-dev": "node scripts/seed-dev.mjs",
     "api": "node apps/api/dist/server.js",
     "api:dev": "npm run build && node apps/api/dist/server.js",
-    "smoke": "node scripts/smoke-api.mjs"
+    "smoke": "node scripts/smoke-api.mjs",
+    "calibrate": "node scripts/calibrate.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

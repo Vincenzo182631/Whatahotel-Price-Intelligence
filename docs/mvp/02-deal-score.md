@@ -184,6 +184,26 @@ Behaviour: with no demand signal (D = 0) the factor is neutral at 50. Under maxi
 
 **Unavailable when** no demand signal of any kind exists for the destination and dates. Note that D = 0 (signal present, no demand detected) and UNAVAILABLE (no signal) are different states and must not be conflated: the first is information, the second is absence of it.
 
+> ### ⚠ Structural finding: F5 is not independent of F1
+>
+> The calibration harness measured F1/F5 correlation at **r = 0.82**, and the algebra explains why. Substituting `P = 1 − F1/100` into the formula above:
+>
+> ```
+> score_F5 = 50 + D·50·(1 − 2P)
+>          = (50 − 50D) + D · score_F1
+> ```
+>
+> **F5 is an exact affine function of F1 with slope D.** When demand pressure is constant, the correlation is 1.0 — the residual 0.82 only reflects D varying across the sample. F5 therefore contributes no information about price attractiveness that F1 does not already contain; it merely rescales it, and its 0.10 weight is effectively borrowed from F1 rather than adding a sixth perspective.
+>
+> This is a defect in the design above, not in the data or the implementation. Doc 02 §4 anticipated double-counting between F1 and F4; the dependency that actually exists is F1/F5, and it is structural rather than empirical.
+>
+> **Two candidate fixes, both a product decision rather than an implementation one:**
+>
+> 1. **Remove F5 from the Deal Score** and let demand act only through the never-WAIT guards (W4) and the urgency gate (G3), where it already does real, independent work. Simplest, and loses nothing measurable.
+> 2. **Redefine F5 to measure what F1 cannot see** — for example, how *this* hotel's rate responded to a demand event relative to how the comp set responded. That is genuinely orthogonal information, but it needs event data we do not yet have (U14).
+>
+> **Not changed unilaterally.** The scoring model is the product; this is flagged for a decision. Until then F5 remains as specified, and the correlation check will keep failing — correctly.
+
 **Regardless of availability, `demand_pressure` feeds the WAIT guards in doc 03 §3.**
 
 ---

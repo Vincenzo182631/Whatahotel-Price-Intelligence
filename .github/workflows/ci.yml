@@ -76,3 +76,8 @@ jobs:
             sleep 1
           done
           node scripts/smoke-api.mjs
+
+      # Exercises the replay harness end to end. Against synthetic data the CLI
+      # exits 0 even on a FAIL, so this checks the tooling runs, not the model.
+      - name: Calibration harness
+        run: node scripts/calibrate.mjs --stays 20 --points 5 --sweep

@@ -119,6 +119,30 @@ export interface ScoringConfig {
     };
   };
 
+  /**
+   * Not engine inputs — the measurable goals the calibration runbook evaluates
+   * against (docs/mvp/10 §10). They live in config so the targets are versioned
+   * alongside the weights they judge.
+   */
+  readonly calibration: {
+    /** How far forward outcomes are measured after an analysis. */
+    readonly outcomeHorizonDays: number;
+    /** A drop smaller than this is noise, not a missed opportunity. */
+    readonly materialDropPct: number;
+    readonly bookNowRegretRateMax: number;
+    readonly waitSuccessRateMin: number;
+    readonly scoreStabilityMaxDelta: number;
+    /** Price moves under this count as "unchanged" for the stability check. */
+    readonly stabilityPriceTolerancePct: number;
+    readonly insufficientDataRateMax: number;
+    /** Above this, two factors are measuring the same thing. */
+    readonly factorCorrelationMax: number;
+    readonly targetScoreMean: number;
+    readonly targetScoreMeanTolerance: number;
+    /** Below this many observations a metric is reported but not judged. */
+    readonly minSampleSize: number;
+  };
+
   readonly explanation: {
     readonly enabled: boolean;
     readonly temperature: number;
@@ -223,6 +247,20 @@ export const DEFAULT_CONFIG: ScoringConfig = {
       minVolatilityConfidence: 0.4,
       maxTrendPct: 0.0,
     },
+  },
+
+  calibration: {
+    outcomeHorizonDays: 14,
+    materialDropPct: 2.0,
+    bookNowRegretRateMax: 0.1,
+    waitSuccessRateMin: 0.6,
+    scoreStabilityMaxDelta: 10,
+    stabilityPriceTolerancePct: 1.0,
+    insufficientDataRateMax: 0.25,
+    factorCorrelationMax: 0.6,
+    targetScoreMean: 50,
+    targetScoreMeanTolerance: 12,
+    minSampleSize: 30,
   },
 
   explanation: {
