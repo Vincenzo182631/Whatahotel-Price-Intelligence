@@ -24,6 +24,24 @@ import {
 const BLOCKER_RUNS = 5000;
 const STANDARD_RUNS = 1000;
 
+/**
+ * Seeded on purpose.
+ *
+ * Unseeded, this suite drew fresh inputs every run: a counterexample would
+ * appear in roughly one CI run in four and vanish on re-run, so a real engine
+ * bug read as flakiness. (One did — f_volatility scoring an unmeasurable
+ * spread as perfect. See confidence.ts.) A fixed seed makes every failure
+ * reproducible from the log alone.
+ *
+ * Override with FC_SEED=<n> to explore beyond this seed's inputs; do that
+ * deliberately when hunting, not in CI, and record any counterexample as a
+ * unit test rather than leaving it to chance.
+ */
+fc.configureGlobal({
+  seed: Number(process.env.FC_SEED ?? 20260815),
+  verbose: 1,
+});
+
 const LEVELS: readonly BaselineLevel[] = ['L0', 'L1', 'L2', 'L3', 'L4'];
 const METHODS: readonly MatchMethod[] = [
   'SOURCE_ID',

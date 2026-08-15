@@ -34,10 +34,16 @@ const BED_PATTERNS: ReadonlyArray<readonly [RegExp, BedConfig]> = [
   [/\bsingle\b/, 'SINGLE'],
 ];
 
+// Vocabulary extended from live hotel data: "oceanfront", "bayfront",
+// "cityscape" and "resort view" are how real inventory is actually named, and
+// none of them matched. Because view is a hard rule (see viewsCompatible),
+// every name that falls through to UNKNOWN makes that rule permissive — an
+// unrecognised view word is what let Bayfront merge with Cityscape.
 const VIEW_PATTERNS: ReadonlyArray<readonly [RegExp, ViewType]> = [
   [/\b(partial ocean|partial sea|side ocean|ocean side)\b/, 'PARTIAL_OCEAN'],
-  [/\b(ocean|sea|beach|water)\s*(view|front|facing)?\b/, 'OCEAN'],
-  [/\b(city|skyline|urban)\s*(view|facing)?\b/, 'CITY'],
+  [/\b(ocean|sea|beach|water|bay|marina|harbou?r)\s*(view|front|facing)?\b/, 'OCEAN'],
+  [/\b(city|cityscape|skyline|urban)\s*(view|scape|facing)?\b/, 'CITY'],
+  [/\b(resort|courtyard|property)\s*(view|facing)\b/, 'GARDEN'],
   [/\b(garden|park)\s*(view|facing)?\b/, 'GARDEN'],
   [/\bpool\s*(view|side|facing)?\b/, 'POOL'],
   [/\b(mountain|valley)\s*(view|facing)?\b/, 'MOUNTAIN'],
@@ -70,6 +76,28 @@ export function extractAttributes(normalizedName: string): RoomAttributes {
  * is different" — but the match confidence is reduced elsewhere when it occurs.
  */
 export function roomClassesCompatible(a: RoomClass, b: RoomClass): boolean {
+  if (a === 'UNKNOWN' || b === 'UNKNOWN') return true;
+  return a === b;
+}
+
+/**
+ * Whether two views may ever share a baseline.
+ *
+ * The same hard-rule treatment as room class, and for the same reason: at a
+ * beachfront hotel an Oceanfront room and a Standard Limited View room are
+ * different products at different price tiers, and their names differ by two
+ * words inside an otherwise identical description. Trigram similarity happily
+ * merges them; the resulting baseline mixes tiers and every score built on it
+ * is wrong in a way nothing downstream can detect.
+ *
+ * Measured on live WhataHotel data before this rule existed: five view
+ * categories spanning a 37% price range collapsed into one room type.
+ *
+ * OCEAN and PARTIAL_OCEAN are deliberately NOT treated as interchangeable —
+ * that distinction is priced. UNKNOWN stays permissive, meaning "could not
+ * tell", not "determined to differ".
+ */
+export function viewsCompatible(a: ViewType, b: ViewType): boolean {
   if (a === 'UNKNOWN' || b === 'UNKNOWN') return true;
   return a === b;
 }

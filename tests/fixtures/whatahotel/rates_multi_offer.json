@@ -1,0 +1,95 @@
+{
+  "wahData": {
+    "rooms": [
+      {
+        "currency": "USD",
+        "rateTotal": "1,698.21",
+        "bedType": "King",
+        "rateDaily": " 430.95",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z44A00&rate=0S8&hotel=1198&checkin=2026-08-29&checkout=2026-09-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-  WhataHotel! WhataHotel! & Save, includes-Resort View Guest Room, 1 King, 1 King, Mini-fridge, 420sqft/38sqm, Wireless internet, for",
+        "rateCode": "0S8",
+        "roomType": "Standard",
+        "roomName": "Resort View Guest Room, 1 King, 1 King, Mini",
+        "bookCode": "Z44A00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "1,838.51",
+        "bedType": "King",
+        "rateDaily": " 472.33",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=ODLC00&rate=0S8&hotel=1198&checkin=2026-08-29&checkout=2026-09-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-  Exclusive Rate (*)-Resort View Guest Room, 1 King, 1 King, Mini-fridge, 420sqft/38sqm, Wireless internet, for",
+        "rateCode": "0S8",
+        "roomType": "Standard",
+        "roomName": "Resort View Guest Room, 1 King, 1 King, Mini",
+        "bookCode": "ODLC00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "1,838.51",
+        "bedType": "King",
+        "rateDaily": " 472.33",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=OFM000&rate=0S8&hotel=1198&checkin=2026-08-29&checkout=2026-09-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-  Hotel Credit Offer, upgrade upon availability at check in-Resort View Guest Room, 1 King, 1 King, Mini-fridge, 420sqft/38sqm, Wireless internet, for",
+        "rateCode": "0S8",
+        "roomType": "Standard",
+        "roomName": "Resort View Guest Room, 1 King, 1 King, Mini",
+        "bookCode": "OFM000"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "1,742.41",
+        "bedType": "King",
+        "rateDaily": " 443.98",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=PNAZ00&rate=RAC&hotel=1198&checkin=2026-08-29&checkout=2026-09-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-Prepay Non-refundable Non-changeable, prepay in full-Bay View Guest Room, 1 King, 1 King, Mini-fridge, 420sqft/38sqm, Wireless internet, for",
+        "rateCode": "RAC",
+        "roomType": "Standard",
+        "roomName": "Bay View Guest Room, 1 King, 1 King, Mini",
+        "bookCode": "PNAZ00"
+      }
+    ],
+    "status": {
+      "connection": 1,
+      "message": "Success",
+      "code": "200",
+      "method": "rates"
+    },
+    "session": {
+      "cfID": "<scrubbed>",
+      "sessionID": "0",
+      "sessionName": "Guest",
+      "sessionAccess": "0",
+      "cfToken": "<scrubbed>"
+    },
+    "amadeus": {
+      "codes": "RZMIAKBZ",
+      "amaID": "0SR9XISE2P",
+      "amaToken": "FYY379732UI93ANV8TNR6MGNN"
+    },
+    "result": {
+      "failed": 12,
+      "filters": "0S8;PRO",
+      "count": 77,
+      "filtered": 22
+    },
+    "hotel": {
+      "image": "https://whatahotel.com/content/hotels/1198/Ritz_KeyBiscayne_00002_Galleries_1280x720.jpg",
+      "city": "Miami",
+      "id": "1198",
+      "name": "The Ritz-Carlton, Key Biscayne"
+    },
+    "stay": {
+      "ratesURL": "https://whatahotel.com/booking/showRates.cfm?hotelID=1198&guests=2&checkIn=2026-08-29&checkOut=2026-09-01",
+      "check-in": "2026-08-29",
+      "nights": "3",
+      "guests": "2",
+      "check-out": "2026-09-01"
+    }
+  }
+}

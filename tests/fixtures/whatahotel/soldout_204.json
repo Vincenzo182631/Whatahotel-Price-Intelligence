@@ -1,0 +1,42 @@
+{
+  "wahData": {
+    "rooms": [],
+    "status": {
+      "connection": 1,
+      "message": "It appears this hotel is sold out over the precise dates of your planned stay. If you see rooms available on the official hotel website, please contact us. Chances are, we will be able to complete a reservation and include our Exclusive Perks. Otherwise modify your dates & Check Availability again.",
+      "code": "204",
+      "method": "rates"
+    },
+    "session": {
+      "cfID": "<scrubbed>",
+      "sessionID": "0",
+      "sessionName": "Guest",
+      "sessionAccess": "0",
+      "cfToken": "<scrubbed>"
+    },
+    "amadeus": {
+      "codes": "FSMIA953",
+      "amaID": "NULL",
+      "amaToken": "NULL"
+    },
+    "result": {
+      "failed": 0,
+      "filters": "NULL",
+      "count": 0,
+      "filtered": 0
+    },
+    "hotel": {
+      "image": "https://whatahotel.com/content/hotels/1326/cq5dam_web_1280_1280.jpg",
+      "city": "Miami",
+      "id": "1326",
+      "name": "Four Seasons Hotel Miami "
+    },
+    "stay": {
+      "ratesURL": "https://whatahotel.com/booking/showRates.cfm?hotelID=1326&guests=2&checkIn=2026-08-22&checkOut=2026-08-23",
+      "check-in": "2026-08-22",
+      "nights": "0",
+      "guests": "2",
+      "check-out": "2026-08-23"
+    }
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "wahData": {
+    "status": {
+      "connection": 1,
+      "message": "Success",
+      "code": "100",
+      "method": "hotel"
+    },
+    "hotels": [
+      {
+        "hotelID": "951",
+        "perks": [
+          {
+            "perk": "An Upgrade if Available at the Time of Checkin"
+          },
+          {
+            "perk": "Free American Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 100 Hotel Credit  Welcome Amenity"
+          },
+          {
+            "perk": "Free Basic WiFi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails on a specific request only"
+          },
+          {
+            "perk": "The onetime hotel credit is per stay and can be applied to parking, daily resort fee and select hotel outlets only  Must be used during stay The Credit cannot be applied to any part of the room rate or taxes"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/951/The-Ritz-Carlton-Kapalua.html",
+        "ama-property": "RZJHMKAP",
+        "ama-location": "JHM",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/951/The-Ritz-Carlton-Kapalua.html",
+        "name": "The Ritz Carlton Kapalua",
+        "region": "Hawaii",
+        "loc-long": "-156.654040",
+        "city": "Maui",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/951/RCKPALU_00165.jpg",
+        "secondary-desc": "NULL",
+        "address": "1 Ritz Carlton Dr, Lahaina, HI 96761",
+        "loc-lat": "21.001429"
+      }
+    ],
+    "images": [
+      {
+        "imgDesc": "Aerial View",
+        "imgThumb": "https://d2573qu6qrjt8c.cloudfront.net/C1DB36D10D974CECA5ACD228723B244F/E.jpg"
+      },
+      {
+        "imgDesc": "Labyrinth at Makalua-puna Point",
+        "imgThumb": "https://d2573qu6qrjt8c.cloudfront.net/01EBAE753B7347C28710C5C7D53143BC/E.jpg"
+      },
+      {
+        "imgDesc": "The Ritz-Carlton, Kapalua Aerial View from Ocean",
+        "imgThumb": "https://d2573qu6qrjt8c.cloudfront.net/548F924DD5C74C329D06AE059E52364E/E.jpg"
+      },
+      {
+        "imgDesc": "Aerial view over The Ritz-Carlton Maui, Kapalua",
+        "imgThumb": "https://d2573qu6qrjt8c.cloudfront.net/DCE1F5B27E334D0D89D8EA6336A54470/E.jpg"
+      },
+      {
+        "imgDesc": "Resort Grounds",
+        "imgThumb": "https://d2573qu6qrjt8c.cloudfront.net/DB11E79B011243E2961C210FE552BBBD/E.jpg"
+      },
+      {
+        "imgDesc": "Kapalua Maui",
+        "imgThumb": "https://d2573qu6qrjt8c.cloudfront.net/FC451D43535E41BA94FED8490236136D/E.jpg"
+      },
+      {
+        "imgDesc": "Palms at Sunset",
+        "imgThumb": "https://d2573qu6qrjt8c.cloudfront.net/61EA692ED6DE427B87509F4EFF7A082E/E.jpg"
+      },
+      {
+        "imgDesc": "Checking in at The Ritz Carlton Maui, Kapalua",
+        "imgThumb": "https://d2573qu6qrjt8c.cloudfront.net/E3A1C414AF434A148355DDEBB6E19929/E.jpg"
+      },
+      {
+        "imgDesc": "Welcome to The Ritz-Carlton Maui, Kapalua",
+        "imgThumb": "https://d2573qu6qrjt8c.cloudfront.net/C070F8D4D60D4FA8932ABB343C9F55EE/E.jpg"
+      },
+      {
+        "imgDesc": "Burger Shack - Exterior",
+        "imgThumb": "https://d2573qu6qrjt8c.cloudfront.net/094B91D675EE484BB654FB4321629128/E.jpg"
+      }
+    ],
+    "session": {
+      "sessionID": "0",
+      "sessionName": "Guest",
+      "sessionAccess": "0",
+      "cfID": "<scrubbed>",
+      "cfToken": "<scrubbed>"
+    },
+    "amadeus": {
+      "codes": "RZJHMKAP",
+      "count": 1
+    }
+  }
+}

@@ -65,20 +65,37 @@ async function main() {
   );
 
   // ── find a stay that actually has data ────────────────────────────────
-  const hotelId = hotels[0].hotel_id;
+  //
+  // Probed across hotels, not just the first one. Against the synthetic seed
+  // every hotel has data so hotels[0] always worked; against a real collection
+  // only the hotels covered so far do, and the smoke run failed on a database
+  // that was perfectly healthy. Hotels reporting coverage are tried first, and
+  // both stay lengths the collector captures are probed.
+  const ordered = [...hotels].sort(
+    (a, b) => Number(b.has_price_intelligence) - Number(a.has_price_intelligence),
+  );
+
+  let hotelId = null;
   let stay = null;
-  for (let offset = 6; offset <= 60 && stay === null; offset += 1) {
-    const checkIn = isoDaysFromNow(offset);
-    const checkOut = isoDaysFromNow(offset + 3);
-    const probe = await get(
-      `/api/v1/hotels/${hotelId}/room-types?check_in=${checkIn}&check_out=${checkOut}`,
-    );
-    if (probe.status === 200 && (probe.body?.room_types ?? []).length > 0) {
-      stay = { checkIn, checkOut, rooms: probe.body.room_types };
+  outer: for (const hotel of ordered.slice(0, 12)) {
+    for (let offset = 6; offset <= 60; offset += 1) {
+      for (const nights of [3, 1]) {
+        const checkIn = isoDaysFromNow(offset);
+        const checkOut = isoDaysFromNow(offset + nights);
+        const probe = await get(
+          `/api/v1/hotels/${hotel.hotel_id}/room-types?check_in=${checkIn}&check_out=${checkOut}`,
+        );
+        if (probe.status === 200 && (probe.body?.room_types ?? []).length > 0) {
+          hotelId = hotel.hotel_id;
+          stay = { checkIn, checkOut, rooms: probe.body.room_types };
+          break outer;
+        }
+      }
     }
   }
   check('found a stay with available rooms', stay !== null);
   if (stay === null) return;
+  console.log(`  ..   using hotel ${hotelId}, ${stay.checkIn} → ${stay.checkOut}`);
 
   check(
     'room types carry price, class and observation count',

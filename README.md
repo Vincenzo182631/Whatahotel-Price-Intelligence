@@ -6,18 +6,31 @@ The product answers one question: **is this rate actually a good deal?** It answ
 
 ## Status
 
-| Milestone | State |
-|---|---|
-| M0 · Data source verification | **Blocked** — see [U1–U18](./docs/mvp/README.md#unverified-inputs-register) |
-| M1 · Foundation, schema, migrations, CI | ✅ |
-| M2 · Ingestion and normalization | **Partial** — pipeline built; the production source adapter needs M0 |
-| M3 · Baselines, rollups, comparables, scheduler | ✅ |
-| M4 · Scoring engine | ✅ |
-| M5 · Explanation layer | ✅ template path; model path behind a config flag |
-| M6 · API and widget | ✅ |
-| M7 · Calibration tooling | ✅ harness built; **calibration itself needs real data** |
+| Milestone                                       | State                                                                                                                                   |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| M0 · Data source verification                   | ✅ — answered against the live API; [U1–U18](./docs/mvp/README.md#unverified-inputs-register) records what it does and does not provide |
+| M1 · Foundation, schema, migrations, CI         | ✅                                                                                                                                      |
+| M2 · Ingestion and normalization                | ✅ — including the production WhataHotel adapter (`npm run collect`)                                                                    |
+| M3 · Baselines, rollups, comparables, scheduler | ✅                                                                                                                                      |
+| M4 · Scoring engine                             | ✅                                                                                                                                      |
+| M5 · Explanation layer                          | ✅ template path; model path behind a config flag                                                                                       |
+| M6 · API and widget                             | ✅                                                                                                                                      |
+| M7 · Calibration tooling                        | ✅ harness built; **calibration itself needs real data**                                                                                |
 
-203 tests passing (scenarios, property invariants, unit, and integration against PostgreSQL), 9 schema behaviour checks, 38 API smoke checks.
+263 tests passing (scenarios, property invariants, unit, and integration against PostgreSQL), 9 schema behaviour checks, 38 API smoke checks.
+
+**The first real collection has run**: 15 Miami hotels, 1,109 rates, all matched
+at SOURCE_ID or ALIAS_EXACT confidence, rolled up into 1,617 baseline rows. The
+engine correctly returns `INSUFFICIENT_DATA` with a `null` score — the source
+carries no rate history (U3), so baselines accrue forward from the first capture.
+Expect roughly two weeks of collection before scores appear.
+
+```bash
+export WAH_API_KEY=...                  # a credential; never committed
+npm run collect -- --catalog miami      # sync hotels and their perks
+npm run collect -- --bootstrap          # seed the stay grid for new hotels
+npm run collect                         # collect what the scheduler says is due
+```
 
 **Two things to be clear about:**
 
@@ -59,18 +72,18 @@ Then open <http://localhost:3000> for the widget demo harness.
 
 The full MVP specification is in [`docs/mvp/`](./docs/mvp/). Start with [`docs/mvp/README.md`](./docs/mvp/README.md).
 
-| Doc | Covers |
-|---|---|
-| [01](./docs/mvp/01-data-architecture.md) | Entities, normalization, timestamping, baselines |
-| [02](./docs/mvp/02-deal-score.md) | Deal Score — six factors, math, weights, rationale |
-| [03](./docs/mvp/03-confidence-and-recommendation.md) | Confidence Score and the BOOK NOW / WAIT engine |
-| [04](./docs/mvp/04-explanation-engine.md) | Explanation bundle and AI guardrails |
-| [05](./docs/mvp/05-database-schema.md) | PostgreSQL schema |
-| [06](./docs/mvp/06-api.md) | REST API |
-| [07](./docs/mvp/07-testing.md) | Test scenarios and invariants |
-| [08](./docs/mvp/08-ui.md) | Customer-facing information |
-| [09](./docs/mvp/09-implementation-plan.md) | Milestones and module tree |
-| [10](./docs/mvp/10-configuration-registry.md) | Every tunable weight and threshold |
-| [11](./docs/mvp/11-calibration-tooling.md) | Calibration harness, metrics and weight sweep |
+| Doc                                                  | Covers                                             |
+| ---------------------------------------------------- | -------------------------------------------------- |
+| [01](./docs/mvp/01-data-architecture.md)             | Entities, normalization, timestamping, baselines   |
+| [02](./docs/mvp/02-deal-score.md)                    | Deal Score — six factors, math, weights, rationale |
+| [03](./docs/mvp/03-confidence-and-recommendation.md) | Confidence Score and the BOOK NOW / WAIT engine    |
+| [04](./docs/mvp/04-explanation-engine.md)            | Explanation bundle and AI guardrails               |
+| [05](./docs/mvp/05-database-schema.md)               | PostgreSQL schema                                  |
+| [06](./docs/mvp/06-api.md)                           | REST API                                           |
+| [07](./docs/mvp/07-testing.md)                       | Test scenarios and invariants                      |
+| [08](./docs/mvp/08-ui.md)                            | Customer-facing information                        |
+| [09](./docs/mvp/09-implementation-plan.md)           | Milestones and module tree                         |
+| [10](./docs/mvp/10-configuration-registry.md)        | Every tunable weight and threshold                 |
+| [11](./docs/mvp/11-calibration-tooling.md)           | Calibration harness, metrics and weight sweep      |
 
 Working notes for contributors: [`CLAUDE.md`](./CLAUDE.md).

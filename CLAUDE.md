@@ -1,7 +1,7 @@
 # WhataHotel Price Intelligence — working notes
 
-Embedded hotel price-intelligence platform. Answers one question: *is this hotel
-rate actually a good deal?*
+Embedded hotel price-intelligence platform. Answers one question: _is this hotel
+rate actually a good deal?_
 
 The full MVP specification is in [`docs/mvp/`](./docs/mvp/). **Read
 `docs/mvp/README.md` before changing scoring behaviour** — most of what looks
@@ -24,6 +24,12 @@ ALLOW_SYNTHETIC_SEED=1 npm run db:seed-dev   # synthetic rates + rollups + comps
 npm run api              # http://localhost:3000 (widget demo at /)
 npm run smoke            # API contract checks against a running server
 npm run calibrate -- --sweep --report out.md   # calibration runbook (doc 11)
+
+# Real collection. WAH_API_KEY is a credential — env only, never committed.
+WAH_API_KEY=... npm run collect -- --catalog miami   # sync hotels + their perks
+WAH_API_KEY=... npm run collect -- --bootstrap       # seed the stay grid (cold start)
+WAH_API_KEY=... npm run collect                      # collect what the scheduler says is due
+WAH_API_KEY=... npm run collect -- --dry-run         # show the plan, call nothing
 ```
 
 Integration tests run only when `DATABASE_URL` is set; they skip otherwise so
@@ -78,6 +84,26 @@ engine.
    that guard, and do not point it at anything but a local database.
 8. **The calibration sweep never writes config.** It emits a suggestion.
    Activating a configuration is a reviewed decision with evidence attached.
+9. **A factor that cannot be measured is excluded, not scored well.** `cv` over
+   one observation is not zero volatility, it is no information — scoring it
+   1.00 made confidence _fall_ as the second observation arrived. Same principle
+   as rule 3. Set `included: false` and let the weights renormalize.
+10. **The API key is a credential.** `WAH_API_KEY`, environment only, redacted
+    from every log line by `redact()`. Committed fixtures are scrubbed of the
+    key and of `cfid`/`cftoken` session tokens, and a test enumerates the
+    fixture directory to enforce it — do not replace that with a hardcoded
+    list of filenames.
+11. **View is a hard rule, like room class.** An OCEANFRONT room never merges
+    with a CITY one. Both rules exist because a wrong merge mixes price tiers
+    invisibly: before the view rule, five view categories spanning a 37% price
+    range collapsed into one "room type".
+12. **Tests are typechecked** (`tsconfig.tests.json`, wired into
+    `npm run typecheck`). They import package source, so `tsc --build` does not
+    see them; without this a test drifts out of sync with the interface it
+    exercises and nothing complains.
+13. **The property suite is seeded.** Unseeded it drew fresh inputs each run, so
+    a real engine bug surfaced as intermittent flakiness. Use `FC_SEED=<n>` to
+    explore deliberately, and promote any counterexample to a unit test.
 
 ## Adding or changing a factor
 
@@ -87,7 +113,6 @@ engine.
 4. Re-run the scenario suite — band or recommendation changes in S1–S9 must be
    explained before merging.
 
-
 ## Current state
 
 Built and verified: schema and migrations, ingestion pipeline with room-type and
@@ -95,11 +120,34 @@ rate-plan normalization, baseline rollups at every ladder level, comp-set
 builder, collection scheduler, the full scoring engine, the explanation bundle
 and template renderer, the REST API, and the embeddable widget.
 
-**Not built: the production source adapter.** `RateSourceAdapter` defines the
-interface and a synthetic development implementation exists, but the real one is
-blocked on U1–U18 in `docs/mvp/README.md`. Writing it without real payloads would
-produce an adapter that compiles and silently mis-maps every rate — the failure
-mode with no symptom until the scores are already wrong.
+**The production source adapter is built** — `packages/ingest/src/adapters/whatahotel/`,
+against the real `/data/api.cfm`, and exercised end to end (`npm run collect`).
+Its header comment records what the API does and does not provide; the U-register
+in `docs/mvp/README.md` is now mostly answered.
+
+Things about this source that are not guessable and cost real money to relearn:
+
+- **Every response is HTTP 200.** The real outcome is `wahData.status.code`. A
+  client trusting HTTP reads a 401 as a successful empty result and ingests
+  nothing while reporting healthy.
+- **`rateDaily` is NET per night; `rateTotal` is GROSS per stay.** Verified by
+  probing 1-night against 3-night stays. Using `rateDaily` understates every
+  price by the tax factor (~25%).
+- **`rateCode` is not the rate plan.** One code carries several priced offers,
+  distinguished only by the prose prefix of `roomDesc`. Keying identity on the
+  code alone silently discarded the cheapest offer of every three.
+- **Status `204` means sold out**, not an error. `500` is a genuine fault and is
+  never swallowed.
+- **The API emits invalid JSON** (trailing commas) on roughly 20% of `rates`
+  calls for some hotels, deterministically. `json.ts` repairs exactly that and
+  nothing else.
+- **No rate history (U3).** Baselines accrue forward from the first capture;
+  expect `INSUFFICIENT_DATA` for roughly the first two weeks. That is the design
+  working.
+
+`WHATAHOTEL_INGEST_TUNING` carries the ingest settings this source requires —
+room-type discovery on, fuzzy and attribute matching off. Each value fixes a
+merge observed in live data; do not relax them without re-measuring.
 
 M7 tooling is built (`npm run calibrate`), but **calibration itself needs real
 data**. Running it against the synthetic seed exercises the harness and nothing

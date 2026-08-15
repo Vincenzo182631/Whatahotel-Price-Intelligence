@@ -27,6 +27,7 @@ import type {
   BaselineDistribution,
   FactorResult,
   RecommendationResult,
+  ScoringInput,
 } from '../../packages/core/src/types.js';
 import {
   NOW,
@@ -368,6 +369,59 @@ describe('the WAIT boundary assertion', () => {
     expect(() =>
       assertWaitInvariant({ ...waitResult, recommendation: 'CONSIDER' }, 10, DEFAULT_CONFIG),
     ).not.toThrow();
+  });
+});
+
+/**
+ * Regression for a bug the property suite found only intermittently, because
+ * it was unseeded: f_volatility scored an UNMEASURABLE spread as perfect
+ * stability, so confidence FELL as the second observation arrived.
+ */
+describe('volatility is excluded when it cannot be measured', () => {
+  const inputAt = (n: number): ScoringInput => ({
+    query: makeQuery({ checkIn: checkInWithLeadDays(30), nights: 1 }),
+    current: makeCurrent(20000, { totalMinor: 20000, observedAt: NOW.toISOString() }),
+    baseline: makeBaseline({
+      n,
+      ladder: [
+        [0, 16000],
+        [0.5, 20000],
+        [1, 24000],
+      ],
+    }),
+    series: [],
+    comparables: [],
+    benefits: [],
+    demand: null,
+    now: NOW,
+  });
+
+  const volatilityOf = (n: number) =>
+    analyze(inputAt(n), DEFAULT_CONFIG).analysis.confidenceFactors.find(
+      (f) => f.code === 'f_volatility',
+    );
+
+  it('is not counted at a single observation', () => {
+    const factor = volatilityOf(1);
+    expect(factor?.included).toBe(false);
+    expect(factor?.weight).toBe(0);
+    // The specific defect: it was included at value 1.0 — a perfect score
+    // awarded for having no data at all.
+    expect(factor?.included === true && factor.value === 1).toBe(false);
+  });
+
+  it('is counted from two observations onward', () => {
+    expect(volatilityOf(2)?.included).toBe(true);
+    expect(volatilityOf(2)?.weight).toBe(DEFAULT_CONFIG.confidence.weight.volatility);
+  });
+
+  it('confidence never falls as the sample grows', () => {
+    const series = [1, 2, 3, 4, 5, 6, 8, 10, 16, 24].map(
+      (n) => analyze(inputAt(n), DEFAULT_CONFIG).analysis.confidence,
+    );
+    for (let i = 1; i < series.length; i += 1) {
+      expect(series[i]).toBeGreaterThanOrEqual(series[i - 1] as number);
+    }
   });
 });
 

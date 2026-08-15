@@ -1,0 +1,17 @@
+{
+  "wahData": {
+    "status": {
+      "connection": 0,
+      "code": "500",
+      "method": "rates",
+      "message": "An error has occured while processing this request"
+    },
+    "session": {
+      "sessionID": "0",
+      "sessionName": "Guest",
+      "sessionAccess": "0",
+      "cfID": "<scrubbed>",
+      "cfToken": "<scrubbed>"
+    }
+  }
+}

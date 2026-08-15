@@ -10,9 +10,11 @@
 import {
   classifyComparability,
   dowBucketFor,
+  extractAttributes,
   matchRoomType,
   normalizeRoomName,
   seasonBandFor,
+  type MatchOptions,
   type MealPlan,
   type RateAudience,
   type RefundPolicy,
@@ -29,6 +31,35 @@ export interface IngestOptions {
   readonly maxNights: number;
   /** Reject a rate more than this multiple away from the hotel's known level. */
   readonly sanityBandMultiple: number;
+  /**
+   * Create a canonical `room_type` the first time a source room code is seen.
+   *
+   * The matching ladder (docs/mvp/01 §3) resolves a raw room string against the
+   * room types a hotel already has. It does not say where the first one comes
+   * from — and on a cold start there are none, so every rate is UNMATCHED and
+   * nothing is ever collected. Discovery closes that gap.
+   *
+   * Requires a source room code (U9). Without one there is no stable identity
+   * to key on, and creating a room type per raw marketing string would fragment
+   * the very baselines §3 exists to protect — so those stay UNMATCHED and go to
+   * the reject queue for review.
+   *
+   * Discovery runs only AFTER the full ladder has failed, so an existing room
+   * type is always preferred to a new one.
+   */
+  readonly discoverRoomTypes: boolean;
+  /**
+   * Tuning for the room-type matching ladder (docs/mvp/01 §3).
+   *
+   * Sources that emit machine-generated, stable room names should raise
+   * `fuzzyMinSimilarity` close to 1, which leaves the exact and source-code
+   * steps in place and disables fuzzy merging. Measured on live WhataHotel
+   * data at the default 0.45: a Presidential Suite merged with a Corner
+   * Suite, and Bayfront with Cityscape, because the names share a long
+   * boilerplate tail and differ by one word. Fuzzy matching earns its place
+   * against human-typed names, not against these.
+   */
+  readonly roomMatch?: MatchOptions;
 }
 
 export const DEFAULT_INGEST_OPTIONS: IngestOptions = {
@@ -36,6 +67,7 @@ export const DEFAULT_INGEST_OPTIONS: IngestOptions = {
   captureSlotMinutes: 60,
   maxNights: 30,
   sanityBandMultiple: 8,
+  discoverRoomTypes: false,
 };
 
 export interface IngestResult {
@@ -45,6 +77,8 @@ export interface IngestResult {
   readonly duplicate: number;
   readonly rejected: number;
   readonly rejectReasons: Record<string, number>;
+  /** Room types created by discovery in this batch. Non-zero only on cold start. */
+  readonly discoveredRoomTypes: number;
 }
 
 export type RejectReason =
@@ -95,7 +129,7 @@ interface HotelContext {
 
 async function loadHotelContext(hotelId: number, q?: Queryable): Promise<HotelContext> {
   const { rows } = await db(q).query(
-    `SELECT rt.id, rt.normalized_name, rt.room_class,
+    `SELECT rt.id, rt.normalized_name, rt.room_class, rt.view_type,
             COALESCE(array_agg(DISTINCT a.source_room_code)
                      FILTER (WHERE a.source_room_code IS NOT NULL), '{}') AS source_codes,
             COALESCE(array_agg(DISTINCT a.normalized_value)
@@ -103,7 +137,7 @@ async function loadHotelContext(hotelId: number, q?: Queryable): Promise<HotelCo
        FROM room_type rt
        LEFT JOIN room_type_alias a ON a.room_type_id = rt.id
       WHERE rt.hotel_id = $1 AND rt.is_active
-      GROUP BY rt.id, rt.normalized_name, rt.room_class`,
+      GROUP BY rt.id, rt.normalized_name, rt.room_class, rt.view_type`,
     [hotelId],
   );
 
@@ -111,6 +145,9 @@ async function loadHotelContext(hotelId: number, q?: Queryable): Promise<HotelCo
     roomTypeId: String(row.id),
     normalizedName: row.normalized_name as string,
     roomClass: row.room_class as RoomTypeCandidate['roomClass'],
+    // Blocks an OCEANFRONT/CITY merge in the same way room_class blocks
+    // ROOM/SUITE. Omitting it would silently make that rule permissive.
+    view: row.view_type as RoomTypeCandidate['view'],
     sourceCodes: row.source_codes as string[],
     aliases: row.aliases as string[],
   }));
@@ -120,6 +157,85 @@ async function loadHotelContext(hotelId: number, q?: Queryable): Promise<HotelCo
     candidates,
     roomTypeIdByKey: new Map(rows.map((r) => [String(r.id), r.id as number])),
   };
+}
+
+/**
+ * Create the canonical `room_type` for a source room code seen for the first
+ * time, and register the code as a confirmed alias so it resolves by SOURCE_ID
+ * from now on.
+ *
+ * Returns null when nothing was created — either the hotel already had a room
+ * type under this normalized name (a race, or two codes for one name), or the
+ * raw name normalizes to nothing.
+ *
+ * The mutation of `context` is deliberate: a single batch typically carries
+ * several rates for the same new room, and without it each one would try to
+ * create the room type again.
+ */
+async function discoverRoomType(
+  record: RawRateRecord,
+  hotelId: number,
+  sourceId: number,
+  context: HotelContext,
+  q?: Queryable,
+): Promise<number | null> {
+  const normalized = normalizeRoomName(record.rawRoomName);
+  if (!normalized) return null;
+
+  const attributes = extractAttributes(normalized);
+
+  const { rows } = await db(q).query(
+    `INSERT INTO room_type (hotel_id, canonical_name, normalized_name,
+                            room_class, bed_config, view_type)
+     VALUES ($1,$2,$3,$4::room_class_t,$5::bed_config_t,$6::view_t)
+     ON CONFLICT (hotel_id, normalized_name) DO UPDATE SET is_active = true
+     RETURNING id`,
+    [
+      hotelId,
+      // canonical_name is customer-facing; rawRoomName is the matching key.
+      (record.displayRoomName ?? record.rawRoomName).trim(),
+      normalized,
+      attributes.roomClass,
+      attributes.bedConfig,
+      attributes.view,
+    ],
+  );
+  const roomTypeId = rows[0]?.id as number | undefined;
+  if (!roomTypeId) return null;
+
+  // Confirmed, not provisional: the code came from the source itself, so there
+  // is no human judgement to defer. This is the SOURCE_ID path, not a guess.
+  await db(q).query(
+    `INSERT INTO room_type_alias (hotel_id, room_type_id, source_id, raw_value,
+                                  normalized_value, source_room_code, match_method,
+                                  match_confidence, is_confirmed)
+     VALUES ($1,$2,$3,$4,$5,$6,'SOURCE_ID',1.00,true)
+     ON CONFLICT (hotel_id, source_id, normalized_value)
+       DO UPDATE SET source_room_code = COALESCE(room_type_alias.source_room_code,
+                                                 EXCLUDED.source_room_code)`,
+    [hotelId, roomTypeId, sourceId, record.rawRoomName, normalized, record.sourceRoomCode ?? null],
+  );
+
+  const key = String(roomTypeId);
+  const existing = context.candidates.find((c) => c.roomTypeId === key);
+  if (existing) {
+    // Same room type, additional source code — extend rather than duplicate.
+    if (record.sourceRoomCode && !existing.sourceCodes?.includes(record.sourceRoomCode)) {
+      (existing.sourceCodes as string[]).push(record.sourceRoomCode);
+    }
+  } else {
+    context.candidates.push({
+      roomTypeId: key,
+      normalizedName: normalized,
+      roomClass: attributes.roomClass,
+      view: attributes.view,
+      sourceCodes: record.sourceRoomCode ? [record.sourceRoomCode] : [],
+      aliases: [normalized],
+    });
+    context.roomTypeIdByKey.set(key, roomTypeId);
+  }
+
+  return roomTypeId;
 }
 
 /**
@@ -145,7 +261,10 @@ async function resolveRatePlan(
     refundPolicy: (record.refundPolicy ?? 'UNKNOWN') as RefundPolicy,
     audience: (record.audience ?? 'UNKNOWN') as RateAudience,
   };
-  const { comparabilityClass } = classifyComparability(terms);
+  // A source-supplied class wins over the semantic one: it is used precisely
+  // when the source knows its rate plans are distinct but does not tell us why.
+  const semantic = classifyComparability(terms);
+  const comparabilityClass = record.comparabilityClassOverride ?? semantic.comparabilityClass;
 
   const { rows } = await db(q).query(
     `INSERT INTO rate_plan (hotel_id, source_id, source_plan_code, display_name,
@@ -207,6 +326,7 @@ export async function ingestRecords(
   let inserted = 0;
   let duplicate = 0;
   let rejected = 0;
+  let discoveredRoomTypes = 0;
 
   const reject = async (record: RawRateRecord, reason: RejectReason): Promise<void> => {
     rejected += 1;
@@ -238,12 +358,29 @@ export async function ingestRecords(
       contexts.set(hotelId, context);
     }
 
-    const match = matchRoomType(
+    let match = matchRoomType(
       record.rawRoomName,
       context.candidates,
-      {},
+      options.roomMatch ?? {},
       record.sourceRoomCode ?? null,
     );
+
+    if (match.roomTypeId === null && options.discoverRoomTypes && record.sourceRoomCode) {
+      const discovered = await discoverRoomType(record, hotelId, sourceId, context, q);
+      if (discovered) {
+        discoveredRoomTypes += 1;
+        // Re-run the ladder rather than assuming the new row: it now resolves
+        // via SOURCE_ID at confidence 1.00, and the match_method stored on the
+        // observation stays the one the ladder actually produced.
+        match = matchRoomType(
+          record.rawRoomName,
+          context.candidates,
+          {},
+          record.sourceRoomCode ?? null,
+        );
+      }
+    }
+
     if (match.roomTypeId === null) {
       // Stored as a reject rather than as an UNMATCHED observation: an
       // observation with no room type cannot enter any baseline anyway, and a
@@ -357,5 +494,6 @@ export async function ingestRecords(
     duplicate,
     rejected,
     rejectReasons,
+    discoveredRoomTypes,
   };
 }

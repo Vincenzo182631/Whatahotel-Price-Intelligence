@@ -165,7 +165,13 @@ export async function loadScoringInput(
       hotelName: hotel.name,
       roomTypeId: String(chosen.roomTypeId),
       roomTypeName: chosen.canonicalName,
-      comparabilityClass: classifyComparability(terms).comparabilityClass,
+      // The class the rate was actually STORED and matched under, not a fresh
+      // classification of its terms. Those differ whenever a source supplies
+      // its own class (RawRateRecord.comparabilityClassOverride): baselines,
+      // comparables and the current rate all used the stored one, so deriving
+      // a different value here reported "UNRESOLVED" for a rate that was in
+      // fact well-classed — a misleading answer to "what was this compared to".
+      comparabilityClass: current.comparabilityClass,
       checkIn: request.checkIn,
       nights: request.nights,
       adults: request.adults,

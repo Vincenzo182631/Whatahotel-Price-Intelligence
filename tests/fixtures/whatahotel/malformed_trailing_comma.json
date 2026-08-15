@@ -1,0 +1,71 @@
+{"wahData": {
+					"status": {"connection": 1,"code": "200","method": "rates","message": "Success"},
+					"session": {"sessionID": "0","sessionName": "Guest","sessionAccess": "0","cfID": "<scrubbed>","cfToken": "<scrubbed>"},
+					"hotel": {"id": "1326","name": "Four Seasons Hotel Miami ","city": "Miami","image": "https://whatahotel.com/content/hotels/1326/cq5dam_web_1280_1280.jpg"},
+					"stay": {"nights": "3","guests": "2","check-in": "2026-09-05","check-out": "2026-09-08","ratesURL":"https://whatahotel.com/booking/showRates.cfm?hotelID=1326&guests=2&checkIn=2026-09-05&checkOut=2026-09-08"},
+					"result": {"count": 38,"filtered": 57,"failed": 8,"filters": "PP6;PP4;PP1;PP2"},
+					"amadeus": {"amaID": "0DBZFWD3KP","amaToken": "1ZDF9T2X628OQ2UGDCUSZIPPD2","codes": "FSMIA953"},
+					"rooms": [ 
+							{
+								"bookCode": "B1KPR2",
+								"rateCode": "PP6",
+								"roomName": "Premier Cityscape Room King Bed Large Window With North City ",
+								"roomDesc": "-WhataHotel! -UP TO 20 PCT OFF W BKFST -Premier Cityscape Room King Bed Large Window With North City -View-Luxury Bed Cushioned Window Seat-Seating Area-End Table -Full Marble Bathroom Twice Daily Housekeeping-Daily Turndown -Service 500 Sqft-3 Adults Or 2 Adults 2 Children ",
+								"roomType": "Executive",
+								"bedNum": "1",
+								"bedType": "King",
+								"currency": "USD",
+								"rateDaily": " 486.67",
+								"rateTotal": "1,853.20",
+								"bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=B1KPR2&rate=PP6&hotel=1326&checkin=2026-09-05&checkout=2026-09-08&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+								"images": [
+										{
+											"imgFile": "https://d2573qu6qrjt8c.cloudfront.net/579B79B3363748F6825E95B660E90D24/579B79B3363748F6825E95B660E90D24.JPEG",
+											"imgDesc": "Deluxe Accessible City-View Room with King Bed",
+											"imgSource": "WAH"
+										},
+										{
+											"imgFile": "https://www.fourseasons.com/alt/img-opt/~80.3060.0,0000-1153,4843-2400,0000-1350,0000/publish/content/dam/fourseasons/images/web/MIA/MIA_1026_original.jpg",
+											"imgDesc": "Deluxe City View Room",
+											"imgSource": "WAH"
+										},
+										{
+											"imgFile": "https://www.fourseasons.com/alt/img-opt/~80.3060.0,0000-1153,4843-2400,0000-1350,0000/publish/content/dam/fourseasons/images/web/MIA/MIA_1026_original.jpg",
+											"imgDesc": "Deluxe City View Room",
+											"imgSource": "WAH"
+										},
+										{
+											"imgFile": "https://d2573qu6qrjt8c.cloudfront.net/AFC89F2489D6438888598E991C9648E9/E.jpg",
+											"imgDesc": "Room Details",
+											"imgSource": "AMA"
+										},
+										{
+											"imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A75E08CE42DD45FAB3F8D9651144992D/E.jpg",
+											"imgDesc": "One Bedroom Suite Bay View",
+											"imgSource": "AMA"
+										}
+								]
+							}, 
+							{
+								"bookCode": "F1KPR2",
+								"rateCode": "PP6",
+								"roomName": "Premier Cityscape Accsble King Bed Large Window With North City ",
+								"roomDesc": "-WhataHotel! -UP TO 20 PCT OFF W BKFST -Premier Cityscape Accsble King Bed Large Window With North City -View-Luxury Bed Full Marble Bathroom With Walk In Shower Grab -Bars For Shower And Toilet-Shower Seat Twice Daily Housekeeping--Daily Turndown Service 500 Sqft-3 Adults Or 2 Adults 2 Children ",
+								"roomType": "Executive",
+								"bedNum": "1",
+								"bedType": "King",
+								"currency": "USD",
+								"rateDaily": " 486.67",
+								"rateTotal": "1,853.20",
+								"bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=F1KPR2&rate=PP6&hotel=1326&checkin=2026-09-05&checkout=2026-09-08&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+								"images": [
+										{
+											"imgFile": "https://d2573qu6qrjt8c.cloudfront.net/579B79B3363748F6825E95B660E90D24/579B79B3363748F6825E95B660E90D24.JPEG",
+											"imgDesc": "Deluxe Accessible City-View Room with King Bed",
+											"imgSource": "WAH"
+										},
+								]
+							}
+						]
+					}
+				}

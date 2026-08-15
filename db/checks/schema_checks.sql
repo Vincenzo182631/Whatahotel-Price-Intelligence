@@ -1,10 +1,17 @@
 -- Schema behaviour checks.
 --
 -- These verify the guarantees the schema is supposed to provide, not just that
--- the DDL parses. Run against a freshly migrated database:
+-- the DDL parses:
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/checks/schema_checks.sql
 --
 -- Every check RAISEs on failure, so a non-zero exit means a real regression.
+--
+-- Safe to run against a database that already holds data. Every fixture is
+-- namespaced (source TEST_SRC, hotel CHECK-2962) and every assertion is scoped
+-- to those fixtures. The earlier version counted whole tables and read
+-- `FROM rate_observation LIMIT 1`, which silently asserted against an
+-- arbitrary real row once the first rates were collected. The whole run is
+-- wrapped in a transaction that ends in ROLLBACK, so nothing is left behind.
 
 BEGIN;
 
@@ -16,17 +23,17 @@ INSERT INTO destination (slug, name, country_code)
 VALUES ('miami-beach', 'Miami Beach', 'US');
 
 INSERT INTO hotel (wah_hotel_id, name, destination_id, luxury_tier)
-SELECT '2962', 'Test Hotel', id, 5 FROM destination WHERE slug = 'miami-beach';
+SELECT 'CHECK-2962', 'Test Hotel', id, 5 FROM destination WHERE slug = 'miami-beach';
 
 INSERT INTO room_type (hotel_id, canonical_name, normalized_name, room_class, bed_config, view_type)
-SELECT id, 'Ocean View King', 'ocean view king', 'ROOM', 'KING', 'OCEAN' FROM hotel WHERE wah_hotel_id = '2962';
+SELECT id, 'Ocean View King', 'ocean view king', 'ROOM', 'KING', 'OCEAN' FROM hotel WHERE wah_hotel_id = 'CHECK-2962';
 
 INSERT INTO room_type (hotel_id, canonical_name, normalized_name, room_class, bed_config, view_type)
-SELECT id, 'Ocean View King Suite', 'ocean view king suite', 'SUITE', 'KING', 'OCEAN' FROM hotel WHERE wah_hotel_id = '2962';
+SELECT id, 'Ocean View King Suite', 'ocean view king suite', 'SUITE', 'KING', 'OCEAN' FROM hotel WHERE wah_hotel_id = 'CHECK-2962';
 
 INSERT INTO rate_plan (hotel_id, source_id, source_plan_code, meal_plan, refund_policy, audience, comparability_class)
 SELECT h.id, s.id, 'BB-FLEX', 'BREAKFAST', 'REFUNDABLE', 'PUBLIC', 'BREAKFAST_INCLUDED|FLEXIBLE|PUBLIC'
-FROM hotel h, source s WHERE h.wah_hotel_id = '2962' AND s.code = 'TEST_SRC';
+FROM hotel h, source s WHERE h.wah_hotel_id = 'CHECK-2962' AND s.code = 'TEST_SRC';
 
 INSERT INTO ingest_batch (source_id) SELECT id FROM source WHERE code = 'TEST_SRC';
 
@@ -44,13 +51,16 @@ SELECT '2026-08-14T09:12:00Z', s.id, h.id, rt.id, rp.id,
        DATE '2026-08-14', '2026-08-14T09:00:00Z', 'WEEKDAY', 'SHOULDER',
        'SOURCE_ID', 1.00, 'BREAKFAST_INCLUDED|FLEXIBLE|PUBLIC'
 FROM hotel h, source s, room_type rt, rate_plan rp
-WHERE h.wah_hotel_id = '2962' AND s.code = 'TEST_SRC'
-  AND rt.normalized_name = 'ocean view king' AND rp.source_plan_code = 'BB-FLEX';
+WHERE h.wah_hotel_id = 'CHECK-2962' AND s.code = 'TEST_SRC'
+  AND rt.hotel_id = h.id AND rt.normalized_name = 'ocean view king'
+  AND rp.hotel_id = h.id AND rp.source_plan_code = 'BB-FLEX';
 
 DO $$
 DECLARE nightly BIGINT; lead INT;
 BEGIN
-    SELECT nightly_amount_minor, lead_time_days INTO nightly, lead FROM rate_observation LIMIT 1;
+    SELECT o.nightly_amount_minor, o.lead_time_days INTO nightly, lead
+      FROM rate_observation o JOIN source s ON s.id = o.source_id
+     WHERE s.code = 'TEST_SRC';
     IF nightly <> 68900 THEN
         RAISE EXCEPTION 'CHECK 1a FAILED: nightly_amount_minor = % (expected 68900)', nightly;
     END IF;
@@ -74,14 +84,16 @@ SELECT '2026-08-14T09:47:00Z', s.id, h.id, rt.id, rp.id,   -- different instant,
        DATE '2026-08-14', '2026-08-14T09:00:00Z', 'WEEKDAY', 'SHOULDER',
        'SOURCE_ID', 1.00, 'BREAKFAST_INCLUDED|FLEXIBLE|PUBLIC'
 FROM hotel h, source s, room_type rt, rate_plan rp
-WHERE h.wah_hotel_id = '2962' AND s.code = 'TEST_SRC'
-  AND rt.normalized_name = 'ocean view king' AND rp.source_plan_code = 'BB-FLEX'
+WHERE h.wah_hotel_id = 'CHECK-2962' AND s.code = 'TEST_SRC'
+  AND rt.hotel_id = h.id AND rt.normalized_name = 'ocean view king'
+  AND rp.hotel_id = h.id AND rp.source_plan_code = 'BB-FLEX'
 ON CONFLICT DO NOTHING;
 
 DO $$
 DECLARE n INT;
 BEGIN
-    SELECT count(*) INTO n FROM rate_observation;
+    SELECT count(*) INTO n FROM rate_observation o
+      JOIN source s ON s.id = o.source_id WHERE s.code = 'TEST_SRC';
     IF n <> 1 THEN
         RAISE EXCEPTION 'CHECK 2 FAILED: % rows after same-slot re-capture (expected 1)', n;
     END IF;
@@ -102,14 +114,16 @@ SELECT '2026-08-14T10:05:00Z', s.id, h.id, rt.id, rp.id,
        DATE '2026-08-14', '2026-08-14T10:00:00Z', 'WEEKDAY', 'SHOULDER',
        'SOURCE_ID', 1.00, 'BREAKFAST_INCLUDED|FLEXIBLE|PUBLIC'
 FROM hotel h, source s, room_type rt, rate_plan rp
-WHERE h.wah_hotel_id = '2962' AND s.code = 'TEST_SRC'
-  AND rt.normalized_name = 'ocean view king' AND rp.source_plan_code = 'BB-FLEX'
+WHERE h.wah_hotel_id = 'CHECK-2962' AND s.code = 'TEST_SRC'
+  AND rt.hotel_id = h.id AND rt.normalized_name = 'ocean view king'
+  AND rp.hotel_id = h.id AND rp.source_plan_code = 'BB-FLEX'
 ON CONFLICT DO NOTHING;
 
 DO $$
 DECLARE n INT;
 BEGIN
-    SELECT count(*) INTO n FROM rate_observation;
+    SELECT count(*) INTO n FROM rate_observation o
+      JOIN source s ON s.id = o.source_id WHERE s.code = 'TEST_SRC';
     IF n <> 2 THEN RAISE EXCEPTION 'CHECK 3 FAILED: % rows (expected 2)', n; END IF;
     RAISE NOTICE 'CHECK 3  ok — a new slot records a new observation';
 END $$;
@@ -118,7 +132,8 @@ END $$;
 DO $$
 DECLARE n INT;
 BEGIN
-    SELECT count(*) INTO n FROM rate_observation_2026_08;
+    SELECT count(*) INTO n FROM rate_observation_2026_08 o
+      JOIN source s ON s.id = o.source_id WHERE s.code = 'TEST_SRC';
     IF n <> 2 THEN
         RAISE EXCEPTION 'CHECK 4 FAILED: % rows in the August partition (expected 2)', n;
     END IF;
@@ -142,7 +157,7 @@ BEGIN
                DATE '2026-08-14', '2026-08-14T11:00:00Z', 'WEEKDAY', 'SHOULDER',
                'SOURCE_ID', 1.00, 'BREAKFAST_INCLUDED|FLEXIBLE|PUBLIC'
         FROM hotel h, source s, room_type rt, rate_plan rp
-        WHERE h.wah_hotel_id = '2962' AND s.code = 'TEST_SRC'
+        WHERE h.wah_hotel_id = 'CHECK-2962' AND s.code = 'TEST_SRC'
           AND rt.normalized_name = 'ocean view king' AND rp.source_plan_code = 'BB-FLEX';
         RAISE EXCEPTION 'CHECK 5 FAILED: inconsistent check_out was accepted';
     EXCEPTION WHEN check_violation THEN
@@ -154,7 +169,7 @@ END $$;
 DO $$
 DECLARE hid BIGINT;
 BEGIN
-    SELECT id INTO hid FROM hotel WHERE wah_hotel_id = '2962';
+    SELECT id INTO hid FROM hotel WHERE wah_hotel_id = 'CHECK-2962';
     BEGIN
         INSERT INTO analysis (
             public_id, hotel_id, comparability_class, check_in, nights, adults, children,
@@ -178,7 +193,7 @@ END $$;
 DO $$
 DECLARE hid BIGINT;
 BEGIN
-    SELECT id INTO hid FROM hotel WHERE wah_hotel_id = '2962';
+    SELECT id INTO hid FROM hotel WHERE wah_hotel_id = 'CHECK-2962';
     BEGIN
         INSERT INTO analysis (
             public_id, hotel_id, comparability_class, check_in, nights, adults, children,

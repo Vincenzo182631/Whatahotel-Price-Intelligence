@@ -1,0 +1,390 @@
+/**
+ * Parsing the WhataHotel payload into domain values.
+ *
+ * Every rule here was verified against captured responses
+ * (tests/fixtures/whatahotel/), not inferred from field names. The two that
+ * would have been guessed wrong:
+ *
+ *   1. `rateDaily` is the per-night NET rate; `rateTotal` is the whole-stay
+ *      GROSS amount. Verified across 1- and 3-night stays: rateTotal is
+ *      exactly rateDaily × nights × 1.2545 for hotel 951. Treating rateTotal
+ *      as a net total would understate taxes by ~25% on every observation.
+ *
+ *   2. Money arrives as a FORMATTED STRING with thousands separators
+ *      ("1,039.00"), and on the cityrates method the currency is inside the
+ *      string ("522.75 USD") rather than in a sibling field.
+ */
+
+import type { MealPlan, RateAudience, RefundPolicy } from '@wahpi/core';
+
+import type { WahHotel, WahRoom } from './types.js';
+
+export interface ParsedMoney {
+  readonly amountMinor: number;
+  readonly currency: string | null;
+}
+
+/**
+ * Parse a formatted money string to integer minor units.
+ *
+ * Handles "1,039.00", "522.75 USD", "1039", "USD 1,039.00". Returns null on
+ * anything it cannot read — a rate we cannot price is rejected upstream rather
+ * than silently coerced to zero.
+ */
+export function parseMoney(
+  raw: string | null | undefined,
+  fallbackCurrency?: string,
+): ParsedMoney | null {
+  if (raw === null || raw === undefined) return null;
+  const text = String(raw).trim();
+  if (text === '') return null;
+
+  const currencyMatch = text.match(/\b([A-Z]{3})\b/);
+  const numeric = text.replace(/[A-Z]{3}/g, '').replace(/[^0-9.\-]/g, '');
+  if (numeric === '' || numeric === '-' || numeric === '.') return null;
+
+  const value = Number(numeric);
+  if (!Number.isFinite(value)) return null;
+
+  return {
+    amountMinor: Math.round(value * 100),
+    currency: currencyMatch?.[1] ?? fallbackCurrency ?? null,
+  };
+}
+
+export interface ParsedRatePlan {
+  /** Prose before the room description, e.g. "WhataHotel! Travel Network, deposit required". */
+  readonly planText: string | null;
+  readonly roomText: string;
+  readonly mealPlan: MealPlan;
+  readonly refundPolicy: RefundPolicy;
+  readonly audience: RateAudience;
+  readonly isPrepaid: boolean | null;
+}
+
+/**
+ * Split `roomDesc` into its rate-plan prefix and room description.
+ *
+ * Observed form: `-<plan text>-<room text>`. The leading hyphen is always
+ * present on the rates method.
+ */
+/**
+ * Split `roomDesc` into its offer prefix and its room description.
+ *
+ * The format is `-<offer>-<room description>`, but hyphens occur INSIDE both
+ * halves — "Prepay Non-refundable Non-changeable" in the offer, "Mini-fridge"
+ * in the room text — so splitting on the first hyphen truncates the offer
+ * mid-word. It produced offers named "Prepay Non", which then became a
+ * different rate plan from "Prepay Non-refundable" at the next capture.
+ *
+ * When `roomName` is supplied the split is anchored on it instead: the room
+ * half always begins with the room name, and that boundary is unambiguous.
+ * The hyphen scan is only the fallback.
+ */
+export function parseRoomDesc(
+  roomDesc: string,
+  roomName?: string | null,
+): { planText: string | null; roomText: string } {
+  const text = (roomDesc ?? '').trim();
+  if (!text.startsWith('-')) return { planText: null, roomText: text };
+  const rest = text.slice(1);
+
+  const anchor = (roomName ?? '').trim();
+  if (anchor) {
+    const at = rest.indexOf(anchor);
+    if (at > 0) {
+      return {
+        planText:
+          rest
+            .slice(0, at)
+            .replace(/[-\s]+$/, '')
+            .trim() || null,
+        roomText: rest.slice(at).trim(),
+      };
+    }
+    if (at === 0) return { planText: null, roomText: rest.trim() };
+  }
+
+  const split = rest.indexOf('-');
+  if (split === -1) return { planText: null, roomText: rest };
+  return { planText: rest.slice(0, split).trim(), roomText: rest.slice(split + 1).trim() };
+}
+
+/**
+ * A stable identifier for an offer, derived from its prose label.
+ *
+ * The API has no offer code — the only thing distinguishing "WhataHotel! &
+ * Save" from "Hotel Credit Offer" on the same room and rateCode is this text.
+ * Slugging it (upper-case, alphanumerics, single underscores) absorbs spacing
+ * and punctuation drift while keeping genuinely different offers apart.
+ */
+export function offerSlugFor(planText: string | null | undefined): string | null {
+  const slug = (planText ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 60);
+  return slug === '' ? null : slug;
+}
+
+/**
+ * Derive rate terms.
+ *
+ * What the payload supports and what it does not:
+ *  - **audience** is confidently CONSORTIA. Every rate observed carries the
+ *    "WhataHotel! Travel Network" / preferred-partner marker; that is the
+ *    programme these rates come from.
+ *  - **mealPlan** is ROOM_ONLY. Breakfast appears in the hotel's `perks`, i.e.
+ *    as a partner BENEFIT attached to the stay, not as a board basis on the
+ *    rate. Modelling it as a meal plan would double-count it against factor F6.
+ *  - **refundPolicy is PARTIALLY determinable.** Some offers state it outright
+ *    ("Prepay Non-refundable Non-changeable"); most say nothing. Stated
+ *    non-refundability is recorded; silence stays UNKNOWN. Silence is NOT read
+ *    as refundable — the absence of the word is not evidence of the terms, and
+ *    a wrongly-refundable rate would be compared against genuinely flexible
+ *    ones and look like a bargain because it is a worse product.
+ */
+export function parseRateTerms(roomDesc: string, roomName?: string | null): ParsedRatePlan {
+  const { planText, roomText } = parseRoomDesc(roomDesc, roomName);
+  const plan = (planText ?? '').toLowerCase();
+
+  const isPartnerRate = /whatahotel|travel network|travel discover/.test(plan);
+  const nonRefundable = /non-?\s*refundable/.test(plan);
+  const prepayInFull = /prepay(?:\s+in\s+full)?/.test(plan);
+  const depositRequired = /deposit required/.test(plan);
+
+  return {
+    planText,
+    roomText,
+    mealPlan: 'ROOM_ONLY',
+    refundPolicy: nonRefundable ? 'NON_REFUNDABLE' : 'UNKNOWN',
+    audience: isPartnerRate ? 'CONSORTIA' : 'UNKNOWN',
+    isPrepaid: prepayInFull || depositRequired ? true : null,
+  };
+}
+
+/**
+ * The source's own rate-plan identity: rate code AND offer.
+ *
+ * `rateCode` alone is NOT the plan. Verified against live responses: one hotel
+ * returned the same room under rateCode `0S8` three times at two different
+ * prices — "WhataHotel! & Save" at 1,698.21 and "Hotel Credit Offer" at
+ * 1,838.51. They are different offers on the same inventory.
+ *
+ * Keying identity on the rate code alone made those collide on the ingest
+ * dedup key, so two of every three were dropped and the survivor was whichever
+ * the API happened to list first — an arbitrary price, sometimes 8% above the
+ * cheapest available. The offer is therefore part of the identity.
+ */
+export function sourcePlanCodeFor(
+  rateCode: string | null | undefined,
+  planText: string | null | undefined,
+): string {
+  const code = (rateCode ?? '').trim().toUpperCase() || 'DEFAULT';
+  const offer = offerSlugFor(planText);
+  return offer ? `${code}|${offer}` : code;
+}
+
+/**
+ * Comparability class for a WhataHotel rate.
+ *
+ * The semantic class (meal × refundability × audience) cannot be built, because
+ * the payload states cancellation terms for only some offers — it would resolve
+ * to UNRESOLVED for the rest, and doc 01 §4 excludes unresolved rates from every
+ * baseline. That would leave the product with nothing to score.
+ *
+ * The source's own plan identity is used instead. Two rates sharing a rate code
+ * AND an offer ARE the same product, even where we cannot state that product's
+ * cancellation terms. Keying the class on it preserves the compare-like-with-
+ * like guarantee without inventing facts we do not have.
+ *
+ * Upgrade path: once terms are exposed for every offer (U5), switch to the
+ * semantic class and these opaque classes disappear.
+ */
+export function comparabilityClassFor(
+  rateCode: string | null | undefined,
+  planText?: string | null,
+): string {
+  const code = (rateCode ?? '').trim().toUpperCase();
+  if (code === '') return 'UNRESOLVED';
+  return `WAH:${sourcePlanCodeFor(code, planText)}`;
+}
+
+/**
+ * The string the room-type matcher should see.
+ *
+ * NOT the full description. Every room at a hotel shares a long amenity tail —
+ * "Mini-fridge, 420sqft/38sqm, Wireless internet, for" — and feeding that to a
+ * trigram matcher drowns the two or three words that actually identify the
+ * room. Measured against live data, it merged Bay View, Oceanfront, Resort
+ * View and Standard Limited View into a single room type spanning a 37% price
+ * range, which is exactly the baseline-mixing failure docs/mvp/01 §3 exists to
+ * prevent.
+ *
+ * NOT the bare `roomName` either: it arrives truncated at ~45 characters, and
+ * the truncation sometimes falls before the bed configuration, so a King and a
+ * two-Queen version of one room become indistinguishable.
+ *
+ * So: the truncated name, which is where the view and class words are, plus the
+ * structured `bedNum`/`bedType` fields the payload supplies separately. The
+ * amenity tail is dropped.
+ */
+export function roomIdentityFor(room: WahRoom, roomText: string): string {
+  const name = (room.roomName ?? '').trim();
+  const base = name !== '' ? name : roomText;
+
+  const bedNum = (room.bedNum ?? '').toString().trim();
+  const bedType = (room.bedType ?? '').trim();
+  const bed = [bedNum, bedType].filter((part) => part !== '').join(' ');
+
+  // Appended unconditionally when present: it must be there for every capture
+  // of this room or the identity is not stable across captures.
+  return bed === '' ? base : `${base} [${bed}]`;
+}
+
+export interface ParsedRoom {
+  readonly sourceRoomCode: string;
+  readonly sourcePlanCode: string;
+  /** The matching key — carries the bed disambiguator. Not for display. */
+  readonly rawRoomName: string;
+  /** What a customer should see. */
+  readonly displayRoomName: string;
+  readonly planName: string | null;
+  readonly nightlyNetMinor: number;
+  readonly totalGrossMinor: number;
+  readonly currency: string;
+  readonly comparabilityClass: string;
+  readonly terms: ParsedRatePlan;
+}
+
+/**
+ * Parse one room record. Returns null when the record cannot be priced or
+ * identified — rejected upstream with a reason rather than coerced.
+ */
+export function parseRoom(room: WahRoom, nights: number): ParsedRoom | null {
+  if (!room.bookCode || !room.roomName) return null;
+
+  const daily = parseMoney(room.rateDaily, room.currency);
+  const total = parseMoney(room.rateTotal, room.currency);
+  if (!daily || !total || daily.amountMinor <= 0 || total.amountMinor <= 0) return null;
+  if (nights <= 0) return null;
+
+  const currency = daily.currency ?? total.currency ?? room.currency ?? 'USD';
+  const terms = parseRateTerms(room.roomDesc ?? '', room.roomName);
+
+  return {
+    sourceRoomCode: room.bookCode,
+    sourcePlanCode: sourcePlanCodeFor(room.rateCode, terms.planText),
+    rawRoomName: roomIdentityFor(room, terms.roomText),
+    displayRoomName: (room.roomName ?? '').trim() || terms.roomText,
+    planName: terms.planText,
+    nightlyNetMinor: daily.amountMinor,
+    totalGrossMinor: total.amountMinor,
+    currency,
+    comparabilityClass: comparabilityClassFor(room.rateCode, terms.planText),
+    terms,
+  };
+}
+
+// ── perks → benefits ──────────────────────────────────────────────────────
+
+export interface ParsedPerk {
+  readonly benefitCode: string;
+  readonly displayName: string;
+  readonly valueMinor: number | null;
+}
+
+/**
+ * Map a preferred-partner perk to a benefit in the catalog.
+ *
+ * Ordered: the credit rule must run before the generic ones, since several
+ * perks mention more than one thing. Anything unrecognised returns null and is
+ * left out rather than bucketed into a wrong category — a mis-valued benefit
+ * moves the Effective Value factor directly.
+ */
+export function parsePerk(perkText: string): ParsedPerk | null {
+  const text = (perkText ?? '').trim();
+  if (text === '') return null;
+  const lower = text.toLowerCase();
+
+  // Long explanatory footnotes rather than actual perks.
+  if (lower.length > 120) return null;
+
+  if (/credit/.test(lower)) {
+    // "A 100 Hotel Credit", "A 100 Credit" — the currency symbol is stripped
+    // in the source data, so match a bare number.
+    const amount = lower.match(/(\d{2,5})\s*(?:usd)?\s*(?:hotel\s*)?credit/);
+    const value = amount?.[1] ? Number(amount[1]) * 100 : null;
+    return { benefitCode: 'HOTEL_CREDIT', displayName: text, valueMinor: value };
+  }
+  if (/breakfast/.test(lower)) {
+    return { benefitCode: 'BREAKFAST_2', displayName: text, valueMinor: null };
+  }
+  if (/upgrade/.test(lower)) {
+    return { benefitCode: 'UPGRADE', displayName: text, valueMinor: null };
+  }
+  if (/late\s*check\s*out/.test(lower)) {
+    return { benefitCode: 'LATE_CHECKOUT', displayName: text, valueMinor: null };
+  }
+  if (/early\s*check\s*in/.test(lower)) {
+    return { benefitCode: 'EARLY_CHECKIN', displayName: text, valueMinor: null };
+  }
+  if (/wi-?fi|internet/.test(lower)) {
+    return { benefitCode: 'WIFI', displayName: text, valueMinor: null };
+  }
+  if (/welcome amenity|amenity/.test(lower)) {
+    return { benefitCode: 'WELCOME_AMENITY', displayName: text, valueMinor: null };
+  }
+  return null;
+}
+
+export function parsePerks(perks: readonly { perk: string }[] | undefined): ParsedPerk[] {
+  if (!perks) return [];
+  const seen = new Set<string>();
+  const out: ParsedPerk[] = [];
+  for (const p of perks) {
+    const parsed = parsePerk(p.perk);
+    if (!parsed || seen.has(parsed.benefitCode)) continue;
+    seen.add(parsed.benefitCode);
+    out.push(parsed);
+  }
+  return out;
+}
+
+export interface ParsedHotel {
+  readonly wahHotelId: string;
+  readonly name: string;
+  readonly city: string | null;
+  readonly region: string | null;
+  readonly country: string | null;
+  readonly latitude: number | null;
+  readonly longitude: number | null;
+  readonly amadeusProperty: string | null;
+  readonly perks: readonly ParsedPerk[];
+  readonly url: string | null;
+}
+
+export function parseHotel(hotel: WahHotel): ParsedHotel | null {
+  if (!hotel.hotelID || !hotel.name) return null;
+  const num = (v: string | undefined): number | null => {
+    if (v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  // The API writes the string "NULL" for absent text fields.
+  const str = (v: string | undefined): string | null =>
+    v === undefined || v === '' || v === 'NULL' ? null : v;
+
+  return {
+    wahHotelId: hotel.hotelID,
+    name: hotel.name,
+    city: str(hotel.city),
+    region: str(hotel.region),
+    country: str(hotel.country),
+    latitude: num(hotel['loc-lat']),
+    longitude: num(hotel['loc-long']),
+    amadeusProperty: str(hotel['ama-property']),
+    perks: parsePerks(hotel.perks),
+    url: str(hotel.url),
+  };
+}

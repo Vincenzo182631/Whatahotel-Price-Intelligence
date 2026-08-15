@@ -147,6 +147,7 @@ suite('integration · ingest → rollup → score', () => {
       captureSlotMinutes: 60,
       maxNights: 30,
       sanityBandMultiple: 8,
+      discoverRoomTypes: false,
     });
     expect(first.inserted).toBe(records.length);
     expect(first.rejected).toBe(0);
@@ -158,6 +159,7 @@ suite('integration · ingest → rollup → score', () => {
       captureSlotMinutes: 60,
       maxNights: 30,
       sanityBandMultiple: 8,
+      discoverRoomTypes: false,
     });
     expect(second.inserted).toBe(0);
     expect(second.duplicate).toBe(records.length);
@@ -173,6 +175,102 @@ suite('integration · ingest → rollup → score', () => {
     expect(rollup.levelCounts.L3).toBeGreaterThan(0);
   }, 120_000);
 
+  /**
+   * The cold-start gap found by the first production collection run: the
+   * matching ladder resolves against room types a hotel already has, and on a
+   * brand-new hotel there are none, so every rate was rejected as UNMATCHED.
+   */
+  it('discovers room types on first sight, and only when asked to', async () => {
+    const options = {
+      sourceCode: SOURCE_CODE,
+      captureSlotMinutes: 60,
+      maxNights: 30,
+      sanityBandMultiple: 8,
+      discoverRoomTypes: false,
+    };
+    const newRoom = {
+      rawRoomName: 'Panoramic Bay View Queen',
+      sourceRoomCode: 'IT-NEWCODE-1',
+      checkIn: isoDate(45),
+      observedAt: new Date().toISOString(),
+    };
+
+    // Discovery off — the pre-existing behaviour, unchanged.
+    const off = await ingestRecords([record(newRoom)], options);
+    expect(off.inserted).toBe(0);
+    expect(off.discoveredRoomTypes).toBe(0);
+    expect(off.rejectReasons.UNMATCHED_ROOM_TYPE).toBe(1);
+
+    // Discovery on — three rates for the same new room in one batch. Exactly
+    // one room type must be created, not three: the in-batch cache is what
+    // stops a single collection run from fragmenting a hotel's catalog.
+    const on = await ingestRecords(
+      [
+        record({ ...newRoom, observedAt: new Date(Date.now() - 2 * 3_600_000).toISOString() }),
+        record({ ...newRoom, observedAt: new Date(Date.now() - 1 * 3_600_000).toISOString() }),
+        record({ ...newRoom, observedAt: new Date().toISOString() }),
+      ],
+      { ...options, discoverRoomTypes: true },
+    );
+    expect(on.discoveredRoomTypes).toBe(1);
+    expect(on.inserted).toBe(3);
+
+    const { rows: created } = await db().query(
+      `SELECT id, normalized_name, room_class, bed_config, view_type
+         FROM room_type WHERE hotel_id = $1 AND normalized_name = 'panoramic bay view queen'`,
+      [hotelId],
+    );
+    expect(created).toHaveLength(1);
+    // Attributes are extracted, not defaulted — room_class in particular, since
+    // it is the hard rule that stops a ROOM merging with a SUITE.
+    expect(created[0]?.room_class).toBe('ROOM');
+    expect(created[0]?.bed_config).toBe('QUEEN');
+
+    // The source code is registered, so the next capture takes the SOURCE_ID
+    // path at confidence 1.00 rather than being rediscovered.
+    const { rows: aliases } = await db().query(
+      `SELECT source_room_code, match_method, match_confidence, is_confirmed
+         FROM room_type_alias WHERE room_type_id = $1`,
+      [created[0]?.id],
+    );
+    expect(aliases).toHaveLength(1);
+    expect(aliases[0]?.source_room_code).toBe('IT-NEWCODE-1');
+    expect(aliases[0]?.match_method).toBe('SOURCE_ID');
+    expect(Number(aliases[0]?.match_confidence)).toBe(1);
+
+    const again = await ingestRecords(
+      [record({ ...newRoom, checkIn: isoDate(46), observedAt: new Date().toISOString() })],
+      { ...options, discoverRoomTypes: true },
+    );
+    expect(again.discoveredRoomTypes).toBe(0);
+    expect(again.inserted).toBe(1);
+
+    const { rows: obs } = await db().query(
+      `SELECT DISTINCT match_method, match_confidence FROM rate_observation
+        WHERE hotel_id = $1 AND room_type_id = $2`,
+      [hotelId, created[0]?.id],
+    );
+    expect(obs).toHaveLength(1);
+    expect(obs[0]?.match_method).toBe('SOURCE_ID');
+
+    // A rate with no source room code is NOT discovered: there would be no
+    // stable identity to key on, and a room type per marketing string is the
+    // fragmentation the matching ladder exists to prevent.
+    const noCode = await ingestRecords(
+      [
+        record({
+          rawRoomName: 'Some Entirely Unseen Marketing Name',
+          sourceRoomCode: null,
+          checkIn: isoDate(47),
+          observedAt: new Date().toISOString(),
+        }),
+      ],
+      { ...options, discoverRoomTypes: true },
+    );
+    expect(noCode.discoveredRoomTypes).toBe(0);
+    expect(noCode.rejectReasons.UNMATCHED_ROOM_TYPE).toBe(1);
+  }, 60_000);
+
   it('rejects invalid records with a reason instead of coercing them', async () => {
     const result = await ingestRecords(
       [
@@ -186,7 +284,13 @@ suite('integration · ingest → rollup → score', () => {
           wahHotelId: 'IT-DOES-NOT-EXIST',
         }),
       ],
-      { sourceCode: SOURCE_CODE, captureSlotMinutes: 60, maxNights: 30, sanityBandMultiple: 8 },
+      {
+        sourceCode: SOURCE_CODE,
+        captureSlotMinutes: 60,
+        maxNights: 30,
+        sanityBandMultiple: 8,
+        discoverRoomTypes: false,
+      },
     );
 
     expect(result.inserted).toBe(0);
@@ -223,7 +327,7 @@ suite('integration · ingest → rollup → score', () => {
     );
 
     const row = rows[0];
-    expect(row).toBeDefined();
+    if (!row) throw new Error('no L3 baseline was written — the rollup produced nothing to check');
     // Trimming excludes the extreme 1% at each end, so allow a small drift.
     const drift = Math.abs(row.p50_minor - Number(row.direct_p50)) / Number(row.direct_p50);
     expect(drift).toBeLessThan(0.05);
@@ -277,7 +381,13 @@ suite('integration · ingest → rollup → score', () => {
           totalAmountMinor: 90000,
         }),
       ),
-      { sourceCode: SOURCE_CODE, captureSlotMinutes: 60, maxNights: 30, sanityBandMultiple: 8 },
+      {
+        sourceCode: SOURCE_CODE,
+        captureSlotMinutes: 60,
+        maxNights: 30,
+        sanityBandMultiple: 8,
+        discoverRoomTypes: false,
+      },
     );
 
     await refreshBaselines({

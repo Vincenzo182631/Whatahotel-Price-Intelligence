@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   extractAttributes,
   roomClassesCompatible,
+  viewsCompatible,
 } from '../../packages/core/src/normalize/attributes.js';
 import {
   classifyComparability,
@@ -135,6 +136,111 @@ describe('room type matching', () => {
   it('records which candidates were rejected for class mismatch', () => {
     const match = matchRoomType('Grand Suite Deluxe', candidates);
     expect(match.rejectedForClassMismatch.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * These three rules were added after running the matcher against live hotel
+ * inventory, where the defaults merged products that are priced differently.
+ * The strings below are real room names from that data.
+ */
+describe('room type matching · guards against over-merging', () => {
+  const beachfront: RoomTypeCandidate[] = [
+    {
+      roomTypeId: 'oceanfront',
+      normalizedName: 'oceanfront guest room 1 king',
+      roomClass: 'ROOM',
+      view: 'OCEAN',
+    },
+    {
+      roomTypeId: 'city',
+      normalizedName: 'cityscape guest room 1 king',
+      roomClass: 'ROOM',
+      view: 'CITY',
+    },
+  ];
+
+  it('never merges across views, however similar the strings', () => {
+    // These differ by one word out of five and are trigram-close.
+    const match = matchRoomType('Bayfront Guest Room, 1 King', beachfront);
+    expect(match.roomTypeId).not.toBe('city');
+  });
+
+  it('recognises the view words real inventory actually uses', () => {
+    expect(extractAttributes('oceanfront guest room').view).toBe('OCEAN');
+    expect(extractAttributes('bayfront king bed').view).toBe('OCEAN');
+    expect(extractAttributes('cityscape suite king').view).toBe('CITY');
+    expect(extractAttributes('partial ocean view guest room').view).toBe('PARTIAL_OCEAN');
+    // Still distinct: partial ocean is a priced step below full ocean.
+    expect(viewsCompatible('OCEAN', 'PARTIAL_OCEAN')).toBe(false);
+    // UNKNOWN stays permissive — it means "could not tell".
+    expect(viewsCompatible('OCEAN', 'UNKNOWN')).toBe(true);
+  });
+
+  it('can disable the fuzzy step for sources with machine-stable names', () => {
+    // The real strings, with the long shared tail that is the whole problem:
+    // trigram similarity is 0.56, well over the 0.45 default, even though a
+    // Presidential Suite is emphatically not a Corner Suite.
+    const suites: RoomTypeCandidate[] = [
+      {
+        roomTypeId: 'corner',
+        normalizedName: 'bayfront corner suite floor 20 25 separate living and bedroom bay view',
+        roomClass: 'SUITE',
+      },
+    ];
+    const presidential = 'Bayfront Presidential Suite, View, Separate Living and Bedroom, Bay View';
+
+    const loose = matchRoomType(presidential, suites, { attributeInference: false });
+    expect(loose.roomTypeId).toBe('corner');
+    expect(loose.method).toBe('ALIAS_FUZZY');
+
+    const strict = matchRoomType(presidential, suites, {
+      fuzzyMinSimilarity: 0.97,
+      attributeInference: false,
+    });
+    expect(strict.roomTypeId).toBeNull();
+    expect(strict.method).toBe('UNMATCHED');
+  });
+
+  it('can disable the attribute-vector step, which is coarse by design', () => {
+    const suites: RoomTypeCandidate[] = [
+      {
+        roomTypeId: 'corner',
+        normalizedName: 'corner suite 1 double',
+        roomClass: 'SUITE',
+        view: 'UNKNOWN',
+      },
+    ];
+    // Same class, same bed, same view — the vector cannot tell these apart,
+    // so with the fuzzy step off it must decline rather than guess.
+    const opts = { fuzzyMinSimilarity: 0.97 };
+    expect(matchRoomType('Presidential Suite 1 Double', suites, opts).method).toBe(
+      'ATTRIBUTE_INFERRED',
+    );
+    expect(
+      matchRoomType('Presidential Suite 1 Double', suites, {
+        ...opts,
+        attributeInference: false,
+      }).method,
+    ).toBe('UNMATCHED');
+  });
+
+  it('still merges genuine restatements of one room', () => {
+    // The guards must not make the matcher useless: an exact restatement and
+    // the source code path both still resolve.
+    const one: RoomTypeCandidate[] = [
+      {
+        // As normalizeRoomName produces it: "guest room" is marketing filler.
+        roomTypeId: '1',
+        normalizedName: 'oceanfront 1 king',
+        roomClass: 'ROOM',
+        view: 'OCEAN',
+        sourceCodes: ['OFK'],
+      },
+    ];
+    const strict = { fuzzyMinSimilarity: 0.97, attributeInference: false };
+    expect(matchRoomType('OCEANFRONT GUEST ROOM, 1 KING', one, strict).method).toBe('ALIAS_EXACT');
+    expect(matchRoomType('Totally Different Text', one, strict, 'OFK').method).toBe('SOURCE_ID');
   });
 });
 

@@ -19,7 +19,11 @@ export {
   trigramSimilarity,
   trigrams,
 } from './normalize/text.js';
-export { extractAttributes, roomClassesCompatible } from './normalize/attributes.js';
+export {
+  extractAttributes,
+  roomClassesCompatible,
+  viewsCompatible,
+} from './normalize/attributes.js';
 export type { RoomAttributes } from './normalize/attributes.js';
 export { matchRoomType } from './normalize/roomType.js';
 export type { MatchOptions, RoomTypeCandidate, RoomTypeMatch } from './normalize/roomType.js';

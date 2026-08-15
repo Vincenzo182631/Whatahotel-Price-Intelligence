@@ -4,16 +4,16 @@ Covers proposal request 10: phases, and the modules to be created.
 
 ## Build status
 
-| Milestone | State |
-|---|---|
-| M0 · Data source verification | **Blocked** — U1–U18 unanswered ([doc 00](./README.md#unverified-inputs-register)) |
-| M1 · Foundation, schema, migrations, CI | ✅ |
-| M2 · Ingestion and normalization | **Partial** — pipeline, normalizer and validation built and tested; the production **source adapter is not built** and cannot be until M0 closes |
-| M3 · Baselines, rollups, comparables, scheduler | ✅ |
-| M4 · Scoring engine | ✅ |
-| M5 · Explanation layer | ✅ template path; model path behind `explanation.enabled` |
-| M6 · API and widget | ✅ |
-| M7 · Calibration | Not started — needs real data |
+| Milestone                                       | State                                                                                                            |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| M0 · Data source verification                   | **Blocked** — U1–U18 unanswered ([doc 00](./README.md#unverified-inputs-register))                               |
+| M1 · Foundation, schema, migrations, CI         | ✅                                                                                                               |
+| M2 · Ingestion and normalization                | ✅ — pipeline, normalizer, validation and the production **WhataHotel source adapter**, run against the live API |
+| M3 · Baselines, rollups, comparables, scheduler | ✅                                                                                                               |
+| M4 · Scoring engine                             | ✅                                                                                                               |
+| M5 · Explanation layer                          | ✅ template path; model path behind `explanation.enabled`                                                        |
+| M6 · API and widget                             | ✅                                                                                                               |
+| M7 · Calibration                                | ✅ harness built; calibration itself still needs ~2 weeks of collected history                                   |
 
 A synthetic development source (`packages/ingest/src/adapters/synthetic/`) stands in for the real adapter so the rest of the stack could be built and exercised. **Every rate it produces is fabricated**, the seed script refuses to run without `ALLOW_SYNTHETIC_SEED=1`, and none of it may reach a production database.
 
@@ -21,17 +21,17 @@ A synthetic development source (`packages/ingest/src/adapters/synthetic/`) stand
 
 ## 1. Stack
 
-| Layer | Choice | Why |
-|---|---|---|
-| Language | TypeScript (strict) | One language across worker, API and UI; the scoring engine benefits most from a type system |
-| Runtime | Node 22 LTS | Available in the environment |
-| Database | PostgreSQL 16 | Available; partitioning, percentiles and `pg_trgm` cover every need here without a second datastore |
-| API | Node `http` + a small router | See the deviation note below |
-| Widget | Framework-free vanilla JS | It mounts inside a third-party page; a framework payload is cost the host pays for no benefit |
-| Jobs | `pg-boss` (Postgres-backed) | No extra infrastructure; the volume does not justify a broker |
-| Migrations | node-pg-migrate or Drizzle | Plain SQL, reviewable |
-| Tests | Vitest + fast-check | fast-check is required for the property invariants in doc 07 §3 |
-| Explanation | Claude API, server-side only | Cached, validated, always with a template fallback |
+| Layer       | Choice                       | Why                                                                                                 |
+| ----------- | ---------------------------- | --------------------------------------------------------------------------------------------------- |
+| Language    | TypeScript (strict)          | One language across worker, API and UI; the scoring engine benefits most from a type system         |
+| Runtime     | Node 22 LTS                  | Available in the environment                                                                        |
+| Database    | PostgreSQL 16                | Available; partitioning, percentiles and `pg_trgm` cover every need here without a second datastore |
+| API         | Node `http` + a small router | See the deviation note below                                                                        |
+| Widget      | Framework-free vanilla JS    | It mounts inside a third-party page; a framework payload is cost the host pays for no benefit       |
+| Jobs        | `pg-boss` (Postgres-backed)  | No extra infrastructure; the volume does not justify a broker                                       |
+| Migrations  | node-pg-migrate or Drizzle   | Plain SQL, reviewable                                                                               |
+| Tests       | Vitest + fast-check          | fast-check is required for the property invariants in doc 07 §3                                     |
+| Explanation | Claude API, server-side only | Cached, validated, always with a template fallback                                                  |
 
 **Deliberately not chosen:** microservices, Kubernetes, a message broker, a time-series database, an ORM with heavy query abstraction. The hard problems in this product are data quality and scoring correctness. Additional infrastructure adds operational surface without addressing either.
 
@@ -121,36 +121,62 @@ whatahotel-price-intelligence/
 
 Each produces something verifiable. Nothing here begins until U1–U18 are answered (doc 00) — **M0 is the gate.**
 
-### M0 · Data source verification — *blocking*
+### M0 · Data source verification — _blocking_
+
 **No code.** Walk U1–U18 with real sample payloads and the team that owns the rate API. Produce: a field-mapping document, five real payload samples committed as test fixtures, confirmed history depth (U3), and confirmed rights to store and display (U16).
 
 **Exit:** every U-item is answered, and any answer that contradicts this spec has been reconciled. Several would change the design — this is why it is a gate rather than a parallel track.
 
 ### M1 · Foundation
+
 Repo scaffolding, TypeScript strict config, lint/format, CI (typecheck + test + migration check), Docker Compose for Postgres, `CLAUDE.md`, schema migrations from doc 05, seed data, config v1 from doc 10.
 **Exit:** schema applies cleanly from empty; CI green.
 
 ### M2 · Ingestion and normalization
+
 Adapter interface + first source adapter; validation with reject logging; room-type normalization pipeline; rate-plan classification; idempotent persistence; batch tracking.
 **Exit:** a real batch ingests end to end; re-running it inserts zero rows; normalization accuracy measured against a hand-labelled sample of ≥ 200 room names, with the fuzzy-match share reported. **This is the milestone most likely to reveal that the spec needs revising** — normalization quality against real data is the assumption with the widest error bars.
 
+**Met, and the warning above was correct.** A first run ingested 1,109 real
+rates across 15 Miami hotels; re-running inserts zero. Normalization against
+real names did force revisions, all recorded in tests:
+
+- The fuzzy step merged a Presidential Suite into a Corner Suite (trigram
+  similarity 0.56 — the names share a long boilerplate tail). The attribute
+  step merged them too, because class × bed × view cannot separate two suites.
+  Both are now switchable per source; the WhataHotel path disables them and
+  matches only by source code or exact name. **Fuzzy-match share on real data:
+  0%** — every observation resolves at SOURCE_ID (1.00) or ALIAS_EXACT (0.95).
+- Five view categories spanning a 37% price range collapsed into one room type,
+  so `view` became a hard blocking rule alongside `room_class`, and the view
+  vocabulary was widened to the words real inventory uses (oceanfront, bayfront,
+  cityscape).
+- Room-type _discovery_ had to be added: the ladder matches against room types
+  a hotel already has, and the spec never said where the first one comes from.
+  On a cold start there are none, so every rate was rejected UNMATCHED.
+
 ### M3 · Baselines and rollups
+
 Widening ladder; distribution statistics with outlier trimming; `rate_baseline` refresh job; comp-set builder; collection scheduler with HOT/WARM/COLD tiers.
 **Exit:** baselines computed for the MVP hotel set; rollup percentiles match direct computation over raw facts; ladder levels distribute sensibly rather than every query landing at L4.
 
-### M4 · Scoring engine — *the core deliverable*
+### M4 · Scoring engine — _the core deliverable_
+
 F1–F6; weight redistribution; confidence factors; geometric composition; guards W1–W8; gates G0–G5; boundary assertion.
 **Exit:** all nine scenarios (S1–S9) pass; all twelve invariants (P1–P12) pass; 100% branch coverage on `core/scoring`, `core/confidence`, `core/recommendation`. **P1, P3 and P11 are release blockers.**
 
 ### M5 · Explanation layer
+
 Bundle assembly; reason-code catalog; **template renderer first**; then the model path behind `explanation.enabled`; validators V1–V6; cache.
 **Exit:** every bundle shape renders correctly from templates alone with the model disabled; with it enabled, validation failure rate measured on a sample of ≥ 200 bundles.
 
 ### M6 · API and UI
+
 Endpoints from doc 06; caching and rate limiting; widget components from doc 08; all six required states; accessible chart with table fallback.
 **Exit:** p95 < 200 ms warm; every state renders correctly against seeded data; `INSUFFICIENT_DATA` shows no number anywhere.
 
 ### M7 · Calibration and pre-launch
+
 Run the calibration runbook (doc 02 §4) against real data; produce config v2 with evidence; verify against the doc 10 §10 targets; observability dashboards; runbooks for stale ingest and source outage.
 **Exit:** `insufficient_data_rate` below target on the MVP hotel set; score distribution sane; weights adjusted with documented rationale. **The defaults in doc 10 must not survive to launch unexamined.**
 

@@ -7,8 +7,13 @@
  * INSUFFICIENT_DATA. See docs/mvp/01-data-architecture.md §3.
  */
 
-import type { MatchMethod, RoomClass } from '../types.js';
-import { extractAttributes, roomClassesCompatible, type RoomAttributes } from './attributes.js';
+import type { MatchMethod, RoomClass, ViewType } from '../types.js';
+import {
+  extractAttributes,
+  roomClassesCompatible,
+  viewsCompatible,
+  type RoomAttributes,
+} from './attributes.js';
 import { normalizeRoomName, trigramSimilarity } from './text.js';
 
 export interface RoomTypeCandidate {
@@ -17,6 +22,8 @@ export interface RoomTypeCandidate {
   readonly sourceCodes?: readonly string[];
   readonly aliases?: readonly string[];
   readonly roomClass: RoomClass;
+  /** Omitted means UNKNOWN, i.e. permissive — not "no view". */
+  readonly view?: ViewType;
 }
 
 export interface RoomTypeMatch {
@@ -35,11 +42,17 @@ export interface MatchOptions {
   readonly fuzzyMinSimilarity?: number;
   /** A fuzzy match must beat the runner-up by this margin to be unambiguous. */
   readonly fuzzyMinMargin?: number;
+  /**
+   * Allow step 4, the attribute-vector fallback. Turn it OFF for sources whose
+   * room names are machine-generated and stable — see the note at step 4.
+   */
+  readonly attributeInference?: boolean;
 }
 
 const DEFAULTS: Required<MatchOptions> = {
   fuzzyMinSimilarity: 0.45,
   fuzzyMinMargin: 0.08,
+  attributeInference: true,
 };
 
 const CONFIDENCE = {
@@ -98,10 +111,15 @@ export function matchRoomType(
     };
   }
 
-  // Hard rule: a ROOM never merges with a SUITE, whatever the strings say.
+  // Hard rules: a ROOM never merges with a SUITE, and an OCEANFRONT never
+  // merges with a CITY VIEW, whatever the strings say. Both are priced tiers
+  // whose names differ by a word or two inside otherwise identical text —
+  // precisely what trigram similarity cannot be trusted with.
   const rejected: string[] = [];
   const eligible = candidates.filter((c) => {
-    const ok = roomClassesCompatible(attributes.roomClass, c.roomClass);
+    const ok =
+      roomClassesCompatible(attributes.roomClass, c.roomClass) &&
+      viewsCompatible(attributes.view, c.view ?? 'UNKNOWN');
     if (!ok) rejected.push(c.roomTypeId);
     return ok;
   });
@@ -148,14 +166,22 @@ export function matchRoomType(
   }
 
   // Step 4 — attribute vector, only if it identifies exactly one candidate.
-  const byAttributes = eligible.filter((c) => {
-    const candidateAttrs = extractAttributes(c.normalizedName);
-    return (
-      candidateAttrs.roomClass === attributes.roomClass &&
-      candidateAttrs.bedConfig === attributes.bedConfig &&
-      candidateAttrs.view === attributes.view
-    );
-  });
+  //
+  // Skipped when the source names rooms itself. The attribute vector is coarse
+  // — class, bed, view — so at a hotel with one suite per bed configuration it
+  // matches ANY suite, and it merged a Presidential Suite into a Corner Suite
+  // on live data. It is a last resort for sources whose room strings are
+  // human-typed, not a fallback worth having when the names are reliable.
+  const byAttributes = opts.attributeInference
+    ? eligible.filter((c) => {
+        const candidateAttrs = extractAttributes(c.normalizedName);
+        return (
+          candidateAttrs.roomClass === attributes.roomClass &&
+          candidateAttrs.bedConfig === attributes.bedConfig &&
+          candidateAttrs.view === attributes.view
+        );
+      })
+    : [];
 
   if (byAttributes.length === 1 && attributes.roomClass !== 'UNKNOWN') {
     const only = byAttributes[0]!;

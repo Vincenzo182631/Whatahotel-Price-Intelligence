@@ -32,6 +32,15 @@ export interface RateQuery {
 export interface RawRateRecord {
   readonly wahHotelId: string;
   readonly rawRoomName: string;
+  /**
+   * The room name to show a customer, when it differs from `rawRoomName`.
+   *
+   * `rawRoomName` is the MATCHING key and may carry disambiguators a traveler
+   * should never see — the WhataHotel adapter appends the structured bed
+   * configuration because the source truncates its room names before it.
+   * Without this, "Bayfront Room King Bed [1 King]" reached the widget.
+   */
+  readonly displayRoomName?: string | null;
   readonly sourceRoomCode?: string | null;
   readonly sourcePlanCode?: string | null;
   readonly rawPlanName?: string | null;
@@ -51,6 +60,22 @@ export interface RawRateRecord {
   readonly refundPolicy?: string | null;
   readonly isPrepaid?: boolean | null;
   readonly audience?: string | null;
+
+  /**
+   * An opaque comparability class supplied by the source.
+   *
+   * Used when a source identifies its own rate plans but does not expose the
+   * terms behind them. The WhataHotel API is the motivating case: it carries no
+   * cancellation field, so the semantic class (meal × refundability × audience)
+   * resolves to UNRESOLVED and doc 01 §4 would exclude every rate from every
+   * baseline — leaving nothing to score.
+   *
+   * Two rates sharing a source rate-plan code ARE the same product even when we
+   * cannot say what that product's terms are, so keying the class on that code
+   * preserves the compare-like-with-like guarantee without inventing facts.
+   * Prefer the semantic class whenever the source supports it.
+   */
+  readonly comparabilityClassOverride?: string | null;
 
   readonly roomsLeft?: number | null;
   readonly isAvailable: boolean;

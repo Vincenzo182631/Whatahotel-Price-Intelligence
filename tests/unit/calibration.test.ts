@@ -369,7 +369,6 @@ describe('weight normalization', () => {
         f2Market: 0.25,
         f3Trend: 0.15,
         f4Seasonality: 0.1,
-        f5Demand: 0.1,
         f6Value: 0.1,
       },
       {
@@ -377,7 +376,6 @@ describe('weight normalization', () => {
         f2Market: 0.1,
         f3Trend: 0.1,
         f4Seasonality: 0.1,
-        f5Demand: 0.1,
         f6Value: 0.1,
       },
       { f1Historical: 1, f2Market: 0, f3Trend: 0, f4Seasonality: 0, f6Value: 0 },
@@ -386,7 +384,6 @@ describe('weight normalization', () => {
         f2Market: 0.333,
         f3Trend: 0.333,
         f4Seasonality: 0,
-        f5Demand: 0,
         f6Value: 0,
       },
     ];
@@ -401,7 +398,6 @@ describe('weight normalization', () => {
       f2Market: 0.5,
       f3Trend: 0.5,
       f4Seasonality: 0,
-      f5Demand: 0,
       f6Value: 0,
     });
     expect(negative.f1Historical).toBe(0);
@@ -412,7 +408,6 @@ describe('weight normalization', () => {
       f2Market: 0,
       f3Trend: 0,
       f4Seasonality: 0,
-      f5Demand: 0,
       f6Value: 0,
     });
     expect(Math.abs(sum(zero) - 1)).toBeLessThan(1e-9);
@@ -424,7 +419,6 @@ describe('weight normalization', () => {
       f2Market: 0.21,
       f3Trend: 0.19,
       f4Seasonality: 0.07,
-      f5Demand: 0.09,
       f6Value: 0.11,
     });
     expect(() => withConfig({ score: { weight: weights } })).not.toThrow();

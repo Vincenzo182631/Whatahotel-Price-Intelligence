@@ -24,6 +24,15 @@ import type {
 } from '../types.js';
 import { UNRESOLVED_CLASS } from '../types.js';
 
+/**
+ * Observations below which a coefficient of variation does not exist.
+ *
+ * Not a tunable: it is arithmetic, not a threshold. One point has no spread.
+ * Kept in code rather than config for exactly that reason — a configuration
+ * that set it to 1 would be describing something that cannot be computed.
+ */
+const MIN_OBS_FOR_VOLATILITY = 2;
+
 const MATCH_METHOD_WEIGHT: Record<MatchMethod, number> = {
   SOURCE_ID: 1.0,
   ALIAS_EXACT: 0.95,
@@ -131,6 +140,11 @@ export function computeConfidence(input: ConfidenceInput, config: ScoringConfig)
 
   const weights = config.confidence.weight;
 
+  // A coefficient of variation needs at least two observations to exist. Below
+  // that there is no dispersion to report, measured or otherwise.
+  const volatilityMeasurable =
+    baseline !== null && baseline.nObservations >= MIN_OBS_FOR_VOLATILITY;
+
   const factors: ConfidenceFactorResult[] = [
     {
       code: 'f_volume',
@@ -154,11 +168,16 @@ export function computeConfidence(input: ConfidenceInput, config: ScoringConfig)
       weight: weights.match,
     },
     {
+      // Excluded when there is nothing to measure. `cv ?? 0` would score an
+      // unmeasurable spread as PERFECT stability — the same error as rendering
+      // an absent Deal Score as 0, and it made confidence fall as the first
+      // real observation arrived (n=1 scored 1.00, n=2 scored 0.40).
+      // Dispersion needs at least two observations to exist at all.
       code: 'f_volatility',
       name: 'Price volatility',
-      included: true,
-      value: fVolatility(baseline?.cv ?? 0, config),
-      weight: weights.volatility,
+      included: volatilityMeasurable,
+      value: volatilityMeasurable ? fVolatility(baseline?.cv ?? 0, config) : 0,
+      weight: volatilityMeasurable ? weights.volatility : 0,
     },
     {
       code: 'f_consistency',
