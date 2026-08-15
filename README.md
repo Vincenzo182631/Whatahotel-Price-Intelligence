@@ -31,9 +31,10 @@ npm run collect -- --catalog miami      # sync hotels and their perks
 npm run collect                         # top up the grid + refresh what is due
 ```
 
-Scheduled every 6 hours via `.github/workflows/collect.yml` — the scheduler's
-shortest tier interval (needs the `WAH_API_KEY` and `DATABASE_URL` repository
-secrets). See
+`.github/workflows/collect.yml` runs the same commands in CI. Its schedule is
+**currently commented out** — manual dispatch only until the `WAH_API_KEY` and
+`DATABASE_URL` repository secrets exist and the database is reachable from
+GitHub-hosted runners. Restore the 6-hourly cadence by uncommenting two lines. See
 [`docs/runbooks/collection.md`](./docs/runbooks/collection.md) for the cadence
 trade-off, the server cron/systemd alternatives, and what to do when a run
 fails — with no rate history in the source, a missed run is unrecoverable data.

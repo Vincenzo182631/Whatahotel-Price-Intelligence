@@ -81,11 +81,12 @@ The scheduler assigns each stay a tier and a refresh interval:
 | WARM | everything else inside the horizon           | 24 hours |
 | COLD | far-out, never viewed                        | 72 hours |
 
-**The cron runs every 6 hours**, matching the shortest tier interval. Anything
-coarser silently caps every tier at the cron period: a daily job would give HOT
-stays a quarter of their intended cadence, and factor F3 (trend) far fewer
-points inside its 7-day window, which lowers confidence and makes the WAIT gate
-harder to reach.
+**Collect every 6 hours**, matching the shortest tier interval. (The GitHub
+schedule is commented out for now — see Option A — but this is the cadence to
+run at, whether from Actions or a server.) Anything coarser silently caps every
+tier at the cron period: a daily job would give HOT stays a quarter of their
+intended cadence, and factor F3 (trend) far fewer points inside its 7-day
+window, which lowers confidence and makes the WAIT gate harder to reach.
 
 Six-hourly does **not** multiply API calls by four. `planCollection` returns
 only stays that are actually due, so WARM and COLD stays are skipped on the
@@ -104,7 +105,28 @@ firings would find nothing due and simply idle.
 
 ---
 
-## Option A — GitHub Actions (configured)
+## Option A — GitHub Actions (schedule currently OFF)
+
+> **The `schedule:` block in `.github/workflows/collect.yml` is commented out.**
+> The workflow exists and can be run manually, but nothing fires on its own.
+>
+> This is deliberate and temporary. With the schedule active and no
+> `DATABASE_URL`, the job fails four times a day — correct behaviour, since a
+> silent healthy-looking no-op would be far worse, but it fills the Actions tab
+> with red that everyone learns to ignore. Better to be honestly off than
+> noisily broken.
+>
+> **To turn collection on:**
+>
+> 1. Provision a Postgres reachable from GitHub-hosted runners.
+> 2. Set both secrets (below).
+> 3. Run the workflow manually with `dry_run: true` — it plans and calls
+>    nothing, proving credentials and connectivity without spending budget.
+> 4. Uncomment the two `schedule:` lines in the workflow.
+>
+> Until step 4, run collection from a server (Option B). Every day the schedule
+> stays off is a day of baseline this source cannot backfill — see U3 at the
+> top of this document. Off is a pause, not a resting state.
 
 `.github/workflows/collect.yml`. Requires two repository secrets:
 

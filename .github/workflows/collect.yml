@@ -16,21 +16,33 @@
 name: Collect rates
 
 on:
-  schedule:
-    # Every 6 hours, matching the scheduler's shortest tier interval.
-    #
-    # HOT stays — lead ≤ 30 days, the bookings customers are about to make —
-    # want a 6-hour refresh; WARM 24h, COLD 72h. A daily cron would cap every
-    # tier at 24h, giving HOT a quarter of its intended cadence and factor F3
-    # (trend) far fewer points inside its 7-day window.
-    #
-    # This does NOT quadruple API spend. `planCollection` returns only stays
-    # actually due, so WARM and COLD are skipped on the intermediate firings;
-    # the extra cost is roughly the HOT set, which is what the tiering exists
-    # to spend on.
-    #
-    # Cron here is ALWAYS UTC — GitHub observes no local timezone or DST.
-    - cron: '0 */6 * * *'
+  # ── THE SCHEDULE IS DEACTIVATED ────────────────────────────────────────────
+  #
+  # Deliberately, and only until a database reachable from GitHub-hosted
+  # runners exists. With the schedule active and no `DATABASE_URL` secret, the
+  # job fails fast four times a day — correct behaviour (a silent healthy-
+  # looking no-op would be far worse) but pure noise in the Actions tab, and
+  # noise is how real failures get ignored.
+  #
+  # TO TURN COLLECTION ON: set the WAH_API_KEY and DATABASE_URL secrets, run
+  # this workflow manually once with dry_run=true to prove connectivity, then
+  # uncomment the two `schedule:` lines below. Nothing else changes.
+  #
+  # The cadence is 6 hours because that is the scheduler's shortest tier
+  # interval: HOT stays (lead ≤ 30 days — the bookings customers are about to
+  # make) want a 6-hour refresh, WARM 24h, COLD 72h. Anything coarser silently
+  # caps every tier at the cron period. It does NOT quadruple API spend —
+  # `planCollection` returns only stays actually due, so WARM and COLD are
+  # skipped on the intermediate firings.
+  #
+  # Cron is ALWAYS UTC here; GitHub observes no local timezone or DST.
+  #
+  # schedule:
+  #   - cron: '0 */6 * * *'
+  #
+  # Until then, collection runs from a server — see docs/runbooks/collection.md.
+  # Every day the schedule stays off is a day of baseline this source cannot
+  # backfill (U3), so this is a pause, not a resting state.
   workflow_dispatch:
     inputs:
       limit:

@@ -32,12 +32,15 @@ WAH_API_KEY=... npm run collect -- --bootstrap       # grid only, skip the due-r
 WAH_API_KEY=... npm run collect -- --dry-run         # show the plan, call nothing
 ```
 
-Scheduled collection is `.github/workflows/collect.yml`, every 6 hours — the
-scheduler's shortest tier interval. **Read
+Collection runs from `.github/workflows/collect.yml`. **Its schedule is
+currently commented out** — it is manual-dispatch only until a database
+reachable from GitHub-hosted runners exists, because a scheduled run with no
+`DATABASE_URL` fails four times a day and buries real failures in noise. The
+cadence to restore is 6 hours, the scheduler's shortest tier interval; anything
+coarser silently caps every tier at the cron period. **Read
 [`docs/runbooks/collection.md`](./docs/runbooks/collection.md) before changing
-it**: anything coarser silently caps every tier at the cron period, and a daily
-job would give HOT stays a quarter of their intended cadence. A finer one buys
-nothing, since no tier asks for it.
+it** — and note that every day the schedule stays off is a day of baseline this
+source cannot backfill.
 
 Integration tests run only when `DATABASE_URL` is set; they skip otherwise so
 `npm test` works without a database.
