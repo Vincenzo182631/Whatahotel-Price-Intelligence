@@ -17,7 +17,7 @@ The product answers one question: **is this rate actually a good deal?** It answ
 | M6 · API and widget                             | ✅                                                                                                                                      |
 | M7 · Calibration tooling                        | ✅ harness built; **calibration itself needs real data**                                                                                |
 
-263 tests passing (scenarios, property invariants, unit, and integration against PostgreSQL), 9 schema behaviour checks, 38 API smoke checks.
+270 tests passing (scenarios, property invariants, unit, and integration against PostgreSQL), 9 schema behaviour checks, 38 API smoke checks.
 
 **The first real collection has run**: 15 Miami hotels, 1,109 rates, all matched
 at SOURCE_ID or ALIAS_EXACT confidence, rolled up into 1,617 baseline rows. The
@@ -28,14 +28,19 @@ Expect roughly two weeks of collection before scores appear.
 ```bash
 export WAH_API_KEY=...                  # a credential; never committed
 npm run collect -- --catalog miami      # sync hotels and their perks
-npm run collect -- --bootstrap          # seed the stay grid for new hotels
-npm run collect                         # collect what the scheduler says is due
+npm run collect                         # top up the grid + refresh what is due
 ```
+
+Scheduled daily via `.github/workflows/collect.yml` (needs the `WAH_API_KEY` and
+`DATABASE_URL` repository secrets). See
+[`docs/runbooks/collection.md`](./docs/runbooks/collection.md) for the cadence
+trade-off, the server cron/systemd alternatives, and what to do when a run
+fails — with no rate history in the source, a missed run is unrecoverable data.
 
 **Two things to be clear about:**
 
 1. **The scoring weights have not been calibrated against real data.** They are documented starting priors — see the [calibration runbook](./docs/mvp/02-deal-score.md#4-score-bands-and-calibration).
-2. **The only rate data in this repository is synthetic.** It is fabricated by a seeded generator so the pipeline could be built and exercised. No number it produces reflects a real hotel rate.
+2. **No rate data is committed to this repository.** Real rates are collected into a database by `npm run collect`; the only rate-like data in the tree is the synthetic development seed, which is fabricated by a seeded generator and refuses to run without `ALLOW_SYNTHETIC_SEED=1`. No number it produces reflects a real hotel rate.
 
 ## Quick start
 
@@ -47,7 +52,7 @@ npm run db:up                              # PostgreSQL 16 on port 5433
 npm run db:reset                           # migrate + seed reference data
 ALLOW_SYNTHETIC_SEED=1 npm run db:seed-dev # synthetic rates, rollups, comp sets
 
-npm test                                   # 203 tests
+npm test                                   # 270 tests
 npm run db:check                           # schema behaviour checks
 npm run api                                # http://localhost:3000
 npm run smoke                              # API contract checks

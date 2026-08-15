@@ -1,0 +1,125 @@
+# Scheduled rate collection.
+#
+# This source has NO rate history (U3 — see docs/mvp/README.md): it answers
+# "what is the rate now", never "what was it". Every run that does not happen is
+# baseline that can never be backfilled, so this workflow is written to fail
+# LOUDLY rather than skip quietly.
+#
+# Required repository secrets:
+#   WAH_API_KEY   the WhataHotel data API key (a credential — secrets only)
+#   DATABASE_URL  a Postgres reachable from GitHub-hosted runners
+#
+# If the database is not publicly reachable, this workflow cannot be the thing
+# that runs collection — use the self-hosted runner or the cron/systemd recipe
+# in docs/runbooks/collection.md instead. The npm commands are identical.
+
+name: Collect rates
+
+on:
+  schedule:
+    # 06:00 UTC daily. Cron here is ALWAYS UTC — GitHub does not observe any
+    # local timezone or daylight saving.
+    - cron: '0 6 * * *'
+    #
+    # The scheduler's own cadence is finer than daily: HOT stays (lead ≤ 30
+    # days — the bookings customers are about to make) want a 6-hour refresh,
+    # WARM 24h, COLD 72h. Running once a day caps every tier at 24h, so HOT
+    # stays are refreshed a quarter as often as designed and factor F3 (trend)
+    # gets far fewer points inside its 7-day window. To honour the tiers,
+    # uncomment the line below and delete the one above — `planCollection`
+    # already decides what is actually due on each firing, so a more frequent
+    # cron does not mean more API calls per stay.
+    # - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Max stays to collect in this run'
+        required: false
+        default: '500'
+      dry_run:
+        description: 'Plan only — make no API calls and write nothing'
+        type: boolean
+        required: false
+        default: false
+
+# One collection at a time. Two overlapping runs would double the API spend and
+# race on the same observation slots. Never cancel a run in progress: a
+# half-finished collection still wrote real observations.
+concurrency:
+  group: collect-rates
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      WAH_API_KEY: ${{ secrets.WAH_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Fail early if the credentials are missing
+        run: |
+          # Without this the collector would run, get zero rates back, and
+          # report a healthy empty run — the exact silent-outage mode the
+          # adapter's status handling exists to prevent.
+          missing=
+          [ -z "$WAH_API_KEY" ] && missing="$missing WAH_API_KEY"
+          [ -z "$DATABASE_URL" ] && missing="$missing DATABASE_URL"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Apply any pending migrations
+        run: node scripts/migrate.mjs
+
+      - name: Collect
+        run: |
+          npm run collect -- \
+            --limit "${{ inputs.limit || 500 }}" \
+            --concurrency 6 \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            2>&1 | tee collect.log
+
+          # The collector prints a warning rather than failing when the plan is
+          # truncated, because a partial collection is still worth keeping. It
+          # must not pass unnoticed, though: uncollected stays are permanently
+          # lost data.
+          if grep -q 'plan truncated' collect.log; then
+            echo "::warning::Plan was truncated — raise --limit or collect more often."
+          fi
+          if grep -q 'invalid JSON' collect.log; then
+            echo "::notice::$(grep -c 'invalid JSON' collect.log) malformed response(s) repaired (known API defect)."
+          fi
+
+      - name: Summarise the run
+        if: always()
+        run: |
+          {
+            echo '### Collection run'
+            echo
+            echo '```'
+            grep -E '^(•|  !|  [0-9]+ stay|✓)' collect.log || echo 'no output captured'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collect-log-${{ github.run_id }}
+          path: collect.log
+          retention-days: 14

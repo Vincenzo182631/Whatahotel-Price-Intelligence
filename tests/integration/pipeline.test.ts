@@ -21,6 +21,10 @@ import {
 } from '../../packages/data/src/index.js';
 import { ingestRecords } from '../../packages/ingest/src/pipeline/pipeline.js';
 import { refreshBaselines } from '../../packages/ingest/src/rollup/baseline.js';
+import {
+  DEFAULT_SCHEDULER_OPTIONS,
+  planCollection,
+} from '../../packages/ingest/src/scheduler/tiers.js';
 import type { RawRateRecord } from '../../packages/ingest/src/adapters/RateSourceAdapter.js';
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
@@ -417,4 +421,70 @@ suite('integration · ingest → rollup → score', () => {
     expect(flexible.distribution).not.toBeNull();
     expect(flexible.distribution!.p50).toBeGreaterThan(50000);
   }, 120_000);
+
+  /**
+   * The scheduler is pure SQL, so nothing but an integration test can execute
+   * it. Without this, `CURRENT_DATE + $1` (untyped, and therefore ambiguous
+   * between date+integer and date+interval) shipped: the cold-start path never
+   * calls planCollection, so the failure would only have appeared on the
+   * SECOND day of scheduled collection.
+   */
+  it('plans a refresh for stays already being tracked', async () => {
+    await ingestRecords(
+      [
+        record({
+          checkIn: isoDate(20),
+          observedAt: new Date(Date.now() - 48 * 3_600_000).toISOString(),
+        }),
+      ],
+      {
+        sourceCode: SOURCE_CODE,
+        captureSlotMinutes: 60,
+        maxNights: 30,
+        sanityBandMultiple: 8,
+        discoverRoomTypes: false,
+      },
+    );
+
+    const tasks = await planCollection(DEFAULT_SCHEDULER_OPTIONS);
+    const mine = tasks.filter((t) => t.wahHotelId === HOTEL_ID);
+
+    // Observed 48h ago at 20 days' lead — HOT tier, 6h interval, so due.
+    expect(mine.length).toBeGreaterThan(0);
+    expect(mine[0]?.checkIn).toBe(isoDate(20));
+    expect(mine[0]?.lastObservedAt).not.toBeNull();
+  }, 60_000);
+
+  it('excludes stays beyond the horizon and in the past', async () => {
+    const options = {
+      sourceCode: SOURCE_CODE,
+      captureSlotMinutes: 60,
+      maxNights: 30,
+      sanityBandMultiple: 8,
+      discoverRoomTypes: false,
+    };
+    // Well outside the 120-day default horizon, and stale enough to be due on
+    // its own tier (300 days' lead is COLD, 72h interval) — so if it is absent
+    // from the plan that is the horizon filter, not the staleness check.
+    await ingestRecords(
+      [
+        record({
+          checkIn: isoDate(300),
+          observedAt: new Date(Date.now() - 100 * 3_600_000).toISOString(),
+        }),
+      ],
+      options,
+    );
+
+    const tasks = await planCollection(DEFAULT_SCHEDULER_OPTIONS);
+    const beyond = tasks.filter((t) => t.wahHotelId === HOTEL_ID && t.checkIn === isoDate(300));
+    expect(beyond).toHaveLength(0);
+
+    // The horizon is a real filter, not an accident of the date arithmetic:
+    // widening it past the stay brings it back.
+    const wide = await planCollection({ ...DEFAULT_SCHEDULER_OPTIONS, horizonDays: 365 });
+    expect(
+      wide.filter((t) => t.wahHotelId === HOTEL_ID && t.checkIn === isoDate(300)),
+    ).toHaveLength(1);
+  }, 60_000);
 });

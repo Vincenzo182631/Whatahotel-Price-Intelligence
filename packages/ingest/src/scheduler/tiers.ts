@@ -100,7 +100,9 @@ export async function planCollection(
          JOIN hotel h ON h.id = o.hotel_id
         WHERE h.is_active AND h.collection_tier <> 'OFF'
           AND o.check_in >= CURRENT_DATE
-          AND o.check_in <= CURRENT_DATE + $1
+          -- ::int is required. Bare $1 leaves Postgres unable to choose
+          -- between date+integer and date+interval: "operator is not unique".
+          AND o.check_in <= CURRENT_DATE + $1::int
         GROUP BY o.hotel_id, h.wah_hotel_id, o.check_in, o.nights, o.adults
      ),
      viewed AS (

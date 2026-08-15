@@ -25,7 +25,12 @@
  * first run. Expect INSUFFICIENT_DATA until roughly 14 days of capture exist —
  * that is the design working, not a fault.
  */
-import { closePool, db } from '../packages/data/dist/index.js';
+import {
+  DEFAULT_GRID_SPEC,
+  closePool,
+  findMissingGridStays,
+  recordCollectionAttempts,
+} from '../packages/data/dist/index.js';
 import {
   DEFAULT_COMPARABLE_OPTIONS,
   DEFAULT_INGEST_OPTIONS,
@@ -57,43 +62,36 @@ const BOOTSTRAP = arg('bootstrap', false) !== false;
 const MAX_TASKS = Number(arg('limit', DEFAULT_SCHEDULER_OPTIONS.maxTasks));
 const CONCURRENCY = Number(arg('concurrency', 4));
 
-/** The stay grid a newly tracked hotel starts with. */
-const BOOTSTRAP_LEAD_DAYS = [7, 14, 21, 30, 45, 60, 90];
-const BOOTSTRAP_NIGHTS = [1, 3];
-const BOOTSTRAP_ADULTS = 2;
-
 function isoDate(offsetDays) {
   return new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** Stays for hotels that have never been observed. */
-async function bootstrapTasks(limit) {
-  const { rows } = await db().query(
-    `SELECT h.id, h.wah_hotel_id
-       FROM hotel h
-       LEFT JOIN rate_observation o ON o.hotel_id = h.id
-      WHERE h.is_active AND h.collection_tier <> 'OFF' AND o.id IS NULL
-      ORDER BY h.id`,
-  );
+/**
+ * Stays the grid is missing — see findMissingGridStays for why this runs on
+ * every collection rather than only at cold start.
+ */
+async function missingGridTasks() {
+  const stays = await findMissingGridStays(DEFAULT_GRID_SPEC);
+  const hotLeadMs = DEFAULT_SCHEDULER_OPTIONS.hotLeadDaysMax * 86_400_000;
+  const now = Date.now();
 
-  const tasks = [];
-  for (const hotel of rows) {
-    for (const lead of BOOTSTRAP_LEAD_DAYS) {
-      for (const nights of BOOTSTRAP_NIGHTS) {
-        tasks.push({
-          hotelId: hotel.id,
-          wahHotelId: hotel.wah_hotel_id,
-          checkIn: isoDate(lead),
-          nights,
-          adults: BOOTSTRAP_ADULTS,
-          tier: lead <= DEFAULT_SCHEDULER_OPTIONS.hotLeadDaysMax ? 'HOT' : 'WARM',
-          lastObservedAt: null,
-          reason: 'BOOTSTRAP',
-        });
-      }
-    }
+  return stays.map((stay) => ({
+    ...stay,
+    tier: Date.parse(`${stay.checkIn}T00:00:00Z`) - now <= hotLeadMs ? 'HOT' : 'WARM',
+    lastObservedAt: null,
+    reason: 'NEW_STAY',
+  }));
+}
+
+/** Merge new-grid stays with due refreshes, newest-tracked first, deduped. */
+function mergeTasks(gridTasks, dueTasks, limit) {
+  const byKey = new Map();
+  for (const task of [...gridTasks, ...dueTasks]) {
+    const key = `${task.hotelId}|${task.checkIn}|${task.nights}|${task.adults}`;
+    if (!byKey.has(key)) byKey.set(key, task);
   }
-  return { tasks: tasks.slice(0, limit), hotels: rows.length, generated: tasks.length };
+  const all = [...byKey.values()];
+  return { tasks: all.slice(0, limit), total: all.length };
 }
 
 async function main() {
@@ -120,30 +118,37 @@ async function main() {
   }
 
   // Plan --------------------------------------------------------------------
-  let tasks;
-  if (BOOTSTRAP) {
-    const plan = await bootstrapTasks(MAX_TASKS);
-    tasks = plan.tasks;
-    console.log(
-      `• Bootstrap: ${plan.hotels} unobserved hotel(s) → ${plan.generated} stays` +
-        (plan.generated > tasks.length ? `, capped at ${tasks.length}` : ''),
-    );
-  } else {
-    tasks = await planCollection({ ...DEFAULT_SCHEDULER_OPTIONS, maxTasks: MAX_TASKS });
-    const byTier = tasks.reduce((acc, t) => ({ ...acc, [t.tier]: (acc[t.tier] ?? 0) + 1 }), {});
-    console.log(
-      `• Plan: ${tasks.length} stay(s) due ` +
-        `(${Object.entries(byTier)
+  //
+  // Two sources of work, and an unattended run needs BOTH: stays nothing is
+  // tracking yet (the grid rolls forward daily), and tracked stays whose last
+  // capture is older than their tier's interval.
+  const gridTasks = await missingGridTasks();
+  const dueTasks = BOOTSTRAP
+    ? []
+    : await planCollection({ ...DEFAULT_SCHEDULER_OPTIONS, maxTasks: MAX_TASKS });
+
+  const { tasks, total } = mergeTasks(gridTasks, dueTasks, MAX_TASKS);
+
+  const byTier = tasks.reduce((acc, t) => ({ ...acc, [t.tier]: (acc[t.tier] ?? 0) + 1 }), {});
+  console.log(
+    `• Plan: ${tasks.length} stay(s) — ${gridTasks.length} new, ${dueTasks.length} due ` +
+      `(${
+        Object.entries(byTier)
           .map(([k, v]) => `${k}=${v}`)
-          .join(' ') || 'none'})`,
+          .join(' ') || 'none'
+      })`,
+  );
+  if (total > tasks.length) {
+    // Never silent: a truncated plan means stays went uncollected today, and
+    // with no rate history in this source that data cannot be recovered later.
+    console.warn(
+      `  ! plan truncated: ${total - tasks.length} stay(s) NOT collected. ` +
+        `Raise --limit (currently ${MAX_TASKS}) or run more often.`,
     );
-    if (tasks.length === MAX_TASKS) {
-      console.warn(`  ! plan truncated at ${MAX_TASKS}; raise --limit or shorten the interval`);
-    }
-    if (tasks.length === 0) {
-      console.log('  Nothing due. Run with --bootstrap if no hotel has been observed yet.');
-      return;
-    }
+  }
+  if (tasks.length === 0) {
+    console.log('  Nothing due and no gaps in the grid — up to date.');
+    return;
   }
 
   if (DRY_RUN) {
@@ -162,13 +167,18 @@ async function main() {
   await ensureWhataHotelSource(WHATAHOTEL_SOURCE_CODE);
 
   const failures = [];
+  const soldOutKeys = new Set();
   let soldOut = 0;
   let malformed = 0;
+  const stayKey = (q) => `${q.wahHotelId}|${q.checkIn}|${q.nights}|${q.adults}`;
   const adapter = createWhataHotelAdapter({
     concurrency: CONCURRENCY,
     continueOnError: true,
     onError: (query, error) => failures.push({ query, message: error.message }),
-    onNoAvailability: () => (soldOut += 1),
+    onNoAvailability: (query) => {
+      soldOut += 1;
+      soldOutKeys.add(stayKey(query));
+    },
     onMalformedJson: () => (malformed += 1),
   });
 
@@ -195,6 +205,43 @@ async function main() {
     );
   }
   if (failures.length > 10) console.warn(`  ! … and ${failures.length - 10} more failures`);
+
+  // Record what each stay did, so one that yields nothing is backed off rather
+  // than re-proposed on every run forever.
+  //
+  // "Succeeded" means it produced an observation — not that the HTTP call
+  // worked. A stay that is sold out, or that the API refuses with a 500, leaves
+  // no row behind, so the grid sees it as missing and asks again next run. Both
+  // therefore have to back off, or they cost calls indefinitely against an API
+  // whose rate limit we do not know (U15). The distinction is kept in
+  // `last_outcome` for diagnosis, and any later success resets the counter, so
+  // a stay that reopens is picked straight back up.
+  const producedData = new Set(
+    records.map((r) => `${r.wahHotelId}|${r.checkIn}|${r.nights}|${r.adults}`),
+  );
+  const failedKeys = new Set(failures.map((f) => stayKey(f.query)));
+  const attempts = tasks.map((task) => {
+    const key = `${task.wahHotelId}|${task.checkIn}|${task.nights}|${task.adults}`;
+    return {
+      hotelId: task.hotelId,
+      checkIn: task.checkIn,
+      nights: task.nights,
+      adults: task.adults,
+      succeeded: producedData.has(key),
+      outcome: failedKeys.has(key)
+        ? 'ERROR'
+        : soldOutKeys.has(key)
+          ? 'NO_AVAILABILITY'
+          : producedData.has(key)
+            ? 'OK'
+            : 'EMPTY',
+    };
+  });
+  const backedOff = attempts.filter((a) => !a.succeeded).length;
+  await recordCollectionAttempts(attempts);
+  if (backedOff > 0) {
+    console.log(`  ${backedOff} stay(s) yielded no rates and will be retried less often`);
+  }
 
   if (records.length === 0) {
     console.warn('  No rates returned. Nothing ingested.');

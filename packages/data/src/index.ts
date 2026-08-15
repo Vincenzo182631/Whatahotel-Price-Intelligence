@@ -26,6 +26,14 @@ export {
 export type { BaselineLookup, BaselineUpsert } from './repositories/baselines.js';
 
 export {
+  DEFAULT_GRID_SPEC,
+  backoffHours,
+  findMissingGridStays,
+  recordCollectionAttempts,
+} from './repositories/collection.js';
+export type { AttemptOutcome, GridSpec, GridStay } from './repositories/collection.js';
+
+export {
   findBenefits,
   findComparableRates,
   findDemand,

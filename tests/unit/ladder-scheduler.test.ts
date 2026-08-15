@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_GRID_SPEC,
+  backoffHours,
+} from '../../packages/data/src/repositories/collection.js';
+
+import {
   dowBucketFor,
   leadBucketFor,
   seasonBandFor,
@@ -159,5 +164,48 @@ describe('comparable similarity', () => {
     expect(close).toBeGreaterThan(distant);
     expect(close).toBeLessThanOrEqual(1);
     expect(distant).toBeGreaterThanOrEqual(0);
+  });
+});
+
+/**
+ * The stay grid is rebuilt from lead-time offsets on every run, so a stay that
+ * yields nothing — sold out, or a hotel/date the API refuses with a 500 — looks
+ * "missing" forever and is re-proposed on every single run. Measured on the
+ * live set: 32 such stays, each costing a call plus its retries, indefinitely,
+ * against an API whose rate limit is still unknown (U15).
+ */
+describe('collection backoff', () => {
+  const spec = DEFAULT_GRID_SPEC;
+
+  it('does not back off while a stay is still worth retrying', () => {
+    // The first few failures are free: a transient fault should not exile a
+    // stay that will work again on the next run.
+    for (let n = 0; n < spec.backoffAfterFailures; n += 1) {
+      expect(backoffHours(n, spec)).toBe(0);
+    }
+  });
+
+  it('doubles the delay once a stay looks genuinely dead', () => {
+    expect(backoffHours(3, spec)).toBe(1);
+    expect(backoffHours(4, spec)).toBe(2);
+    expect(backoffHours(5, spec)).toBe(4);
+    expect(backoffHours(8, spec)).toBe(32);
+  });
+
+  it('caps the delay so a stay is never abandoned permanently', () => {
+    // Inventory reopens and outages end. A week is the longest we will go
+    // without asking again — and any success resets the counter to zero.
+    expect(backoffHours(40, spec)).toBe(spec.backoffMaxHours);
+    expect(backoffHours(1000, spec)).toBe(spec.backoffMaxHours);
+    expect(spec.backoffMaxHours).toBeLessThanOrEqual(168);
+  });
+
+  it('is monotonic — more failures never means a sooner retry', () => {
+    let previous = -1;
+    for (let n = 0; n <= 50; n += 1) {
+      const hours = backoffHours(n, spec);
+      expect(hours).toBeGreaterThanOrEqual(previous);
+      previous = hours;
+    }
   });
 });

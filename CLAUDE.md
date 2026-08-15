@@ -27,10 +27,16 @@ npm run calibrate -- --sweep --report out.md   # calibration runbook (doc 11)
 
 # Real collection. WAH_API_KEY is a credential — env only, never committed.
 WAH_API_KEY=... npm run collect -- --catalog miami   # sync hotels + their perks
-WAH_API_KEY=... npm run collect -- --bootstrap       # seed the stay grid (cold start)
-WAH_API_KEY=... npm run collect                      # collect what the scheduler says is due
+WAH_API_KEY=... npm run collect                      # top up the grid + refresh what is due
+WAH_API_KEY=... npm run collect -- --bootstrap       # grid only, skip the due-refresh
 WAH_API_KEY=... npm run collect -- --dry-run         # show the plan, call nothing
 ```
+
+Scheduled collection is `.github/workflows/collect.yml` (daily, 06:00 UTC).
+**Read [`docs/runbooks/collection.md`](./docs/runbooks/collection.md) before
+changing the schedule** — the scheduler's HOT tier wants a 6-hour refresh, so
+a daily cron deliberately under-serves it, and that trade is written down there
+along with the server cron/systemd alternatives.
 
 Integration tests run only when `DATABASE_URL` is set; they skip otherwise so
 `npm test` works without a database.
@@ -104,6 +110,15 @@ engine.
 13. **The property suite is seeded.** Unseeded it drew fresh inputs each run, so
     a real engine bug surfaced as intermittent flakiness. Use `FC_SEED=<n>` to
     explore deliberately, and promote any counterexample to a unit test.
+14. **The stay grid must be topped up on every run, not just at cold start.**
+    Lead times are relative to today, while `planCollection` only refreshes
+    stays it can already see. Without the top-up the tracked set freezes at
+    whatever the first run captured and empties after ~90 days — with every run
+    still exiting 0. See `findMissingGridStays`.
+15. **A stay that yields nothing must back off.** It has no observation, so the
+    grid sees it as missing and would re-request it every run forever;
+    `collection_attempt` exists solely to stop that. It is not a fact table —
+    nothing in it reaches a baseline or a score. Any success resets the counter.
 
 ## Adding or changing a factor
 
