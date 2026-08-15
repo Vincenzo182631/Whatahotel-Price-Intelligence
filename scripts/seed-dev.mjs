@@ -50,9 +50,12 @@ function isoDate(base, offsetDays) {
 
 async function ensureReferenceData(client) {
   await client.query(
-    `INSERT INTO source (code, display_name, is_authoritative, trust_weight)
-     VALUES ($1, 'Synthetic development data (NOT REAL RATES)', false, 0.50)
-     ON CONFLICT (code) DO NOTHING`,
+    // is_synthetic is what the API reports provenance from, so it must be set
+    // here and re-asserted on conflict — a pre-existing row from before the
+    // column was added would otherwise stay silently marked as real.
+    `INSERT INTO source (code, display_name, is_authoritative, trust_weight, is_synthetic)
+     VALUES ($1, 'Synthetic development data (NOT REAL RATES)', false, 0.50, true)
+     ON CONFLICT (code) DO UPDATE SET is_synthetic = true`,
     [SYNTHETIC_SOURCE_CODE],
   );
 

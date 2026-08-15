@@ -318,13 +318,33 @@ Stay tuple + `limit` (default 6). Returns comp hotels with current nightly rate,
     "minutes_since": 14,
     "reject_rate_24h": 0.004,
   },
-  "baseline": { "stale_rows": 12, "oldest_computed_at": "2026-08-14T05:00:00Z" },
+  "data": {
+    "observations": 58320,
+    "baselines": 2862,
+    "stale_baselines": 0,
+    // REAL | SYNTHETIC | MIXED | EMPTY
+    "provenance": "SYNTHETIC",
+    "sources": [
+      {
+        "code": "SYNTHETIC_DEV",
+        "display_name": "Synthetic development data (NOT REAL RATES)",
+        "is_synthetic": true,
+        "observations": 58320,
+      },
+    ],
+  },
   "engine_version": "1.0.0",
   "config_version": 7,
 }
 ```
 
 Degrades to `"status": "degraded"` when ingest is stale beyond threshold — the condition that quietly destroys the product's correctness while every service still appears healthy.
+
+**`data.provenance`** says whether the stored rates are real, fabricated, or both. It is derived from `source.is_synthetic`, so it tracks the data rather than restating an assumption.
+
+Any surface that displays rates should render its data-source notice from this field rather than hardcoding one. The demo harness previously hardcoded a "synthetic data — no number here is real" banner, and went on displaying it over live hotel pricing once a real source was collected; a label that is not derived from the data is not a label.
+
+`MIXED` is the state worth alarming on. Once fabricated rows are in `rate_observation` they are indistinguishable from real ones (CLAUDE.md rule 7), so any score computed over a mixed database is meaningless — and nothing else in the system will tell you.
 
 ---
 

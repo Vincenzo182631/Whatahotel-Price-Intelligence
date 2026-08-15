@@ -41,6 +41,35 @@ export const healthHandler: Handler = async (_req, res) => {
   `);
   const row = rows[0] ?? {};
 
+  // Where the stored rates actually came from.
+  //
+  // Reported rather than left to callers to infer: the demo harness used to
+  // carry a hardcoded "synthetic data" banner, which meant it went on claiming
+  // no number was real after the database filled with live rates. MIXED is the
+  // state that matters most — fabricated rows sitting indistinguishably beside
+  // real ones (CLAUDE.md rule 7) — and it is the one nobody would think to
+  // check for.
+  const { rows: sourceRows } = await db().query(`
+    SELECT s.code, s.display_name, s.is_synthetic, count(o.id)::bigint AS observations
+      FROM source s
+      LEFT JOIN rate_observation o ON o.source_id = s.id
+     GROUP BY s.id, s.code, s.display_name, s.is_synthetic
+     HAVING count(o.id) > 0
+     ORDER BY s.code
+  `);
+
+  const sources = sourceRows.map((s) => ({
+    code: s.code as string,
+    display_name: s.display_name as string,
+    is_synthetic: s.is_synthetic as boolean,
+    observations: Number(s.observations),
+  }));
+
+  const anySynthetic = sources.some((s) => s.is_synthetic);
+  const anyReal = sources.some((s) => !s.is_synthetic);
+  const dataProvenance =
+    anySynthetic && anyReal ? 'MIXED' : anySynthetic ? 'SYNTHETIC' : anyReal ? 'REAL' : 'EMPTY';
+
   const lastIngest = row.last_ingest as Date | null;
   const minutesSince =
     lastIngest === null ? null : Math.round((Date.now() - lastIngest.getTime()) / 60_000);
@@ -63,6 +92,9 @@ export const healthHandler: Handler = async (_req, res) => {
       observations: Number(row.observations ?? 0),
       baselines: Number(row.baselines ?? 0),
       stale_baselines: staleBaselines,
+      /** REAL | SYNTHETIC | MIXED | EMPTY — see the query above. */
+      provenance: dataProvenance,
+      sources,
     },
     config_version: config.version,
   });

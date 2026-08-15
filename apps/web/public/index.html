@@ -32,6 +32,8 @@
         margin: 0 0 20px;
         font-size: 0.92rem;
       }
+      /* Default is the cautious amber. Only `.banner.real` relaxes it, and only
+         after the API confirms every stored rate came from a real source. */
       .banner {
         background: #fff4e5;
         border: 1px solid #f0c896;
@@ -40,6 +42,18 @@
         padding: 12px 14px;
         font-size: 0.88rem;
         margin-bottom: 22px;
+      }
+      .banner.real {
+        background: #eef6ff;
+        border-color: #b8d4f0;
+        border-left-color: #1a63b8;
+      }
+      /* Fabricated and real rates in one database — indistinguishable once
+         stored. The loudest state on purpose. */
+      .banner.mixed {
+        background: #fdecec;
+        border-color: #f0b4b4;
+        border-left-color: #b00020;
       }
       form {
         background: #fff;
@@ -88,10 +102,20 @@
       <h1>WhataHotel Price Intelligence</h1>
       <p class="sub">Development harness for the embeddable widget.</p>
 
-      <div class="banner">
-        <strong>Synthetic data.</strong> Every rate shown here is fabricated by a seeded generator
-        for development. These are not real hotel prices, and no number on this page reflects an
-        actual rate at any property.
+      <!--
+        Filled from /api/v1/health, never hardcoded. The previous version
+        asserted "synthetic data" unconditionally, so once the database held
+        live rates it was displaying genuine hotel pricing under a notice
+        saying no number on the page was real. A safety label that does not
+        come from the data is not a safety label.
+
+        It starts in the most cautious state and is only relaxed once the API
+        has actually said the data is real — so a failed health call leaves a
+        warning up rather than a reassurance.
+      -->
+      <div class="banner" id="provenance" role="status">
+        <strong>Checking data source…</strong> Treat every number on this page as unverified until
+        this resolves.
       </div>
 
       <form id="controls">
@@ -137,6 +161,61 @@
 
       function isoDaysFromNow(days) {
         return new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+      }
+
+      const escapeHtml = (s) =>
+        String(s).replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+        );
+
+      // Describe the data honestly, from what the API reports.
+      async function loadProvenance() {
+        const el = document.getElementById('provenance');
+        let health;
+        try {
+          const res = await fetch('/api/v1/health');
+          health = await res.json();
+        } catch {
+          // Leave the cautious default in place. Failing to confirm the data is
+          // real is not the same as confirming it is.
+          el.innerHTML =
+            '<strong>Data source unknown.</strong> The health endpoint could not be reached, so ' +
+            'nothing on this page has been verified as real.';
+          return;
+        }
+
+        const list = (health?.data?.sources ?? [])
+          .map((s) => `${escapeHtml(s.display_name)} (${s.observations.toLocaleString()})`)
+          .join(', ');
+
+        switch (health?.data?.provenance) {
+          case 'REAL':
+            el.className = 'banner real';
+            el.innerHTML =
+              `<strong>Live data.</strong> Rates come from ${list || 'a production source'}. ` +
+              'These are real quoted prices.';
+            break;
+          case 'SYNTHETIC':
+            el.className = 'banner';
+            el.innerHTML =
+              '<strong>Synthetic data.</strong> Every rate shown here is fabricated by a seeded ' +
+              'generator for development. These are not real hotel prices, and no number on this ' +
+              'page reflects an actual rate at any property.';
+            break;
+          case 'MIXED':
+            el.className = 'banner mixed';
+            el.innerHTML =
+              '<strong>Mixed data — do not trust anything here.</strong> This database contains ' +
+              `both fabricated and real rates (${list}). Once stored they are indistinguishable, ` +
+              'so no score on this page can be relied on. Reset and reload from a single source.';
+            break;
+          default:
+            el.className = 'banner';
+            el.innerHTML =
+              '<strong>No data.</strong> No rates have been collected yet, so there is nothing ' +
+              'to analyse.';
+        }
       }
 
       // Match a stay the seed generator actually produced: check-ins start five
@@ -217,6 +296,7 @@
       hotelSelect.addEventListener('change', loadRooms);
       [checkIn, checkOut, adults].forEach((input) => input.addEventListener('change', loadRooms));
 
+      loadProvenance();
       loadHotels().then(analyze);
     </script>
   </body>
