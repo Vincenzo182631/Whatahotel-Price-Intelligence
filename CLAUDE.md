@@ -25,7 +25,9 @@ npm run api              # http://localhost:3000 (widget demo at /)
 npm run smoke            # API contract checks against a running server
 npm run calibrate -- --sweep --report out.md   # calibration runbook (doc 11)
 
-# Real collection. WAH_API_KEY is a credential — env only, never committed.
+# Credentials: cp .env.example .env, then fill it in. `.env` is gitignored and
+# the scripts below load it via --env-file-if-exists. An exported variable wins
+# over .env, so CI secrets are never shadowed.
 WAH_API_KEY=... npm run collect -- --catalog miami   # sync hotels + their perks
 WAH_API_KEY=... npm run collect                      # top up the grid + refresh what is due
 WAH_API_KEY=... npm run collect -- --bootstrap       # grid only, skip the due-refresh
