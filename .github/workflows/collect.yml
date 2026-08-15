@@ -1,0 +1,138 @@
+# Scheduled rate collection.
+#
+# This source has NO rate history (U3 — see docs/mvp/README.md): it answers
+# "what is the rate now", never "what was it". Every run that does not happen is
+# baseline that can never be backfilled, so this workflow is written to fail
+# LOUDLY rather than skip quietly.
+#
+# Required repository secrets:
+#   WAH_API_KEY   the WhataHotel data API key (a credential — secrets only)
+#   DATABASE_URL  a Postgres reachable from GitHub-hosted runners
+#
+# If the database is not publicly reachable, this workflow cannot be the thing
+# that runs collection — use the self-hosted runner or the cron/systemd recipe
+# in docs/runbooks/collection.md instead. The npm commands are identical.
+
+name: Collect rates
+
+on:
+  # ── THE SCHEDULE IS DEACTIVATED ────────────────────────────────────────────
+  #
+  # Deliberately, and only until a database reachable from GitHub-hosted
+  # runners exists. With the schedule active and no `DATABASE_URL` secret, the
+  # job fails fast four times a day — correct behaviour (a silent healthy-
+  # looking no-op would be far worse) but pure noise in the Actions tab, and
+  # noise is how real failures get ignored.
+  #
+  # TO TURN COLLECTION ON: set the WAH_API_KEY and DATABASE_URL secrets, run
+  # this workflow manually once with dry_run=true to prove connectivity, then
+  # uncomment the two `schedule:` lines below. Nothing else changes.
+  #
+  # The cadence is 6 hours because that is the scheduler's shortest tier
+  # interval: HOT stays (lead ≤ 30 days — the bookings customers are about to
+  # make) want a 6-hour refresh, WARM 24h, COLD 72h. Anything coarser silently
+  # caps every tier at the cron period. It does NOT quadruple API spend —
+  # `planCollection` returns only stays actually due, so WARM and COLD are
+  # skipped on the intermediate firings.
+  #
+  # Cron is ALWAYS UTC here; GitHub observes no local timezone or DST.
+  #
+  # schedule:
+  #   - cron: '0 */6 * * *'
+  #
+  # Until then, collection runs from a server — see docs/runbooks/collection.md.
+  # Every day the schedule stays off is a day of baseline this source cannot
+  # backfill (U3), so this is a pause, not a resting state.
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Max stays to collect in this run'
+        required: false
+        default: '500'
+      dry_run:
+        description: 'Plan only — make no API calls and write nothing'
+        type: boolean
+        required: false
+        default: false
+
+# One collection at a time. Two overlapping runs would double the API spend and
+# race on the same observation slots. Never cancel a run in progress: a
+# half-finished collection still wrote real observations.
+concurrency:
+  group: collect-rates
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      WAH_API_KEY: ${{ secrets.WAH_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Fail early if the credentials are missing
+        run: |
+          # Without this the collector would run, get zero rates back, and
+          # report a healthy empty run — the exact silent-outage mode the
+          # adapter's status handling exists to prevent.
+          missing=
+          [ -z "$WAH_API_KEY" ] && missing="$missing WAH_API_KEY"
+          [ -z "$DATABASE_URL" ] && missing="$missing DATABASE_URL"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Apply any pending migrations
+        run: node scripts/migrate.mjs
+
+      - name: Collect
+        run: |
+          npm run collect -- \
+            --limit "${{ inputs.limit || 500 }}" \
+            --concurrency 6 \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            2>&1 | tee collect.log
+
+          # The collector prints a warning rather than failing when the plan is
+          # truncated, because a partial collection is still worth keeping. It
+          # must not pass unnoticed, though: uncollected stays are permanently
+          # lost data.
+          if grep -q 'plan truncated' collect.log; then
+            echo "::warning::Plan was truncated — raise --limit or collect more often."
+          fi
+          if grep -q 'invalid JSON' collect.log; then
+            echo "::notice::$(grep -c 'invalid JSON' collect.log) malformed response(s) repaired (known API defect)."
+          fi
+
+      - name: Summarise the run
+        if: always()
+        run: |
+          {
+            echo '### Collection run'
+            echo
+            echo '```'
+            grep -E '^(•|  !|  [0-9]+ stay|✓)' collect.log || echo 'no output captured'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collect-log-${{ github.run_id }}
+          path: collect.log
+          retention-days: 14

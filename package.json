@@ -1,0 +1,50 @@
+{
+  "name": "whatahotel-price-intelligence",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Embedded hotel price-intelligence platform for WhataHotel.com",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/api"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --build --force && tsc -p tsconfig.tests.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"**/*.{ts,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,json,md}\"",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:migrate": "node scripts/migrate.mjs --seed",
+    "db:reset": "node scripts/migrate.mjs --reset",
+    "config:seed": "node scripts/emit-config-seed.mjs",
+    "db:check": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f db/checks/schema_checks.sql",
+    "db:seed-dev": "node scripts/seed-dev.mjs",
+    "api": "node apps/api/dist/server.js",
+    "api:dev": "npm run build && node apps/api/dist/server.js",
+    "collect": "node scripts/collect.mjs",
+    "smoke": "node scripts/smoke-api.mjs",
+    "calibrate": "node scripts/calibrate.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^8.57.1",
+    "fast-check": "^3.23.1",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@types/pg": "^8.21.0",
+    "pg": "^8.23.0"
+  }
+}

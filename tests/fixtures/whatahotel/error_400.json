@@ -1,0 +1,17 @@
+{
+  "wahData": {
+    "status": {
+      "connection": 0,
+      "code": "400",
+      "method": "rates",
+      "message": "Invalid Check-In date: Must be greater that the current date."
+    },
+    "session": {
+      "sessionID": "0",
+      "sessionName": "Guest",
+      "sessionAccess": "0",
+      "cfID": "<scrubbed>",
+      "cfToken": "<scrubbed>"
+    }
+  }
+}

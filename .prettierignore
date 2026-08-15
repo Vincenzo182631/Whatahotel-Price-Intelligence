@@ -1,0 +1,11 @@
+dist/
+coverage/
+node_modules/
+package-lock.json
+db/seeds/002_scoring_config.sql
+
+# Captured API responses. These are EVIDENCE, not source — reformatting them
+# changes what they prove. One of them is deliberately invalid JSON (the API
+# emits trailing commas); prettier silently repaired it, which turned three
+# regression tests into assertions about nothing.
+tests/fixtures/whatahotel/

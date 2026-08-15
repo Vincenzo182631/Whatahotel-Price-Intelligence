@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WhataHotel Price Intelligence — demo harness</title>
+    <link rel="stylesheet" href="/widget.css" />
+    <style>
+      body {
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        margin: 0;
+        padding: 32px 20px 64px;
+        background: #f2f4f7;
+        color: #16181d;
+      }
+      main {
+        max-width: 680px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 1.4rem;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: #5b6270;
+        margin: 0 0 20px;
+        font-size: 0.92rem;
+      }
+      .banner {
+        background: #fff4e5;
+        border: 1px solid #f0c896;
+        border-left: 4px solid #b06f00;
+        border-radius: 8px;
+        padding: 12px 14px;
+        font-size: 0.88rem;
+        margin-bottom: 22px;
+      }
+      form {
+        background: #fff;
+        border: 1px solid #e2e5ea;
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 20px;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        align-items: end;
+      }
+      label {
+        display: block;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #5b6270;
+        margin-bottom: 4px;
+      }
+      input,
+      select,
+      button {
+        font: inherit;
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid #d5d9e0;
+        border-radius: 7px;
+        background: #fff;
+        box-sizing: border-box;
+      }
+      button {
+        background: #0b5cad;
+        color: #fff;
+        border-color: #0b5cad;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .full {
+        grid-column: 1 / -1;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>WhataHotel Price Intelligence</h1>
+      <p class="sub">Development harness for the embeddable widget.</p>
+
+      <div class="banner">
+        <strong>Synthetic data.</strong> Every rate shown here is fabricated by a seeded generator
+        for development. These are not real hotel prices, and no number on this page reflects an
+        actual rate at any property.
+      </div>
+
+      <form id="controls">
+        <div class="full">
+          <label for="hotel">Hotel</label>
+          <select id="hotel"></select>
+        </div>
+        <div>
+          <label for="checkIn">Check in</label>
+          <input type="date" id="checkIn" />
+        </div>
+        <div>
+          <label for="checkOut">Check out</label>
+          <input type="date" id="checkOut" />
+        </div>
+        <div>
+          <label for="adults">Adults</label>
+          <input type="number" id="adults" value="2" min="1" max="10" />
+        </div>
+        <div class="full">
+          <label for="room">Room type</label>
+          <select id="room">
+            <option value="">Lowest available rate</option>
+          </select>
+        </div>
+        <div class="full">
+          <button type="submit">Analyze this rate</button>
+        </div>
+      </form>
+
+      <div id="widget"></div>
+    </main>
+
+    <script src="/widget.js"></script>
+    <script>
+      const form = document.getElementById('controls');
+      const hotelSelect = document.getElementById('hotel');
+      const roomSelect = document.getElementById('room');
+      const checkIn = document.getElementById('checkIn');
+      const checkOut = document.getElementById('checkOut');
+      const adults = document.getElementById('adults');
+      const widget = document.getElementById('widget');
+
+      function isoDaysFromNow(days) {
+        return new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+      }
+
+      // Match a stay the seed generator actually produced: check-ins start five
+      // days out at ~3.3 day intervals.
+      checkIn.value = isoDaysFromNow(38);
+      checkOut.value = isoDaysFromNow(41);
+
+      async function loadHotels() {
+        const res = await fetch('/api/v1/hotels?limit=50');
+        const data = await res.json();
+        hotelSelect.innerHTML = '';
+        (data.hotels || []).forEach((h) => {
+          const opt = document.createElement('option');
+          opt.value = h.hotel_id;
+          opt.textContent =
+            h.name + ' — ' + h.destination + (h.has_price_intelligence ? '' : ' (no history yet)');
+          hotelSelect.appendChild(opt);
+        });
+        await loadRooms();
+      }
+
+      /** Keep the stay range valid so we never send a request we know is invalid. */
+      function normalizeDates() {
+        if (!checkIn.value) return false;
+        if (!checkOut.value || checkOut.value <= checkIn.value) {
+          checkOut.value = new Date(Date.parse(checkIn.value + 'T00:00:00Z') + 3 * 86400000)
+            .toISOString()
+            .slice(0, 10);
+        }
+        return true;
+      }
+
+      async function loadRooms() {
+        roomSelect.innerHTML = '<option value="">Lowest available rate</option>';
+        if (!hotelSelect.value || !normalizeDates()) return;
+        const params = new URLSearchParams({
+          check_in: checkIn.value,
+          check_out: checkOut.value,
+          adults: adults.value,
+        });
+        try {
+          const res = await fetch(
+            '/api/v1/hotels/' + encodeURIComponent(hotelSelect.value) + '/room-types?' + params,
+          );
+          if (!res.ok) return;
+          const data = await res.json();
+          (data.room_types || []).forEach((r) => {
+            const opt = document.createElement('option');
+            opt.value = r.room_type_id;
+            opt.textContent =
+              r.name +
+              ' — ' +
+              WahPriceIntelligence.formatMoney(r.nightly) +
+              (r.intelligence_available ? '' : ' (thin history)');
+            roomSelect.appendChild(opt);
+          });
+        } catch {
+          /* the widget reports its own errors */
+        }
+      }
+
+      function analyze() {
+        if (!normalizeDates()) return;
+        WahPriceIntelligence.mount(widget, {
+          apiBase: '',
+          hotelId: hotelSelect.value,
+          checkIn: checkIn.value,
+          checkOut: checkOut.value,
+          adults: Number(adults.value),
+          roomTypeId: roomSelect.value || null,
+        });
+      }
+
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        analyze();
+      });
+      hotelSelect.addEventListener('change', loadRooms);
+      [checkIn, checkOut, adults].forEach((input) => input.addEventListener('change', loadRooms));
+
+      loadHotels().then(analyze);
+    </script>
+  </body>
+</html>

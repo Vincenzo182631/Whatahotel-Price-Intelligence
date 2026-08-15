@@ -1,0 +1,1327 @@
+{
+  "wahData": {
+    "rooms": [
+      {
+        "currency": "USD",
+        "rateTotal": "3,910.37",
+        "bedType": "King",
+        "rateDaily": "1,039.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=ZXXI00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Deluxe Resort View Room overlooks tropical-landscape, 1 King, Mini fridge,",
+        "rateCode": "2SH",
+        "roomType": "Deluxe",
+        "images": [
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/is/image/marriotts7prod/rz-jhmrz-rz-jhmrz-a-27219-15994:Classic-Hor?wid=1336&fit=constrain"
+          },
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/content/dam/marriott-renditions/JHMRZ/jhmrz-suite-0017-hor-clsc.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=1336px:*"
+          },
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/content/dam/marriott-renditions/JHMRZ/jhmrz-kitchen-2437-hor-clsc.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=1336px:*"
+          },
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/is/image/marriotts7prod/rz-jhmrz-rz-jhmrz-a-11970-21633:Classic-Hor?wid=1336&fit=constrain"
+          },
+          {
+            "imgDesc": "Guest Room - Two Queens",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/71DB068B6F804667819D4E5EA96CD6DE/F.jpg"
+          }
+        ],
+        "roomName": "Deluxe Resort View Room overlooks tropical",
+        "bookCode": "ZXXI00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "4,088.44",
+        "bedType": "Queen",
+        "rateDaily": "1,089.00",
+        "bedNum": "2",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=SVUF00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Deluxe Resort View Room overlooks tropical-landscape or resort pool with two Queen beds,",
+        "rateCode": "2SH",
+        "roomType": "Deluxe",
+        "images": [
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/is/image/marriotts7prod/rz-jhmrz-rz-jhmrz-a-27219-15994:Classic-Hor?wid=1336&fit=constrain"
+          },
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/content/dam/marriott-renditions/JHMRZ/jhmrz-suite-0017-hor-clsc.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=1336px:*"
+          },
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/content/dam/marriott-renditions/JHMRZ/jhmrz-kitchen-2437-hor-clsc.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=1336px:*"
+          },
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/is/image/marriotts7prod/rz-jhmrz-rz-jhmrz-a-11970-21633:Classic-Hor?wid=1336&fit=constrain"
+          },
+          {
+            "imgDesc": "Guest Room - Two Queens",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/71DB068B6F804667819D4E5EA96CD6DE/F.jpg"
+          }
+        ],
+        "roomName": "Deluxe Resort View Room overlooks tropical",
+        "bookCode": "SVUF00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "4,266.51",
+        "bedType": "Bed type can vary",
+        "rateDaily": "1,139.00",
+        "bedNum": "*",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=ZXXJ00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Deluxe Ocean View room offers partial ocean-views of the Pacific Ocean from the lanai, 1",
+        "rateCode": "2SH",
+        "roomType": "Deluxe",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Deluxe Ocean View room offers partial ocean",
+        "bookCode": "ZXXJ00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "4,444.58",
+        "bedType": "Queen",
+        "rateDaily": "1,189.00",
+        "bedNum": "2",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=SVUG00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Deluxe Ocean View offers partial ocean views-with two queen beds, 2 Queen, Mini fridge,",
+        "rateCode": "2SH",
+        "roomType": "Deluxe",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Deluxe Ocean View offers partial ocean views",
+        "bookCode": "SVUG00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "4,978.78",
+        "bedType": "King",
+        "rateDaily": "1,339.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35A00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-The Ritz-Carlton Club Lounge Access for 2, 1-King, Mini fridge, 440sqft/40sqm, Wireless",
+        "rateCode": "2SH",
+        "roomType": "Unspecified",
+        "images": [],
+        "roomName": "The Ritz",
+        "bookCode": "Z35A00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "5,050.01",
+        "bedType": "King",
+        "rateDaily": "1,359.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=SVUH00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Fire Lanai Garden View Room, 1 King, Mini-fridge, 440sqft/40sqm, Wireless internet,",
+        "rateCode": "2SH",
+        "roomType": "Standard",
+        "images": [
+          {
+            "imgDesc": "Garden Terrace Views",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/C40A38877C04465F87E999DB407BF76F/E.jpg"
+          },
+          {
+            "imgDesc": "Garden Ocean View",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/40B319C5339F45A689F0198B97AD6A09/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/795CB5A73C954630853BBF4B52894561/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View and Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B103F42EE29B44A4A3E9479333933E82/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/210CFFB06F2F4390BFDF6DFE0DC27452/E.jpg"
+          }
+        ],
+        "roomName": "Fire Lanai Garden View Room, 1 King, Mini",
+        "bookCode": "SVUH00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "5,228.08",
+        "bedType": "Queen",
+        "rateDaily": "1,409.00",
+        "bedNum": "2",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=NYSZ00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Fire Lanai Garden View Room with two queen-beds, 2 Queen, Mini fridge, 440sqft/40sqm,",
+        "rateCode": "2SH",
+        "roomType": "Standard",
+        "images": [
+          {
+            "imgDesc": "Garden Terrace Views",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/C40A38877C04465F87E999DB407BF76F/E.jpg"
+          },
+          {
+            "imgDesc": "Garden Ocean View",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/40B319C5339F45A689F0198B97AD6A09/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/795CB5A73C954630853BBF4B52894561/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View and Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B103F42EE29B44A4A3E9479333933E82/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/210CFFB06F2F4390BFDF6DFE0DC27452/E.jpg"
+          }
+        ],
+        "roomName": "Fire Lanai Garden View Room with two queen",
+        "bookCode": "NYSZ00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "5,334.92",
+        "bedType": "King",
+        "rateDaily": "1,439.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35B00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-The Ritz-Carlton Club Lounge Access for 2, 1-King, Mini fridge, 440sqft/40sqm, Wireless",
+        "rateCode": "2SH",
+        "roomType": "Unspecified",
+        "images": [],
+        "roomName": "The Ritz",
+        "bookCode": "Z35B00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "5,406.14",
+        "bedType": "King",
+        "rateDaily": "1,459.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=NYSJ00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Fire Lanai Partial Ocean View Room, 1 King,-Mini fridge, 440sqft/40sqm, Wireless",
+        "rateCode": "2SH",
+        "roomType": "Standard",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Fire Lanai Partial Ocean View Room, 1 King,",
+        "bookCode": "NYSJ00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "5,512.99",
+        "bedType": "King",
+        "rateDaily": "1,489.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=SVUD00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-The Ritz-Carlton Club Lounge Access for 2, 1-King, Mini fridge, 440sqft/40sqm, Wireless",
+        "rateCode": "2SH",
+        "roomType": "Unspecified",
+        "images": [],
+        "roomName": "The Ritz",
+        "bookCode": "SVUD00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "5,584.21",
+        "bedType": "Queen",
+        "rateDaily": "1,509.00",
+        "bedNum": "2",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=ZXXH00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Fire Lanai Partial Ocean View Room with two-queens, 2 Queen, Mini fridge, 440sqft/40sqm,",
+        "rateCode": "2SH",
+        "roomType": "Standard",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Fire Lanai Partial Ocean View Room with two",
+        "bookCode": "ZXXH00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "5,869.12",
+        "bedType": "King",
+        "rateDaily": "1,589.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=SVUE00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-The Ritz-Carlton Club Lounge Access for 2, 1-King, Mini fridge, 440sqft/40sqm, Wireless",
+        "rateCode": "2SH",
+        "roomType": "Unspecified",
+        "images": [],
+        "roomName": "The Ritz",
+        "bookCode": "SVUE00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "7,133.40",
+        "bedType": "Bed type can vary",
+        "rateDaily": "1,944.00",
+        "bedNum": "*",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=ZXXL00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Garden View Suite overlooks the tropical-gardens, West Maui Mountains or Golf course,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/795CB5A73C954630853BBF4B52894561/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View and Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B103F42EE29B44A4A3E9479333933E82/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/210CFFB06F2F4390BFDF6DFE0DC27452/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/73CECE67D3154079B2FCD7157AD919E0/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2B976ECA512A4F5EAC04F575CF4A56FF/E.jpg"
+          }
+        ],
+        "roomName": "Garden View Suite overlooks the tropical",
+        "bookCode": "ZXXL00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "7,133.40",
+        "bedType": "King",
+        "rateDaily": "1,944.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=ZXXP00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Residential Garden View Suite overlooks resort-gardens or mountains, 1 King, Sofa bed,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/795CB5A73C954630853BBF4B52894561/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View and Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B103F42EE29B44A4A3E9479333933E82/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/210CFFB06F2F4390BFDF6DFE0DC27452/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/73CECE67D3154079B2FCD7157AD919E0/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2B976ECA512A4F5EAC04F575CF4A56FF/E.jpg"
+          }
+        ],
+        "roomName": "Residential Garden View Suite overlooks resort",
+        "bookCode": "ZXXP00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "7,471.73",
+        "bedType": "King",
+        "rateDaily": "2,039.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=ZXXM00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Ocean View Suite offers a partial oceanview-from the guest room lanai, 1 King, Sofa bed,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Ocean View Suite offers a partial oceanview",
+        "bookCode": "ZXXM00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "7,471.73",
+        "bedType": "King",
+        "rateDaily": "2,039.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=ZXXN00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Residential Ocean View Suite, 1 King, Sofa-bed, Microwave, 900sqft/81sqm, Living/sitting",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Residential Ocean View Suite, 1 King, Sofa",
+        "bookCode": "ZXXN00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "8,201.81",
+        "bedType": "Bed type can vary",
+        "rateDaily": "2,244.00",
+        "bedNum": "3",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35C00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-Garden View Suite overlooks the tropical-gardens, West Maui Mountains or Golf course,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/795CB5A73C954630853BBF4B52894561/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View and Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B103F42EE29B44A4A3E9479333933E82/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/210CFFB06F2F4390BFDF6DFE0DC27452/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/73CECE67D3154079B2FCD7157AD919E0/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2B976ECA512A4F5EAC04F575CF4A56FF/E.jpg"
+          }
+        ],
+        "roomName": "Garden View Suite overlooks the tropical",
+        "bookCode": "Z35C00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "8,201.81",
+        "bedType": "King",
+        "rateDaily": "2,244.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35F00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-Residential Garden View Suite overlooks resort-gardens or mountains, 1 King, Sofa bed,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/795CB5A73C954630853BBF4B52894561/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View and Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B103F42EE29B44A4A3E9479333933E82/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/210CFFB06F2F4390BFDF6DFE0DC27452/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/73CECE67D3154079B2FCD7157AD919E0/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2B976ECA512A4F5EAC04F575CF4A56FF/E.jpg"
+          }
+        ],
+        "roomName": "Residential Garden View Suite overlooks resort",
+        "bookCode": "Z35F00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "8,540.14",
+        "bedType": "King",
+        "rateDaily": "2,339.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35D00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-Ocean View Suite offers a partial oceanview-from the guest room lanai, 1 King, Sofa bed,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Ocean View Suite offers a partial oceanview",
+        "bookCode": "Z35D00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "8,540.14",
+        "bedType": "King",
+        "rateDaily": "2,339.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35G00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-Residential Ocean View Suite, 1 King, Sofa-bed, Microwave, 900sqft/81sqm, Living/sitting",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Residential Ocean View Suite, 1 King, Sofa",
+        "bookCode": "Z35G00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "8,718.21",
+        "bedType": "King",
+        "rateDaily": "2,389.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=QSGK00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Ocean Front Suite with Club Lounge Access for-2 included, 1 King, Sofa bed, Bathrooms: 2,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Ocean Front Suite with Club Lounge Access for",
+        "bookCode": "QSGK00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "8,718.21",
+        "bedType": "King",
+        "rateDaily": "2,389.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=QSGL00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Residential Ocean Front Suite with full view-of the Pacific Ocean, 1 King, Sofa bed,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Residential Ocean Front Suite with full view",
+        "bookCode": "QSGL00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "9,074.35",
+        "bedType": "King",
+        "rateDaily": "2,489.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35E00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-Ocean Front Suite with Club Lounge Access for-2 included, 1 King, Sofa bed, Bathrooms: 2,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Ocean Front Suite with Club Lounge Access for",
+        "bookCode": "Z35E00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "9,074.35",
+        "bedType": "King",
+        "rateDaily": "2,489.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35H00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-Residential Ocean Front Suite with full view-of the Pacific Ocean, 1 King, Sofa bed,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Residential Ocean Front Suite with full view",
+        "bookCode": "Z35H00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "9,448.29",
+        "bedType": "Bed type can vary",
+        "rateDaily": "2,594.00",
+        "bedNum": "*",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=NSZC00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Two Bedroom Residential Garden View Suite-overlooks resort gardens or mountains,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/795CB5A73C954630853BBF4B52894561/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View and Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B103F42EE29B44A4A3E9479333933E82/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/210CFFB06F2F4390BFDF6DFE0DC27452/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/73CECE67D3154079B2FCD7157AD919E0/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2B976ECA512A4F5EAC04F575CF4A56FF/E.jpg"
+          }
+        ],
+        "roomName": "Two Bedroom Residential Garden View Suite",
+        "bookCode": "NSZC00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "10,338.63",
+        "bedType": "Bed type can vary",
+        "rateDaily": "2,844.00",
+        "bedNum": "*",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=NSZO00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Two Bedroom Residential Ocean View Suite-offers a Partial Ocean View from Lanai,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Two Bedroom Residential Ocean View Suite",
+        "bookCode": "NSZO00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "11,389.23",
+        "bedType": "King",
+        "rateDaily": "3,139.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=ZXXK00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Fire Lanai Ocean Front Suite with Club Lounge-Access for 2 included, 1 King, Sofa bed, Mini",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Fire Lanai Ocean Front Suite with Club Lounge",
+        "bookCode": "ZXXK00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "11,585.10",
+        "bedType": "Bed type can vary",
+        "rateDaily": "3,194.00",
+        "bedNum": "3",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35K00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-Two Bedroom Residential Garden View Suite-overlooks resort gardens or mountains,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/795CB5A73C954630853BBF4B52894561/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View and Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B103F42EE29B44A4A3E9479333933E82/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite Living Space",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/210CFFB06F2F4390BFDF6DFE0DC27452/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/73CECE67D3154079B2FCD7157AD919E0/E.jpg"
+          },
+          {
+            "imgDesc": "Garden View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2B976ECA512A4F5EAC04F575CF4A56FF/E.jpg"
+          }
+        ],
+        "roomName": "Two Bedroom Residential Garden View Suite",
+        "bookCode": "Z35K00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "11,745.37",
+        "bedType": "King",
+        "rateDaily": "3,239.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35N00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-Fire Lanai Ocean Front Suite with Club Lounge-Access for 2 included, 1 King, Sofa bed, Mini",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Fire Lanai Ocean Front Suite with Club Lounge",
+        "bookCode": "Z35N00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "12,475.44",
+        "bedType": "Double",
+        "rateDaily": "3,444.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=NSZP00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, deposit required-Two Bedroom Residential Ocean Front Suite with-full view of the Pacific Ocean from",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Two Bedroom Residential Ocean Front Suite with",
+        "bookCode": "NSZP00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "12,475.44",
+        "bedType": "Bed type can vary",
+        "rateDaily": "3,444.00",
+        "bedNum": "3",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35L00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-Two Bedroom Residential Ocean View Suite-offers a Partial Ocean View from Lanai,",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Two Bedroom Residential Ocean View Suite",
+        "bookCode": "Z35L00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "12,831.58",
+        "bedType": "Double",
+        "rateDaily": "3,544.00",
+        "bedNum": "3",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35M00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-Two Bedroom Residential Ocean Front Suite with-full view of the Pacific Ocean from",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/9B1EC765122E437E80DDEEFBB2377E8D/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/A80D4416E4DF4A27800B310112DF9115/E.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/FB351FA6C1C042A9AC6646900FB00CCD/F.jpg"
+          },
+          {
+            "imgDesc": "Residential Ocean View Suite",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/B90BB27087204F1F93F8B9A39DA85457/E.jpg"
+          },
+          {
+            "imgDesc": "Ocean From Suite Living Area",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/2BB1B10DEA6240D783E90583F56B3F9A/E.jpg"
+          }
+        ],
+        "roomName": "Two Bedroom Residential Ocean Front Suite with",
+        "bookCode": "Z35M00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "14,594.45",
+        "bedType": "Double",
+        "rateDaily": "4,039.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=NYSI00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, prepay in full, non-refundable-Ritz-Carlton Suite with spectacular views of-the Pacific Ocean and Club Lounge Access for",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [],
+        "roomName": "Ritz",
+        "bookCode": "NYSI00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "14,950.59",
+        "bedType": "Bed type can vary",
+        "rateDaily": "4,139.00",
+        "bedNum": "3",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35I00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-Ritz-Carlton Suite with spectacular views of-the Pacific Ocean and Club Lounge Access for",
+        "rateCode": "2SH",
+        "roomType": "Suite",
+        "images": [],
+        "roomName": "Ritz",
+        "bookCode": "Z35I00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "19,936.49",
+        "bedType": "King",
+        "rateDaily": "5,539.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=NYSU00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Network, prepay in full, non-refundable-The Royal Pacific Suite full view of the-Pacific Ocean, Bedroom 1: 1 King, Bedroom 2:",
+        "rateCode": "2SH",
+        "roomType": "Concierge/Executive Suite",
+        "images": [
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/is/image/marriotts7prod/rz-jhmrz-rz-jhmrz-a-27219-15994:Classic-Hor?wid=1336&fit=constrain"
+          },
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/content/dam/marriott-renditions/JHMRZ/jhmrz-suite-0017-hor-clsc.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=1336px:*"
+          },
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/content/dam/marriott-renditions/JHMRZ/jhmrz-kitchen-2437-hor-clsc.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=1336px:*"
+          },
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/is/image/marriotts7prod/rz-jhmrz-rz-jhmrz-a-11970-21633:Classic-Hor?wid=1336&fit=constrain"
+          },
+          {
+            "imgDesc": "Suite Kids Games",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/BC17D6210B8C4E9185B2D7637CBB6988/E.jpg"
+          }
+        ],
+        "roomName": "The Royal Pacific Suite full view of the",
+        "bookCode": "NYSU00"
+      },
+      {
+        "currency": "USD",
+        "rateTotal": "20,292.63",
+        "bedType": "King",
+        "rateDaily": "5,639.00",
+        "bedNum": "1",
+        "bookingURL": "https://whatahotel.com/booking/booking_info.cfm?bypass=1&room=Z35J00&rate=2SH&hotel=951&checkin=2027-03-29&checkout=2027-04-01&guests=2&cfid=<scrubbed>&cftoken=<scrubbed>",
+        "roomDesc": "-WhataHotel! Travel Discover the Club, includes Club access-The Royal Pacific Suite full view of the-Pacific Ocean, Bedroom 1: 1 King, Bedroom 2:",
+        "rateCode": "2SH",
+        "roomType": "Concierge/Executive Suite",
+        "images": [
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/is/image/marriotts7prod/rz-jhmrz-rz-jhmrz-a-27219-15994:Classic-Hor?wid=1336&fit=constrain"
+          },
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/content/dam/marriott-renditions/JHMRZ/jhmrz-suite-0017-hor-clsc.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=1336px:*"
+          },
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/content/dam/marriott-renditions/JHMRZ/jhmrz-kitchen-2437-hor-clsc.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=1336px:*"
+          },
+          {
+            "imgDesc": "1 Bedroom Residential Suite",
+            "imgSource": "WAH",
+            "imgFile": "https://cache.marriott.com/is/image/marriotts7prod/rz-jhmrz-rz-jhmrz-a-11970-21633:Classic-Hor?wid=1336&fit=constrain"
+          },
+          {
+            "imgDesc": "Suite Kids Games",
+            "imgSource": "AMA",
+            "imgFile": "https://d2573qu6qrjt8c.cloudfront.net/BC17D6210B8C4E9185B2D7637CBB6988/E.jpg"
+          }
+        ],
+        "roomName": "The Royal Pacific Suite full view of the",
+        "bookCode": "Z35J00"
+      }
+    ],
+    "status": {
+      "connection": 1,
+      "message": "Success",
+      "code": "200",
+      "method": "rates"
+    },
+    "session": {
+      "sessionID": "0",
+      "sessionName": "Guest",
+      "sessionAccess": "0",
+      "cfID": "<scrubbed>",
+      "cfToken": "<scrubbed>"
+    },
+    "amadeus": {
+      "codes": "RZJHMKAP",
+      "amaID": "<scrubbed>",
+      "amaToken": "<scrubbed>"
+    },
+    "result": {
+      "failed": 2,
+      "filters": "2SH;SGP",
+      "count": 36,
+      "filtered": 63
+    },
+    "hotel": {
+      "image": "https://whatahotel.com/content/hotels/951/RCKPALU_00165.jpg",
+      "city": "Maui",
+      "id": "951",
+      "name": "The Ritz Carlton Kapalua"
+    },
+    "stay": {
+      "ratesURL": "https://whatahotel.com/booking/showRates.cfm?hotelID=951&guests=2&checkIn=2027-03-29&checkOut=2027-04-01",
+      "check-in": "2027-03-29",
+      "nights": "3",
+      "guests": "2",
+      "check-out": "2027-04-01"
+    }
+  }
+}

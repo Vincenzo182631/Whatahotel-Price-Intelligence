@@ -1,0 +1,365 @@
+/* WhataHotel Price Intelligence widget.
+   Style tokens are CSS custom properties so the host page can restyle the
+   widget to match its own design language without touching this file. */
+
+.wahpi {
+  --wahpi-fg: #16181d;
+  --wahpi-muted: #5b6270;
+  --wahpi-line: #e2e5ea;
+  --wahpi-bg: #ffffff;
+  --wahpi-bg-soft: #f6f7f9;
+  --wahpi-accent: #0b5cad;
+  --wahpi-good: #1a7f52;
+  --wahpi-warn: #9a6300;
+  --wahpi-bad: #a8322a;
+  --wahpi-radius: 10px;
+  --wahpi-font:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  font-family: var(--wahpi-font);
+  color: var(--wahpi-fg);
+  background: var(--wahpi-bg);
+  border: 1px solid var(--wahpi-line);
+  border-radius: var(--wahpi-radius);
+  padding: 20px;
+  max-width: 680px;
+  line-height: 1.45;
+  box-sizing: border-box;
+}
+
+.wahpi *,
+.wahpi *::before,
+.wahpi *::after {
+  box-sizing: inherit;
+}
+
+.wahpi h2,
+.wahpi h3 {
+  margin: 0;
+  font-weight: 600;
+}
+.wahpi h2 {
+  font-size: 1.15rem;
+}
+.wahpi h3 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--wahpi-muted);
+  margin-bottom: 8px;
+}
+
+.wahpi__section {
+  padding: 16px 0;
+  border-top: 1px solid var(--wahpi-line);
+}
+.wahpi__section:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+/* A · subject */
+.wahpi__subject-meta {
+  color: var(--wahpi-muted);
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+.wahpi__terms {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 3px 9px;
+  background: var(--wahpi-bg-soft);
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+.wahpi__auto-room {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--wahpi-muted);
+}
+
+/* B · price */
+.wahpi__price {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.wahpi__price-nightly {
+  font-size: 2.1rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.wahpi__price-unit,
+.wahpi__price-total {
+  color: var(--wahpi-muted);
+  font-size: 0.9rem;
+}
+.wahpi__tax {
+  font-size: 0.82rem;
+  color: var(--wahpi-muted);
+  margin-top: 2px;
+}
+.wahpi__effective {
+  margin-top: 8px;
+  font-size: 0.88rem;
+  background: var(--wahpi-bg-soft);
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+/* C · verdict */
+.wahpi__verdict {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+}
+.wahpi__metric {
+  background: var(--wahpi-bg-soft);
+  border-radius: 8px;
+  padding: 12px;
+}
+.wahpi__metric-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--wahpi-muted);
+}
+.wahpi__metric-value {
+  font-size: 1.7rem;
+  font-weight: 650;
+  line-height: 1.1;
+  margin-top: 2px;
+}
+.wahpi__metric-value--band-only {
+  font-size: 1.15rem;
+  padding-top: 8px;
+}
+.wahpi__metric-sub {
+  font-size: 0.84rem;
+  margin-top: 2px;
+}
+.wahpi__metric-note {
+  font-size: 0.76rem;
+  color: var(--wahpi-muted);
+  margin-top: 6px;
+}
+
+/* Colour is reinforcement only — every band also carries a text label. */
+.wahpi--good {
+  color: var(--wahpi-good);
+}
+.wahpi--warn {
+  color: var(--wahpi-warn);
+}
+.wahpi--bad {
+  color: var(--wahpi-bad);
+}
+.wahpi--neutral {
+  color: var(--wahpi-fg);
+}
+
+.wahpi__recommendation {
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.wahpi__recommendation-label {
+  font-size: 1.15rem;
+  font-weight: 650;
+}
+.wahpi__recommendation-sub {
+  font-size: 0.84rem;
+  color: var(--wahpi-muted);
+  margin-top: 2px;
+}
+
+/* D · explanation */
+.wahpi__explanation {
+  font-size: 0.98rem;
+}
+
+/* E · reasons */
+.wahpi__reasons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.wahpi__reason {
+  display: flex;
+  gap: 9px;
+  font-size: 0.92rem;
+  align-items: flex-start;
+}
+.wahpi__reason-mark {
+  font-weight: 700;
+  min-width: 1.1em;
+  text-align: center;
+}
+
+/* F · history */
+.wahpi__chart-controls {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.wahpi__chart-btn {
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 4px 11px;
+  border: 1px solid var(--wahpi-line);
+  background: var(--wahpi-bg);
+  border-radius: 999px;
+  cursor: pointer;
+  color: inherit;
+}
+.wahpi__chart-btn[aria-pressed='true'] {
+  background: var(--wahpi-fg);
+  color: var(--wahpi-bg);
+  border-color: var(--wahpi-fg);
+}
+.wahpi__chart {
+  width: 100%;
+  height: 168px;
+  display: block;
+  overflow: visible;
+}
+.wahpi__chart-summary {
+  font-size: 0.85rem;
+  color: var(--wahpi-muted);
+  margin-top: 8px;
+}
+.wahpi__table-toggle {
+  font: inherit;
+  font-size: 0.82rem;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--wahpi-accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.wahpi__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-top: 10px;
+}
+.wahpi__table th,
+.wahpi__table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--wahpi-line);
+}
+
+/* G · stats */
+.wahpi__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+}
+.wahpi__stat-label {
+  font-size: 0.78rem;
+  color: var(--wahpi-muted);
+}
+.wahpi__stat-value {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+/* H · provenance */
+.wahpi__provenance {
+  font-size: 0.84rem;
+  color: var(--wahpi-muted);
+}
+.wahpi__caveats {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.wahpi__caveat {
+  background: var(--wahpi-bg-soft);
+  border-left: 3px solid var(--wahpi-warn);
+  padding: 7px 10px;
+  border-radius: 0 6px 6px 0;
+  font-size: 0.86rem;
+  color: var(--wahpi-fg);
+}
+
+/* I · actions */
+.wahpi__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.wahpi__btn {
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--wahpi-accent);
+  text-decoration: none;
+  display: inline-block;
+}
+.wahpi__btn--primary {
+  background: var(--wahpi-accent);
+  color: #fff;
+}
+.wahpi__btn--secondary {
+  background: transparent;
+  color: var(--wahpi-accent);
+}
+.wahpi__btn--disabled {
+  border-color: var(--wahpi-line);
+  color: var(--wahpi-muted);
+  background: var(--wahpi-bg-soft);
+  cursor: not-allowed;
+}
+
+/* Loading skeleton — never a partial verdict. */
+.wahpi__skeleton {
+  background: linear-gradient(90deg, #eef0f3 25%, #f7f8fa 50%, #eef0f3 75%);
+  background-size: 200% 100%;
+  animation: wahpi-shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+@keyframes wahpi-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wahpi__skeleton {
+    animation: none;
+  }
+}
+
+.wahpi__notice {
+  padding: 14px;
+  background: var(--wahpi-bg-soft);
+  border-radius: 8px;
+  font-size: 0.94rem;
+}
+
+.wahpi__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

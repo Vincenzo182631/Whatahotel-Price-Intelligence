@@ -1,0 +1,14 @@
+{
+  "name": "@wahpi/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "scripts": {
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@wahpi/core": "*",
+    "@wahpi/data": "*"
+  }
+}

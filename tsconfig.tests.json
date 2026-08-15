@@ -1,0 +1,19 @@
+{
+  // Tests import package SOURCE, not the built output, so they are not part of
+  // the project-reference graph in tsconfig.json and `tsc --build` never sees
+  // them. Without this, a test can drift out of sync with the interface it
+  // exercises and nothing complains until the assertion happens to fail —
+  // which for a wrong-shaped options object is never.
+  //
+  // Type-check only; emits nothing.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["node"]
+  },
+  "include": ["tests/**/*.ts", "packages/**/*.test.ts"]
+}

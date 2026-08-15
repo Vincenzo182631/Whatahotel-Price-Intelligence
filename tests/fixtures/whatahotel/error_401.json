@@ -1,0 +1,17 @@
+{
+  "wahData": {
+    "status": {
+      "connection": 0,
+      "code": "401",
+      "method": "rates",
+      "message": "API Key not recognized. Authorization denied."
+    },
+    "session": {
+      "sessionID": "0",
+      "sessionName": "Guest",
+      "sessionAccess": "0",
+      "cfID": "<scrubbed>",
+      "cfToken": "<scrubbed>"
+    }
+  }
+}

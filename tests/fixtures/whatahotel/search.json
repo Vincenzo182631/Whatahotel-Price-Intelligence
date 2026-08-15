@@ -1,0 +1,467 @@
+{
+  "wahData": {
+    "status": {
+      "connection": 1,
+      "message": "Success",
+      "code": "200",
+      "method": "search"
+    },
+    "hotels": [
+      {
+        "hotelID": "6434",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade if Available at CheckIn"
+          },
+          {
+            "perk": "Complimentary Daily Breakfast for Two"
+          },
+          {
+            "perk": "A 100 Hotel Credit"
+          },
+          {
+            "perk": "Free WiFi"
+          },
+          {
+            "perk": "Late checkout, based on availability"
+          },
+          {
+            "perk": "The hotel designates whether Breakfast will be Full American or Continental Breakfast and the venue where the free breakfast is served  The Credit is once per stay, regardless of how many nights the reserved stay is for If multiple reservations are made and these result in a  backt0back stay over consecutive days, the hotel will only provide a onetime credit over the duration of the entire stay The credit can be used towards spa treatments, barrestaurant charges and more The credit cannot be redeemed against the room rate, resort fee or taxes"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/6434/The-Ritz-Carlton-Portland.html",
+        "ama-property": "RZPDXRZZ",
+        "ama-location": "PDX",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/6434/The-Ritz-Carlton-Portland.html",
+        "name": "The Ritz-Carlton, Portland",
+        "region": "North America ",
+        "loc-long": "-122.683271",
+        "city": "Portland",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/6434/pdx40-exterior-612263.jpeg",
+        "secondary-desc": "NULL",
+        "address": "900 SW Washington Street, Portland, OR",
+        "loc-lat": "45.520877"
+      },
+      {
+        "hotelID": "6442",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade if Available at CheckIn"
+          },
+          {
+            "perk": "Complimentary Daily Breakfast for Two"
+          },
+          {
+            "perk": "A 100 Hotel Credit"
+          },
+          {
+            "perk": "Free WiFi"
+          },
+          {
+            "perk": "Late checkout, based on availability"
+          },
+          {
+            "perk": "The hotel designates whether Breakfast will be Full American or Continental Breakfast and the venue where the free breakfast is served  The Credit is once per stay, regardless of how many nights the reserved stay is for If multiple reservations are made and these result in a  backt0back stay over consecutive days, the hotel will only provide a onetime credit over the duration of the entire stay The credit can be used towards spa treatments, barrestaurant charges and more The credit cannot be redeemed against the room rate, resort fee or taxes"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/6442/Rissai-Valley-a-Ritz-Carlton-Reserve.html",
+        "ama-property": "RZJZHRZZ",
+        "ama-location": "JZH",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/6442/Rissai-Valley-a-Ritz-Carlton-Reserve.html",
+        "name": "Rissai Valley, a Ritz-Carlton Reserve",
+        "region": "Asia and The Pacific",
+        "loc-long": "103.863971",
+        "city": "Jiuzhaigou ",
+        "country": "China",
+        "images": "http://www.whatahotel.com/content/hotels/6442/rz-jzhrz-villa-exterior-18673-92931_Classic-Hor.jpeg",
+        "secondary-desc": "NULL",
+        "address": "Zhongcha Valley, Zhangzha Town, Jiuzhaigou, Sichuan, China",
+        "loc-lat": "33.294519"
+      },
+      {
+        "hotelID": "6643",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade if Available at CheckIn"
+          },
+          {
+            "perk": "Complimentary Daily Full Breakfast for Two at Lemonia"
+          },
+          {
+            "perk": "A 100 Hotel Credit"
+          },
+          {
+            "perk": "Free WiFi"
+          },
+          {
+            "perk": "Late checkout, based on availability"
+          },
+          {
+            "perk": "The Credit is once per stay, regardless of how many nights the reserved stay is for If multiple reservations are made and these result in a  backtoback stay over consecutive days, the hotel will only provide a onetime credit over the duration of the entire stay The credit can be used towards spa treatments, barrestaurant charges and more The credit cannot be redeemed against the room rate, resort fee or taxes"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/6643/The-Ritz-Carlton-Naples-Tiburon.html",
+        "ama-property": "RZAPFGRZ",
+        "ama-location": "APF",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/6643/The-Ritz-Carlton-Naples-Tiburon.html",
+        "name": "The Ritz-Carlton Naples, Tiburon",
+        "region": "North America ",
+        "loc-long": "-81.7665105",
+        "city": "Naples FL",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/6643/the-ritz-carlton-golf.jpg",
+        "secondary-desc": "NULL",
+        "address": "2600 Tiburon Dr, Naples, FL 34109",
+        "loc-lat": "26.249055"
+      },
+      {
+        "hotelID": "6652",
+        "perks": [
+          {
+            "perk": "Exclusive Suite Upgrade Rate"
+          },
+          {
+            "perk": "All Meals  Drinks   even Gratuities are Included"
+          },
+          {
+            "perk": "A 300 OnBoard Creditt"
+          },
+          {
+            "perk": "Free Access to Starlink premium WiFi Service"
+          },
+          {
+            "perk": "Bonvoy Rewards Points will be earned on any booking"
+          },
+          {
+            "perk": "Suite Upgrade Rate offered 30 days prior to sailing, subject to availability  BROWSE the EBROCHURE Copy  Paste this link in your browser  httpswwwritzcarltonyachtcollectioncomebrochure"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/6652/Ritz-Carlton-Yacht-Collection.html",
+        "ama-property": "NULL",
+        "ama-location": "ATH",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/6652/Ritz-Carlton-Yacht-Collection.html",
+        "name": "Ritz Carlton Yacht Collection",
+        "region": "Europe",
+        "loc-long": "",
+        "city": "Athens",
+        "country": "Greece",
+        "images": "http://www.whatahotel.com/content/hotels/6652/zzz_Ritz_Yacht.jpg",
+        "secondary-desc": "NULL",
+        "address": "",
+        "loc-lat": ""
+      },
+      {
+        "hotelID": "6669",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade if Available at CheckIn"
+          },
+          {
+            "perk": "Complimentary Daily Breakfast for Two"
+          },
+          {
+            "perk": "A 100 Hotel Credit"
+          },
+          {
+            "perk": "Free WiFi"
+          },
+          {
+            "perk": "Late checkout, based on availability"
+          },
+          {
+            "perk": "The hotel designates whether Breakfast will be Full American or Continental Breakfast and the venue where the free breakfast is served  The Credit is once per stay, regardless of how many nights the reserved stay is for If multiple reservations are made and these result in a  backtoback stay over consecutive days, the hotel will only provide a onetime credit over the duration of the entire stay The credit can be used towards spa treatments, barrestaurant charges and more The credit cannot be redeemed against the room rate, resort fee or taxes"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/6669/Nujuma-a-Ritz-Carlton-Reserve.html",
+        "ama-property": "RZEJHRZZ",
+        "ama-location": "EJH",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/6669/Nujuma-a-Ritz-Carlton-Reserve.html",
+        "name": "Nujuma, a Ritz-Carlton Reserve",
+        "region": "Middle East",
+        "loc-long": "36.7735525",
+        "city": "Ummahat Island",
+        "country": "Saudi Arabia",
+        "images": "http://www.whatahotel.com/content/hotels/6669/rz-ejhrz-beach-villa---exteri16721-80458.jpeg",
+        "secondary-desc": "NULL",
+        "address": "Red Sea? Ummahat Islands 2-3 48501, Saudi Arabia",
+        "loc-lat": "25.5280447"
+      },
+      {
+        "hotelID": "6679",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade subject to availability at CheckIn"
+          },
+          {
+            "perk": "Complimentary Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 100 Hotel Credit  Customized Welcome Amenity"
+          },
+          {
+            "perk": "Free Basic WiFi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails on a specific request only"
+          },
+          {
+            "perk": "Bonvoy Rewards Points will be earned on any bookingThe Free Breakfast x 2 Daily may be Full Breakfast or Continental It is at the hotels sole discretion at a specific venue on property City hotels usually offer Continental Breakfast and Resorts offer Full Breakfast The 100 Hotel Credit cannot be applied to any part of the room rate or taxes Each Hotel specifies how the credit can be redeemed during your stay"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/6679/Ritz-Carlton-Baku.html",
+        "ama-property": "RZGYDRZL",
+        "ama-location": "GYD",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/6679/Ritz-Carlton-Baku.html",
+        "name": "Ritz Carlton Baku",
+        "region": "Middle East",
+        "loc-long": "49.866848805888104",
+        "city": "Baku",
+        "country": "Azerbaijan",
+        "images": "http://www.whatahotel.com/content/hotels/6679/Rotz_Carlton_Baku.jpg",
+        "secondary-desc": "NULL",
+        "address": "Nasimi District, 3 Babek Ave, Baku 1025, Azerbaijan",
+        "loc-lat": "40.38977658861049"
+      },
+      {
+        "hotelID": "6705",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade subject to availability at CheckIn"
+          },
+          {
+            "perk": "Complimentary Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 100 Hotel Credit  Customized Welcome Amenity"
+          },
+          {
+            "perk": "Free Basic WiFi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails on a specific request only"
+          },
+          {
+            "perk": "Bonvoy Rewards Points will be earned on any bookingThe Free Breakfast x 2 Daily may be Full Breakfast or Continental It is at the hotels sole discretion at a specific venue on property The 100 Hotel Credit cannot be applied to any part of the room rate or taxes Each Hotel specifies how the credit can be redeemed during your stay This will be a onetime credit for the entire duration of a stay even if multiple, backtoback reservations are booked over consecutive days"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/6705/Ritz-Carlton-Residences-Turks-Caicos.html",
+        "ama-property": "RZPLSRRZ",
+        "ama-location": "PLS",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/6705/Ritz-Carlton-Residences-Turks-Caicos.html",
+        "name": "Ritz Carlton Residences, Turks & Caicos",
+        "region": "Caribbean",
+        "loc-long": "-72.17791063642805",
+        "city": "Turks & Caicos",
+        "country": "Turks and Caicos Islands",
+        "images": "http://www.whatahotel.com/content/hotels/6705/rc_turks.jpg",
+        "secondary-desc": "NULL",
+        "address": "QRWC+WQ7, Grace Bay Rd, Grace Bay TKCA 1ZZ, Turks & Caicos Islands",
+        "loc-lat": "21.796535999914482"
+      },
+      {
+        "hotelID": "6706",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade subject to availability at CheckIn"
+          },
+          {
+            "perk": "Complimentary Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 100 Hotel Credit  Customized Welcome Amenity"
+          },
+          {
+            "perk": "Free Basic WiFi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails on a specific request only"
+          },
+          {
+            "perk": "Bonvoy Rewards Points will be earned on any bookingThe Free Breakfast x 2 Daily may be Full Breakfast or Continental It is at the hotels sole discretion at a specific venue on property The 100 Hotel Credit cannot be applied to any part of the room rate or taxes Each Hotel specifies how the credit can be redeemed during your stay This will be a onetime credit for the entire duration of a stay even if multiple, backtoback reservations are booked over consecutive days"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/6706/The-Ritz-Carlton-Residences-Mexico-City.html",
+        "ama-property": "RZMEXRRZ",
+        "ama-location": "MEX",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/6706/The-Ritz-Carlton-Residences-Mexico-City.html",
+        "name": "The Ritz-Carlton Residences Mexico City",
+        "region": "North America ",
+        "loc-long": "-99.17572679272563",
+        "city": "Mexico City",
+        "country": "Mexico",
+        "images": "http://www.whatahotel.com/content/hotels/6706/ritz-carlton-mex2.jpg",
+        "secondary-desc": "NULL",
+        "address": "Av. P.\u00ba de la Reforma 509-Piso 12, Cuauht\u00e9moc, 06500 Ciudad de M\u00e9xico, CDMX, Mexico",
+        "loc-lat": "19.423976939865458"
+      },
+      {
+        "hotelID": "6766",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade subject to availability at CheckIn"
+          },
+          {
+            "perk": "Complimentary Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 100 Hotel Credit  Customized Welcome Amenity"
+          },
+          {
+            "perk": "Free Basic WiFi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails on a specific request only"
+          },
+          {
+            "perk": "Bonvoy Rewards Points will be earned on any bookingThe Free Breakfast x 2 Daily may be Full Breakfast or Continental It is at the hotels sole discretion at a specific venue on property The 100 Hotel Credit cannot be applied to any part of the room rate or taxes Each Hotel specifies how the credit can be redeemed during your stay This will be a onetime credit for the entire duration of a stay even if multiple, backtoback reservations are booked over consecutive days"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/6766/Ritz-Carlton-Maldives-Fari-Islands.html",
+        "ama-property": "RZMLERAZ",
+        "ama-location": "MLE",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/6766/Ritz-Carlton-Maldives-Fari-Islands.html",
+        "name": "Ritz-Carlton Maldives, Fari Islands",
+        "region": "Asia and The Pacific",
+        "loc-long": "73.29737712477329",
+        "city": "Maldives",
+        "country": "Maldives",
+        "images": "http://www.whatahotel.com/content/hotels/6766/rz-mlera-captivating-overwater-bli-13306_Feature-Hor.jpg",
+        "secondary-desc": "NULL",
+        "address": "The Ritz-Carlton Maldives, Fari Islands, Fari Islands North, Male 20013, Maldives",
+        "loc-lat": "5.154176556727201"
+      },
+      {
+        "hotelID": "6781",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade if Available at CheckIn"
+          },
+          {
+            "perk": "Daily Reserve Continental breakfast for two guests at Puna Restaurant"
+          },
+          {
+            "perk": "A 100 Hotel Credit"
+          },
+          {
+            "perk": "Free WiFi"
+          },
+          {
+            "perk": "Late checkout, based on availability"
+          },
+          {
+            "perk": "The Credit is once per stay, regardless of how many nights the reserved stay is for If multiple reservations are made and these result in a  backt0back stay over consecutive days, the hotel will only provide a onetime credit over the duration of the entire stay The credit can be used towards spa treatments, barrestaurant charges and more The credit cannot be redeemed against the room rate, resort fee or taxes"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/6781/Nekajui-A-Ritz-Carlton-Reserve.html",
+        "ama-property": "RZLIRRZZ",
+        "ama-location": "LIR",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/6781/Nekajui-A-Ritz-Carlton-Reserve.html",
+        "name": "Nekajui, A Ritz Carlton Reserve",
+        "region": "Central America",
+        "loc-long": "-85.6833384",
+        "city": "Peninsula Papagayo",
+        "country": "Costa Rica",
+        "images": "http://www.whatahotel.com/content/hotels/6781/rz-lirrz-s020-ext-courtyard-27029-57366-Wide-Hor.jpeg",
+        "secondary-desc": "NULL",
+        "address": "Peninsula Papagayo, 253 National Route, Provincia de Guanacaste, Liberia, 50104, Costa Rica",
+        "loc-lat": "10.6300867"
+      },
+      {
+        "hotelID": "6807",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade if Available at CheckIn"
+          },
+          {
+            "perk": "Complimentary Daily Breakfast for Two"
+          },
+          {
+            "perk": "A 100 Hotel Credit"
+          },
+          {
+            "perk": "Free WiFi"
+          },
+          {
+            "perk": "Late checkout, based on availability"
+          },
+          {
+            "perk": "The hotel designates whether Breakfast will be Full American or Continental Breakfast and the venue where the free breakfast is served  The Credit is once per stay, regardless of how many nights the reserved stay is for If multiple reservations are made and these result in a  backtoback stay over consecutive days, the hotel will only provide a onetime credit over the duration of the entire stay The credit can be used towards barrestaurant charges and transportation The credit cannot be redeemed against the room rate, resort fee or taxes"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/6807/The-Ritz-Carlton-Suzhou.html",
+        "ama-property": "RZSZVSZZ",
+        "ama-location": "SZV",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/6807/The-Ritz-Carlton-Suzhou.html",
+        "name": "The Ritz-Carlton, Suzhou",
+        "region": "Asia and The Pacific",
+        "loc-long": "120.584247",
+        "city": "Suzhou",
+        "country": "China",
+        "images": "http://www.whatahotel.com/content/hotels/6807/rz-wuxsz-building-exterior-33425_Wide-Hor.jpeg",
+        "secondary-desc": "NULL",
+        "address": "369 Guangji S Rd, Gusu District, Suzhou, Jiangsu, China, 215000",
+        "loc-lat": "31.298689"
+      },
+      {
+        "hotelID": "7060",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade subject to availability at CheckIn"
+          },
+          {
+            "perk": "Complimentary Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 100 Hotel Credit  Customized Welcome Amenity"
+          },
+          {
+            "perk": "Free Basic WiFi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails on a specific request only"
+          },
+          {
+            "perk": "Bonvoy Rewards Points will be earned on any bookingThe Free Breakfast x 2 Daily Daily breakfast for two people is served at YUKIBANA Restaurant  Select from a variety dishes of Western and Japanese menu  The 100 Hotel Credit cannot be applied to any part of the room rate or taxes Each Hotel specifies how the credit can be redeemed during your stay"
+          }
+        ],
+        "checkout-url": "https://www.whatahotel.com/hotels/7060/Higashiyama-Niseko-Village-a-Ritz-Carlton-Reserve.html",
+        "ama-property": "RZCTSRZZ",
+        "ama-location": "CTS",
+        "primary-desc": "NULL",
+        "url": "https://www.whatahotel.com/hotels/7060/Higashiyama-Niseko-Village-a-Ritz-Carlton-Reserve.html",
+        "name": "Higashiyama Niseko Village, a Ritz Carlton Reserve",
+        "region": "Asia and The Pacific",
+        "loc-long": "140.68227747116484",
+        "city": "Niseko",
+        "country": "Japan",
+        "images": "http://www.whatahotel.com/content/hotels/7060/Niseko_Village.jpg",
+        "secondary-desc": "NULL",
+        "address": "919-28 Soga, Niseko, Abuta District, Hokkaido 048-1522, Japan",
+        "loc-lat": "42.84353356364523"
+      }
+    ],
+    "session": {
+      "sessionID": "0",
+      "sessionName": "Guest",
+      "sessionAccess": "0",
+      "cfID": "<scrubbed>",
+      "cfToken": "<scrubbed>"
+    },
+    "amadeus": {
+      "codes": "RZPDXRZZ,RZJZHRZZ,RZAPFGRZ,NULL,RZEJHRZZ,RZGYDRZL,RZPLSRRZ,RZMEXRRZ,RZMLERAZ,RZLIRRZZ,RZSZVSZZ,RZCTSRZZ",
+      "count": 12
+    }
+  }
+}

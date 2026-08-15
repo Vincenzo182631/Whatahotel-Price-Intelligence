@@ -1,0 +1,520 @@
+{
+  "wahData": {
+    "status": {
+      "connection": 1,
+      "message": "Success",
+      "code": "200",
+      "method": "cityrates"
+    },
+    "hotels": [
+      {
+        "hotelID": "1326",
+        "perks": [
+          {
+            "perk": "A Room Upgrade subj to avails at time of CheckIn"
+          },
+          {
+            "perk": "Full Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 100 Credit"
+          },
+          {
+            "perk": "Complimentary Basic Internet"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails on specific request"
+          },
+          {
+            "perk": "A 100 Credit will be applicable for booking any R"
+          }
+        ],
+        "rateTotal": "1,461.10 USD",
+        "rateDaily": "522.75 USD",
+        "rank": "94",
+        "url": "https://www.whatahotel.com/hotels/1326/Four-Seasons-Hotel-Miami.html",
+        "name": "Four Seasons Hotel Miami",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/1326/cq5dam_web_1280_1280.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=1326&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "1198",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade subject to availability a"
+          },
+          {
+            "perk": "Complimentary Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 100 Hotel Credit"
+          },
+          {
+            "perk": "Free Basic WiFi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails upon Request"
+          },
+          {
+            "perk": "Bonvoy Rewards Points will be earned on any bookin"
+          }
+        ],
+        "rateTotal": "1,184.02 USD",
+        "rateDaily": "475.15 USD",
+        "rank": "39",
+        "url": "https://www.whatahotel.com/hotels/1198/The-Ritz-Carlton-Key-Biscayne.html",
+        "name": "The Ritz-Carlton, Key Biscayne",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/1198/Ritz_KeyBiscayne_00002_Galleries_1280x720.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=1198&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "3269",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade subject to availability a"
+          },
+          {
+            "perk": "Complimentary Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 100 Hotel Credit"
+          },
+          {
+            "perk": "Free WiFi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avail, on Request"
+          },
+          {
+            "perk": "Bonvoy Rewards points will be earned on any book"
+          }
+        ],
+        "rateTotal": "727.72 USD",
+        "rateDaily": "257.60 USD",
+        "rank": "35",
+        "url": "https://www.whatahotel.com/hotels/3269/JW-Marriott-Miami-Turnberry-Resort.html",
+        "name": "JW Marriott Miami Turnberry Resort",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/3269/overview30.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=3269&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "3561",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade at time of Checkin, sub to"
+          },
+          {
+            "perk": "Breakfast for 2 Daily"
+          },
+          {
+            "perk": "A Value Added Amenity worth up to 100"
+          },
+          {
+            "perk": "Free Wifi Unlimited Devices"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails on request"
+          },
+          {
+            "perk": "IHG One Rewards loyalty program points will be ea"
+          }
+        ],
+        "rateTotal": "720.94 USD",
+        "rateDaily": "299.00 USD",
+        "rank": "23",
+        "url": "https://www.whatahotel.com/hotels/3561/InterContinental-Miami.html",
+        "name": "InterContinental Miami",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/3561/tzoo.hd.12904.1569.228196.InterContinentalMiami.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=3561&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "4186",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade Subject to Availability a"
+          },
+          {
+            "perk": "Complimentary Full Breakfast x 2 Daily at Bellini"
+          },
+          {
+            "perk": "A 100 FB Credit"
+          },
+          {
+            "perk": "Free WiFi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails upon Request"
+          },
+          {
+            "perk": "Max Credit of 30 per person per day Does not Incl"
+          }
+        ],
+        "rateTotal": "1,170.68 USD",
+        "rateDaily": "504.00 USD",
+        "rank": "15",
+        "url": "https://www.whatahotel.com/hotels/4186/Mr-C-Miami-Coconut-Grove.html",
+        "name": "Mr. C Miami - Coconut Grove",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/4186/Mr.-C-Hotel.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=4186&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "1584",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade subject to availability at"
+          },
+          {
+            "perk": "Complimentary Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 100 Hotel Credit  Customized Welcome Amenity"
+          },
+          {
+            "perk": "Free Basic WiFi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails on a specific reque"
+          },
+          {
+            "perk": "Bonvoy Rewards Points will be earned on any booki"
+          }
+        ],
+        "rateTotal": "",
+        "rateDaily": "",
+        "rank": "14",
+        "url": "https://www.whatahotel.com/hotels/1584/Ritz-Carlton-Coconut-Grove-Miami.html",
+        "name": "Ritz Carlton Coconut Grove, Miami",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/1584/ritz_coconut_grove.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=1584&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "3639",
+        "perks": [
+          {
+            "perk": "A Room Upgrade within 48 Hours of Booking"
+          },
+          {
+            "perk": "Complimentary Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 50 Hotel Credit"
+          },
+          {
+            "perk": "Free Wifi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails,upon request"
+          },
+          {
+            "perk": "For the perks to be applicable, a Two 2  Night Min"
+          }
+        ],
+        "rateTotal": "848.63 USD",
+        "rateDaily": "370.00 USD",
+        "rank": "13",
+        "url": "https://www.whatahotel.com/hotels/3639/Hyatt-Regency-Coral-Gables.html",
+        "name": "Hyatt Regency Coral Gables",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/3639/356576.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=3639&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "3149",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade Subject to Availability a"
+          },
+          {
+            "perk": "Complimentary Full Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 100 USD Hotel Credit"
+          },
+          {
+            "perk": "Free Internet Access"
+          },
+          {
+            "perk": "Early Checkin  Late CheckOut, subj to avails upon"
+          },
+          {
+            "perk": "The Hotel Credit is a onetime credit per stay, whi"
+          }
+        ],
+        "rateTotal": "",
+        "rateDaily": "",
+        "rank": "12",
+        "url": "https://www.whatahotel.com/hotels/3149/EAST-Miami.html",
+        "name": "EAST Miami",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/3149/east_miami_photo.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=3149&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "2625",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade subject to availability a"
+          },
+          {
+            "perk": "Complimentary Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A 100 Hotel Credit and a Welcome Amenity"
+          },
+          {
+            "perk": "Free WiFi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avail, on Request"
+          },
+          {
+            "perk": "Bonvoy Rewards points will be earned on any book"
+          }
+        ],
+        "rateTotal": "1,466.74 USD",
+        "rateDaily": "629.00 USD",
+        "rank": "10",
+        "url": "https://www.whatahotel.com/hotels/2625/W-Miami.html",
+        "name": "W Miami",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/2625/wmiamipool.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=2625&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "2708",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade Subject to Availability a"
+          },
+          {
+            "perk": "Bottled Water and Fresh FruitSnacks in Room Upon A"
+          },
+          {
+            "perk": "A 50 Value Added Amenity"
+          },
+          {
+            "perk": "Free Internet Access"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails upon Request"
+          },
+          {
+            "perk": "IHG One Rewards loyalty program points will be ea"
+          }
+        ],
+        "rateTotal": "1,140.17 USD",
+        "rateDaily": "471.00 USD",
+        "rank": "9",
+        "url": "https://www.whatahotel.com/hotels/2708/Kimpton-EPIC-Miami.html",
+        "name": "Kimpton EPIC Miami",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/2708/epicskyline.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=2708&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "3735",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade subject to availability at"
+          },
+          {
+            "perk": "Complimentary Continental Breakfast x 2 Daily"
+          },
+          {
+            "perk": "A Curated Welcome Amenity"
+          },
+          {
+            "perk": "Free WiFi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails on a specific reque"
+          },
+          {
+            "perk": "Bonvoy Rewards points will be earned on any book"
+          }
+        ],
+        "rateTotal": "837.33 USD",
+        "rateDaily": "379.00 USD",
+        "rank": "7",
+        "url": "https://www.whatahotel.com/hotels/3735/JW-Marriott-Miami.html",
+        "name": "JW Marriott Miami",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/3735/miajw-lobby-0111-hor-feat.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=3735&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "6424",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade if Available at CheckIn"
+          },
+          {
+            "perk": "Complimentary Daily Full Breakfast for Two"
+          },
+          {
+            "perk": "A 100 Hotel Credit"
+          },
+          {
+            "perk": "Free WiFi"
+          },
+          {
+            "perk": "Late checkout, based on availability"
+          },
+          {
+            "perk": "The Credit is once per stay, regardless of how m"
+          }
+        ],
+        "rateTotal": "833.64 USD",
+        "rateDaily": "321.30 USD",
+        "rank": "5",
+        "url": "https://www.whatahotel.com/hotels/6424/Mayfair-House-Hotel-Garden.html",
+        "name": "Mayfair House Hotel & Garden",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/6424/mayfair.jpeg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=6424&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "2882",
+        "perks": [
+          {
+            "perk": "An Upgrade subj to avails at CheckIn"
+          },
+          {
+            "perk": "Complimentary Breakfast for Two Daily"
+          },
+          {
+            "perk": "A 100 Hotel Credit"
+          },
+          {
+            "perk": "Free WiFi"
+          },
+          {
+            "perk": "Late Checkout, subj to avails upon Request"
+          },
+          {
+            "perk": "The Daily Breakfast for 2 may be either Continenta"
+          }
+        ],
+        "rateTotal": "830.77 USD",
+        "rateDaily": "341.10 USD",
+        "rank": "3",
+        "url": "https://www.whatahotel.com/hotels/2882/Trump-National-Doral-Miami.html",
+        "name": "Trump National Doral Miami",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/2882/Trump_Doral.gif",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=2882&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "3554",
+        "perks": [
+          {
+            "perk": "A Room Category Upgrade Subject to Availability a"
+          },
+          {
+            "perk": "Full Breakfast x 2 Daily in Miranda"
+          },
+          {
+            "perk": "A 50 Lunch Credit"
+          },
+          {
+            "perk": "Free Internet Access"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails upon Request"
+          }
+        ],
+        "rateTotal": "",
+        "rateDaily": "",
+        "rank": "3",
+        "url": "https://www.whatahotel.com/hotels/3554/EB-Hotel-Miami.html",
+        "name": "EB Hotel Miami",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/3554/EB-Hotel-Miami1-1440x9000-e40aea545056a36_e40aeb8e-5056-a36a-0b21fda4073c8a97.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=3554&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      },
+      {
+        "hotelID": "3933",
+        "perks": [
+          {
+            "perk": "A Room Upgrade within 24 Hours of Booking"
+          },
+          {
+            "perk": "Complimentary Welcome Amenity"
+          },
+          {
+            "perk": "50 or 100 Property Credit"
+          },
+          {
+            "perk": "Free Wifi"
+          },
+          {
+            "perk": "Late CheckOut, subj to avails,upon request"
+          },
+          {
+            "perk": "For the perks to be applicable, a Two 2  Night Min"
+          }
+        ],
+        "rateTotal": "655.17 USD",
+        "rateDaily": "255.00 USD",
+        "rank": "3",
+        "url": "https://www.whatahotel.com/hotels/3933/Hyatt-Centric-Brickell-Miami.html",
+        "name": "Hyatt Centric Brickell Miami",
+        "region": "North America",
+        "city": "Miami",
+        "country": "United States",
+        "images": "http://www.whatahotel.com/content/hotels/3933/749538_l.jpg",
+        "rates-url": "https://www.whatahotel.com/booking/showRates.cfm?hotelID=3933&guests=2&checkIn=06-05-2027&checkOut=06-07-2027&bypass=1"
+      }
+    ],
+    "city": {
+      "image": "https://whatahotel.com/content/cities/kimpton-miami-header.jpg",
+      "id": "168",
+      "name": "Miami"
+    },
+    "session": {
+      "sessionID": "0",
+      "sessionName": "Guest",
+      "sessionAccess": "0",
+      "cfID": "<scrubbed>",
+      "cfToken": "<scrubbed>"
+    },
+    "amadeus": {
+      "codes": "FSMIA953,RZMIAKBZ,MCMIAJTA,ICMIAICA,YXMIA754,RZMIARZR,HYMIAHCG,PHMIAEAH,WHMIA535,KCMIA226,MCMIAJWM,PHMIAMAH,TWMIADRS,EBMIAEBH,HYMIAHBM",
+      "count": 15
+    }
+  }
+}
