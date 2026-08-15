@@ -1,4 +1,4 @@
--- Scoring configuration, version 1.
+-- Scoring configuration, version 2.
 --
 -- GENERATED FILE — do not edit by hand.
 -- Source of truth: packages/core/src/config/defaults.ts
@@ -8,20 +8,26 @@
 -- See docs/mvp/10-configuration-registry.md, and the calibration runbook in
 -- docs/mvp/02-deal-score.md §4 that must replace these before launch.
 
+-- Exactly one config may be active (partial unique index), so stand down any
+-- earlier version before activating this one. Prior versions are KEPT: every
+-- analysis row references the version that produced it, and deleting one would
+-- make those scores irreproducible.
+UPDATE scoring_config SET is_active = false
+ WHERE is_active AND version <> 2;
+
 INSERT INTO scoring_config (version, config, is_active, note, created_by)
 VALUES (
-    1,
+    2,
     $config$
 {
-  "version": 1,
+  "version": 2,
   "score": {
     "weight": {
-      "f1Historical": 0.3,
-      "f2Market": 0.25,
-      "f3Trend": 0.15,
-      "f4Seasonality": 0.1,
-      "f5Demand": 0.1,
-      "f6Value": 0.1
+      "f1Historical": 0.33,
+      "f2Market": 0.28,
+      "f3Trend": 0.17,
+      "f4Seasonality": 0.11,
+      "f6Value": 0.11
     },
     "trend": {
       "windowDays": 7,
@@ -145,7 +151,10 @@ VALUES (
 }
 $config$::jsonb,
     true,
-    'Initial priors from the MVP specification. Not calibrated against real data.',
+    'F5 (Demand) removed from the Deal Score: it was an affine function of F1 (score_F5 = (50 - 50D) + D * score_F1) and carried no independent signal. Its 0.10 weight was redistributed proportionally across the remaining five factors. Demand still drives the never-WAIT guard W4 and urgency gate G3. Still not calibrated against real data.',
     'mvp-spec'
 )
-ON CONFLICT (version) DO NOTHING;
+ON CONFLICT (version) DO UPDATE
+   SET config = EXCLUDED.config,
+       is_active = true,
+       note = EXCLUDED.note;

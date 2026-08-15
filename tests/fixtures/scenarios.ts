@@ -170,17 +170,21 @@ const s4: Scenario = {
     'Urgency routing (G3) and, critically, that W3 removes WAIT before any score path runs.',
   input: {
     query: makeQuery({ checkIn: checkInWithLeadDays(22) }),
-    current: makeCurrent(74000),
+    // Re-tuned when F5 was removed in config v2. Dropping the demand factor
+    // lifted this scenario's composite to exactly 72 — the G2 threshold — so it
+    // stopped exercising the urgency gate it exists to cover. A slightly higher
+    // rate puts it back in the "merely acceptable, but climbing" band.
+    current: makeCurrent(75000),
     baseline: makeBaseline({
       n: 55,
       ladder: [
         [0, 64000],
-        [0.42, 74000],
+        [0.46, 75000],
         [0.5, 76000],
         [1, 94000],
       ],
     }),
-    series: makeSeries({ points: 10, spanDays: 7, endMinor: 74000, deltaFraction: 0.18 }),
+    series: makeSeries({ points: 10, spanDays: 7, endMinor: 75000, deltaFraction: 0.18 }),
     comparables: makeComparables({ count: 5, index: 1.0, baselineMedianMinor: 76000 }),
     benefits: [],
     demand: { events: [{ name: 'Art Basel preview', impactScore: 0.4 }] },

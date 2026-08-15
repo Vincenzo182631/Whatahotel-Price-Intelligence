@@ -22,7 +22,6 @@ export interface WeightVector {
   readonly f2Market: number;
   readonly f3Trend: number;
   readonly f4Seasonality: number;
-  readonly f5Demand: number;
   readonly f6Value: number;
 }
 
@@ -59,7 +58,6 @@ const KEYS: ReadonlyArray<keyof WeightVector> = [
   'f2Market',
   'f3Trend',
   'f4Seasonality',
-  'f5Demand',
   'f6Value',
 ];
 

@@ -105,16 +105,16 @@ Additional penalties (multiplicative):
 
 ### 2.7 `f_completeness` — factor coverage *(added beyond the six requested)*
 
-**Effect: a Deal Score built from two of six factors deserves less trust than one built from six.**
+**Effect: a Deal Score built from two of five factors deserves less trust than one built from five.**
 
 ```
 weight_coverage = Σ(weights of available factors) / Σ(all weights)
 f_completeness  = COMPLETENESS_FLOOR + (1 − COMPLETENESS_FLOOR) × weight_coverage
 ```
 
-This is not in the requested list but is required to keep the design honest: doc 02 redistributes weight when factors are missing, which would otherwise let a one-factor score present as confidently as a six-factor one. Without it, missing data is invisible in the output.
+This is not in the requested list but is required to keep the design honest: doc 02 redistributes weight when factors are missing, which would otherwise let a one-factor score present as confidently as a five-factor one. Without it, missing data is invisible in the output.
 
-**Why a floor rather than the raw ratio** (`COMPLETENESS_FLOOR`, default 0.75). F4 (seasonality) and F5 (demand) are expected to be UNAVAILABLE at launch *by design* — F4 needs a year of history, F5 needs an events feed we may not have. Applying the raw coverage ratio would cap every confidence score at roughly 80 permanently, penalising the product for a known, planned data gap rather than for a data-quality problem. The floor keeps the penalty meaningful without making it structural. Discovered while building the scenario suite: under the raw ratio, S1 — a textbook excellent deal on clean data — could not reach the HIGH confidence band.
+**Why a floor rather than the raw ratio** (`COMPLETENESS_FLOOR`, default 0.75). F4 (seasonality) is expected to be UNAVAILABLE at launch *by design* — it needs a year of history. Applying the raw coverage ratio would cap every confidence score at roughly 80 permanently, penalising the product for a known, planned data gap rather than for a data-quality problem. The floor keeps the penalty meaningful without making it structural. Discovered while building the scenario suite: under the raw ratio, S1 — a textbook excellent deal on clean data — could not reach the HIGH confidence band.
 
 ### 2.8 Baseline level multiplier
 

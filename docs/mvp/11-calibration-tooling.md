@@ -66,7 +66,7 @@ Two design notes worth knowing:
 
 ## 3. The weight sweep
 
-Coordinate descent over the six Deal Score weights, with three guards that matter more than the search itself:
+Coordinate descent over the five Deal Score weights, with three guards that matter more than the search itself:
 
 1. **Holdout split by stay.** Candidates are ranked on stays the search never saw. Splitting by *trial* rather than by *stay* would leak — two replays of the same stay are not independent.
 2. **A margin requirement.** A candidate must beat the incumbent by `minImprovement` (0.02). Weights that are merely *different* are not better.
@@ -92,9 +92,13 @@ This is the single most important behaviour in the tool. A calibration report is
 
 Run against synthetic data, so **none of the metric values are findings**. Two results are structural and hold regardless of the data:
 
-### F1/F5 are not independent — a design defect
+### F1/F5 were not independent — a design defect · **RESOLVED in config v2**
 
-Measured r = 0.82; the algebra gives r = 1.0 at constant demand pressure. `score_F5 = (50 − 50D) + D · score_F1` — F5 is an affine transform of F1 and adds no independent information. Written up in full in [doc 02 §3, F5](./02-deal-score.md), with two candidate fixes. **Not changed unilaterally: the scoring model is a product decision.**
+Measured r = 0.82; the algebra gives r = 1.0 at constant demand pressure. `score_F5 = (50 − 50D) + D · score_F1` — F5 was an affine transform of F1 and added no independent information.
+
+**Resolved: F5 was removed from the Deal Score**, and its 0.10 redistributed proportionally across the remaining five factors. Demand continues to drive guard W4 and urgency gate G3, where it acts on the *recommendation* rather than the *score* and so cannot double-count the percentile. Full write-up in [doc 02 §3, F5](./02-deal-score.md).
+
+A regression test asserts the factor breakdown is exactly `[F1, F2, F3, F4, F6]` and that demand still blocks WAIT — so the dependency cannot return unnoticed.
 
 ### Comparables were not filtered to the subject's comparability class
 
@@ -107,7 +111,7 @@ Measured r = 0.82; the algebra gives r = 1.0 at constant demand pressure. `score
 The harness is ready; the data is not. When real captured rates exist:
 
 1. Run `npm run calibrate -- --stays 200 --points 10 --report calibration-v1.md`.
-2. Expect FAILs. The weights in config v1 are undocumented priors and were never expected to survive contact with data.
+2. Expect FAILs. The weights in config v2 are documented priors, not findings, and were never expected to survive contact with data.
 3. Work the blocking metrics in order of customer harm: **BOOK_NOW regret first** — it is the failure a traveler actually feels — then WAIT success, then correlation.
 4. Use `--sweep` for a starting direction, never as the decision. Check `loss terms judged`; below 4 of 6 the ranking is not evidence.
 5. Insert the new config as a **new version** with the report attached in `scoring_config.note`, then re-run the golden fixtures (doc 07 §2). Band or recommendation changes in S1–S9 must be explained before activation.

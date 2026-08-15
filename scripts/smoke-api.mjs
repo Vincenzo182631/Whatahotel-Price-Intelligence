@@ -123,7 +123,7 @@ async function main() {
     v.deal_score === null || typeof v.deal_score_band === 'string',
   );
 
-  check('all six factors are reported', (d.factors ?? []).length === 6);
+  check('all five scoring factors are reported', (d.factors ?? []).length === 5);
   check(
     'unavailable factors state a reason',
     (d.factors ?? []).every((f) => f.available || typeof f.unavailable_reason === 'string'),
@@ -162,7 +162,7 @@ async function main() {
   const debug = await get(`/internal/v1/analyses/${d.analysis_id}`);
   check('stored analysis is retrievable', debug.status === 200);
   check('stored analysis carries the decision trace', Boolean(debug.body?.decision_trace));
-  check('stored analysis carries the factor breakdown', (debug.body?.factors ?? []).length === 6);
+  check('stored analysis carries the factor breakdown', (debug.body?.factors ?? []).length === 5);
 
   // ── error paths ───────────────────────────────────────────────────────
   const missing = await get(

@@ -135,7 +135,7 @@ export function pearson(xs: readonly number[], ys: readonly number[]): number {
   return denom === 0 ? 0 : num / denom;
 }
 
-const FACTOR_CODES: readonly FactorCode[] = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6'];
+const FACTOR_CODES: readonly FactorCode[] = ['F1', 'F2', 'F3', 'F4', 'F6'];
 
 export function factorCorrelation(trials: readonly Trial[], config: ScoringConfig): MetricResult {
   const pairs: Array<{ a: FactorCode; b: FactorCode; r: number; n: number }> = [];

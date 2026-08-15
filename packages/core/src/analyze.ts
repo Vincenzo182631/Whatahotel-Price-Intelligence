@@ -19,11 +19,11 @@ import { renderTemplate, type RenderedExplanation } from './explanation/template
 import { assertWaitInvariant, recommend } from './recommendation/engine.js';
 import { composeDealScore } from './scoring/dealScore.js';
 import {
+  computeDemandPressure,
   computeF1,
   computeF2,
   computeF3,
   computeF4,
-  computeF5,
   computeF6,
 } from './scoring/factors.js';
 import { daysBetweenDates, hoursBetween } from './stats.js';
@@ -45,10 +45,14 @@ export function analyze(input: ScoringInput, config: ScoringConfig): AnalyzeOutp
   const f2 = computeF2(current, baseline, comparables, config);
   const f3 = computeF3(series, now, config);
   const f4 = computeF4(input.seasonality, config);
-  const f5 = computeF5(input.demand, f1.percentileRank, config);
   const f6 = computeF6(current, query, benefits, config);
 
-  const rawFactors: FactorResult[] = [f1.factor, f2.factor, f3.factor, f4, f5.factor, f6.factor];
+  // Demand is NOT a scoring factor (see scoring/factors.ts). It reaches the
+  // verdict only through the never-WAIT guards and the urgency gate, where it
+  // is genuinely independent of F1 rather than an affine transform of it.
+  const demandSignal = computeDemandPressure(input.demand);
+
+  const rawFactors: FactorResult[] = [f1.factor, f2.factor, f3.factor, f4, f6.factor];
 
   // ── Deal Score ─────────────────────────────────────────────────────────
   const dealScore = composeDealScore(rawFactors, config);
@@ -83,7 +87,7 @@ export function analyze(input: ScoringInput, config: ScoringConfig): AnalyzeOutp
       matchQuality,
       leadTimeDays,
       trendPct: f3.deltaPct,
-      demandPressure: f5.demandPressure,
+      demandPressure: demandSignal.demandPressure,
       volatilityFactor,
       now,
     },
@@ -117,8 +121,8 @@ export function analyze(input: ScoringInput, config: ScoringConfig): AnalyzeOutp
         trendWindowDays: config.score.trend.windowDays,
         trendStartMinor: f3.windowStartNightlyMinor,
         seasonalIndex: f4.available ? f4.rawValue : null,
-        demandPressure: f5.demandPressure,
-        demandEvents: f5.events,
+        demandPressure: demandSignal.demandPressure,
+        demandEvents: demandSignal.events,
         benefitValuePerNightMinor: f6.benefitValuePerNightMinor,
         effectiveNightlyMinor: f6.effectiveNightlyMinor,
         benefitNames: f6.benefitNames,
@@ -187,7 +191,7 @@ export function analyze(input: ScoringInput, config: ScoringConfig): AnalyzeOutp
       volatilityFactor,
       rateAgeHours,
       trendPct: f3.deltaPct,
-      demandPressure: f5.demandPressure,
+      demandPressure: demandSignal.demandPressure,
       baselineLevelMultiplier: confidenceResult.baselineLevelMultiplier,
       completeness: confidenceResult.completeness,
       subjectIndex: f2.subjectIndex,

@@ -202,7 +202,9 @@ END $$;
 DO $$
 BEGIN
     BEGIN
-        INSERT INTO scoring_config (version, config, is_active) VALUES (2, '{}'::jsonb, true);
+        -- A version far outside the real range, so this check does not collide
+        -- with whatever version the seed happens to be on.
+        INSERT INTO scoring_config (version, config, is_active) VALUES (9999, '{}'::jsonb, true);
         RAISE EXCEPTION 'CHECK 8 FAILED: a second active config was accepted';
     EXCEPTION WHEN unique_violation THEN
         RAISE NOTICE 'CHECK 8  ok — exactly one scoring config can be active';
@@ -211,19 +213,23 @@ END $$;
 
 -- Check 9 · the seeded config is present and well-formed ----------------------
 DO $$
-DECLARE w NUMERIC;
+DECLARE w NUMERIC; n INT;
 BEGIN
-    SELECT (config->'score'->'weight'->>'f1Historical')::numeric
-      + (config->'score'->'weight'->>'f2Market')::numeric
-      + (config->'score'->'weight'->>'f3Trend')::numeric
-      + (config->'score'->'weight'->>'f4Seasonality')::numeric
-      + (config->'score'->'weight'->>'f5Demand')::numeric
-      + (config->'score'->'weight'->>'f6Value')::numeric
-    INTO w FROM scoring_config WHERE is_active;
-    IF w IS NULL OR abs(w - 1) > 1e-9 THEN
-        RAISE EXCEPTION 'CHECK 9 FAILED: seeded deal-score weights sum to % (expected 1.0)', w;
+    -- Enumerate the weight object rather than naming keys: the factor set is
+    -- not fixed (F5 was removed in v2), and a hardcoded list silently returns
+    -- NULL when a key disappears instead of failing loudly.
+    SELECT sum(value::numeric), count(*)
+      INTO w, n
+      FROM scoring_config sc, jsonb_each_text(sc.config->'score'->'weight')
+     WHERE sc.is_active;
+
+    IF n IS NULL OR n = 0 THEN
+        RAISE EXCEPTION 'CHECK 9 FAILED: no active scoring config with weights';
     END IF;
-    RAISE NOTICE 'CHECK 9  ok — seeded config weights sum to 1.0';
+    IF w IS NULL OR abs(w - 1) > 1e-9 THEN
+        RAISE EXCEPTION 'CHECK 9 FAILED: % deal-score weights sum to % (expected 1.0)', n, w;
+    END IF;
+    RAISE NOTICE 'CHECK 9  ok — % seeded config weights sum to 1.0', n;
 END $$;
 
 ROLLBACK;

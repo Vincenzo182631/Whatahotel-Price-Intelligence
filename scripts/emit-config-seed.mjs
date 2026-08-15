@@ -15,7 +15,25 @@ const { DEFAULT_CONFIG } = await import(join(root, 'packages/core/dist/config/de
 
 const json = JSON.stringify(DEFAULT_CONFIG, null, 2);
 
-const sql = `-- Scoring configuration, version 1.
+const NOTES = {
+  1: 'Initial priors from the MVP specification. Not calibrated against real data.',
+  2:
+    'F5 (Demand) removed from the Deal Score: it was an affine function of F1 ' +
+    '(score_F5 = (50 - 50D) + D * score_F1) and carried no independent signal. ' +
+    'Its 0.10 weight was redistributed proportionally across the remaining five ' +
+    'factors. Demand still drives the never-WAIT guard W4 and urgency gate G3. ' +
+    'Still not calibrated against real data.',
+};
+const NOTE = NOTES[DEFAULT_CONFIG.version] ?? 'Uncalibrated.';
+
+/**
+ * SQL string literal. NOT JSON.stringify — that emits double quotes, which
+ * Postgres reads as an identifier, so the seed fails with
+ * `column "..." does not exist`.
+ */
+const sqlString = (value) => `'${String(value).replace(/'/g, "''")}'`;
+
+const sql = `-- Scoring configuration, version ${DEFAULT_CONFIG.version}.
 --
 -- GENERATED FILE — do not edit by hand.
 -- Source of truth: packages/core/src/config/defaults.ts
@@ -25,18 +43,28 @@ const sql = `-- Scoring configuration, version 1.
 -- See docs/mvp/10-configuration-registry.md, and the calibration runbook in
 -- docs/mvp/02-deal-score.md §4 that must replace these before launch.
 
+-- Exactly one config may be active (partial unique index), so stand down any
+-- earlier version before activating this one. Prior versions are KEPT: every
+-- analysis row references the version that produced it, and deleting one would
+-- make those scores irreproducible.
+UPDATE scoring_config SET is_active = false
+ WHERE is_active AND version <> ${DEFAULT_CONFIG.version};
+
 INSERT INTO scoring_config (version, config, is_active, note, created_by)
 VALUES (
-    1,
+    ${DEFAULT_CONFIG.version},
     $config$
 ${json}
 $config$::jsonb,
     true,
-    'Initial priors from the MVP specification. Not calibrated against real data.',
+    ${sqlString(NOTE)},
     'mvp-spec'
 )
-ON CONFLICT (version) DO NOTHING;
+ON CONFLICT (version) DO UPDATE
+   SET config = EXCLUDED.config,
+       is_active = true,
+       note = EXCLUDED.note;
 `;
 
-await writeFile(join(root, 'db/seeds/002_scoring_config_v1.sql'), sql, 'utf8');
-console.log('• Wrote db/seeds/002_scoring_config_v1.sql');
+await writeFile(join(root, 'db/seeds/002_scoring_config.sql'), sql, 'utf8');
+console.log(`• Wrote db/seeds/002_scoring_config.sql (version ${DEFAULT_CONFIG.version})`);

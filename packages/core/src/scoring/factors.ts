@@ -293,26 +293,32 @@ export function computeF4(
   };
 }
 
-// ── F5 · Demand / Events ──────────────────────────────────────────────────
+// ── Demand pressure (formerly factor F5) ──────────────────────────────────
+//
+// REMOVED FROM THE DEAL SCORE in config v2. The old F5 was
+//     score_F5 = 50 + D·50·(1 − 2P)
+// and since F1 = 100(1 − P), substituting gives
+//     score_F5 = (50 − 50D) + D · score_F1
+// — an exact affine function of F1. It carried no information about price
+// attractiveness that F1 did not already carry; it only rescaled it, and its
+// weight was borrowed from F1 rather than adding a sixth perspective.
+//
+// Demand still does real, INDEPENDENT work: it blocks WAIT through guard W4
+// and can trigger BOOK_NOW through the urgency gate G3. Those uses do not
+// double-count F1, because they act on the recommendation rather than the
+// score. See docs/mvp/02-deal-score.md §3.
 
 const SCARCITY_NORMAL = 10;
 
-export interface F5Result {
-  readonly factor: FactorResult;
-  /** Normalized demand pressure 0–1. Also feeds the never-WAIT guards. */
+export interface DemandSignal {
+  /** Normalized demand pressure 0–1. Feeds guard W4 and gate G3. */
   readonly demandPressure: number;
+  /** Distinguishes "no signal at all" from "signal reports no demand". */
   readonly hasSignal: boolean;
   readonly events: readonly string[];
 }
 
-export function computeF5(
-  demand: DemandInput | null | undefined,
-  percentileRankValue: number | null,
-  config: ScoringConfig,
-): F5Result {
-  const weight = config.score.weight.f5Demand;
-  const name = 'Demand';
-
+export function computeDemandPressure(demand: DemandInput | null | undefined): DemandSignal {
   const signals: number[] = [];
   const events: string[] = [];
 
@@ -337,34 +343,8 @@ export function computeF5(
   }
 
   const hasSignal = signals.length > 0;
-  const demandPressure = hasSignal ? Math.max(...signals) : 0;
-
-  if (!hasSignal || percentileRankValue === null) {
-    return {
-      factor: unavailable('F5', name, weight, 'NO_DEMAND_SIGNAL'),
-      demandPressure,
-      hasSignal,
-      events,
-    };
-  }
-
-  // High demand amplifies whatever F1 already says: a rate held low against
-  // pressure is a better deal; one marked up into it is worse.
-  const subScore = toScore(50 + demandPressure * 50 * (1 - 2 * percentileRankValue));
-
   return {
-    factor: {
-      code: 'F5',
-      name,
-      available: true,
-      subScore,
-      rawValue: demandPressure,
-      unit: 'RATIO',
-      weight,
-      weightApplied: 0,
-      unavailableReason: null,
-    },
-    demandPressure,
+    demandPressure: hasSignal ? Math.max(...signals) : 0,
     hasSignal,
     events,
   };

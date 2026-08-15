@@ -20,7 +20,7 @@ import {
   computeF2,
   computeF3,
   computeF4,
-  computeF5,
+  computeDemandPressure,
   computeF6,
 } from '../../packages/core/src/scoring/factors.js';
 import type {
@@ -155,37 +155,42 @@ describe('F4 · seasonality', () => {
   });
 });
 
-describe('F5 · demand', () => {
-  it('distinguishes "no signal" from "signal shows no demand"', () => {
-    const none = computeF5(null, 0.5, DEFAULT_CONFIG);
-    expect(none.hasSignal).toBe(false);
-    expect(none.factor.available).toBe(false);
+describe('demand pressure (formerly factor F5)', () => {
+  it('is no longer a scoring factor', () => {
+    // Removed in config v2: it was an affine function of F1 and carried no
+    // independent signal. Demand now reaches the verdict only through guard W4
+    // and gate G3. See packages/core/src/scoring/factors.ts.
+    const signal = computeDemandPressure({ compSoldOutShare: 1 });
+    expect(signal).not.toHaveProperty('factor');
+    expect(Object.keys(signal).sort()).toEqual(['demandPressure', 'events', 'hasSignal']);
+  });
 
-    const quiet = computeF5({ roomsLeft: 10 }, 0.5, DEFAULT_CONFIG);
+  it('distinguishes "no signal" from "signal shows no demand"', () => {
+    const none = computeDemandPressure(null);
+    expect(none.hasSignal).toBe(false);
+    expect(none.demandPressure).toBe(0);
+
+    const quiet = computeDemandPressure({ roomsLeft: 10 });
     expect(quiet.hasSignal).toBe(true);
-    expect(quiet.factor.available).toBe(true);
+    expect(quiet.demandPressure).toBe(0);
   });
 
   it('derives pressure from scarcity, sell-out share and booking velocity', () => {
-    expect(computeF5({ roomsLeft: 1 }, 0.5, DEFAULT_CONFIG).demandPressure).toBeCloseTo(0.9, 5);
-    expect(computeF5({ compSoldOutShare: 0.7 }, 0.5, DEFAULT_CONFIG).demandPressure).toBeCloseTo(
-      0.7,
+    expect(computeDemandPressure({ roomsLeft: 1 }).demandPressure).toBeCloseTo(0.9, 5);
+    expect(computeDemandPressure({ compSoldOutShare: 0.7 }).demandPressure).toBeCloseTo(0.7, 5);
+    expect(computeDemandPressure({ bookingVelocityPercentile: 0.8 }).demandPressure).toBeCloseTo(
+      0.8,
       5,
     );
-    expect(
-      computeF5({ bookingVelocityPercentile: 0.8 }, 0.5, DEFAULT_CONFIG).demandPressure,
-    ).toBeCloseTo(0.8, 5);
   });
 
-  it('amplifies a low rate under pressure and punishes a high one', () => {
-    const cheapUnderPressure = computeF5({ compSoldOutShare: 1 }, 0, DEFAULT_CONFIG);
-    const dearUnderPressure = computeF5({ compSoldOutShare: 1 }, 1, DEFAULT_CONFIG);
-    expect(cheapUnderPressure.factor.subScore).toBe(100);
-    expect(dearUnderPressure.factor.subScore).toBe(0);
-  });
-
-  it('is unavailable without a percentile to amplify', () => {
-    expect(computeF5({ compSoldOutShare: 1 }, null, DEFAULT_CONFIG).factor.available).toBe(false);
+  it('takes the strongest available signal and collects event names', () => {
+    const signal = computeDemandPressure({
+      events: [{ name: 'Art Basel', impactScore: 0.5 }],
+      roomsLeft: 1,
+    });
+    expect(signal.demandPressure).toBeCloseTo(0.9, 5);
+    expect(signal.events).toEqual(['Art Basel']);
   });
 });
 
@@ -245,7 +250,7 @@ describe('deal score composition', () => {
     subScore: 50,
     rawValue: 0,
     unit: 'SCORE',
-    weight: 0.3,
+    weight: 0.33,
     weightApplied: 0,
     unavailableReason: null,
     ...over,
@@ -255,11 +260,10 @@ describe('deal score composition', () => {
     const result = composeDealScore(
       [
         factor({ code: 'F1', available: false, subScore: null }),
-        factor({ code: 'F2', weight: 0.25, subScore: 100 }),
-        factor({ code: 'F3', weight: 0.15, subScore: 100 }),
-        factor({ code: 'F4', weight: 0.1, subScore: 100 }),
-        factor({ code: 'F5', weight: 0.1, subScore: 100 }),
-        factor({ code: 'F6', weight: 0.1, subScore: 100 }),
+        factor({ code: 'F2', weight: 0.28, subScore: 100 }),
+        factor({ code: 'F3', weight: 0.17, subScore: 100 }),
+        factor({ code: 'F4', weight: 0.11, subScore: 100 }),
+        factor({ code: 'F6', weight: 0.11, subScore: 100 }),
       ],
       DEFAULT_CONFIG,
     );
@@ -269,16 +273,15 @@ describe('deal score composition', () => {
   it('returns null below the minimum weight coverage', () => {
     const result = composeDealScore(
       [
-        factor({ code: 'F1', subScore: 90 }),
-        factor({ code: 'F2', weight: 0.25, available: false, subScore: null }),
-        factor({ code: 'F3', weight: 0.15, available: false, subScore: null }),
-        factor({ code: 'F4', weight: 0.1, available: false, subScore: null }),
-        factor({ code: 'F5', weight: 0.1, available: false, subScore: null }),
-        factor({ code: 'F6', weight: 0.1, available: false, subScore: null }),
+        factor({ code: 'F1', weight: 0.33, subScore: 90 }),
+        factor({ code: 'F2', weight: 0.28, available: false, subScore: null }),
+        factor({ code: 'F3', weight: 0.17, available: false, subScore: null }),
+        factor({ code: 'F4', weight: 0.11, available: false, subScore: null }),
+        factor({ code: 'F6', weight: 0.11, available: false, subScore: null }),
       ],
       DEFAULT_CONFIG,
     );
-    expect(result.weightCoverage).toBeCloseTo(0.3, 5);
+    expect(result.weightCoverage).toBeCloseTo(0.33, 5);
     expect(result.score).toBeNull();
   });
 

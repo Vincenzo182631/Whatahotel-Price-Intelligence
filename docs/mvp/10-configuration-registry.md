@@ -20,14 +20,15 @@ Every tunable weight and threshold in the MVP, in one place. Covers the proposal
 
 | Key | Default | Rationale |
 |---|---|---|
-| `score.weight.f1_historical` | **0.30** | Directly answers the customer's question; rests on our own data. Highest relevance and highest reliability |
-| `score.weight.f2_market` | **0.25** | The only external check on F1; depends on comp-set quality (U12) we don't yet control |
-| `score.weight.f3_trend` | **0.15** | Real signal, but describes timing more than attractiveness; its main role is in the recommendation gates |
-| `score.weight.f4_seasonality` | **0.10** | Overlaps F1's stratified baseline; low weight pending the correlation check |
-| `score.weight.f5_demand` | **0.10** | Valuable context, least likely to have data at MVP |
-| `score.weight.f6_value` | **0.10** | Strategically the differentiator, but the least certain data (U10). Weight reflects data confidence, not importance. Expected to rise in Phase 2 |
+| `score.weight.f1_historical` | **0.33** | Directly answers the customer's question; rests on our own data. Highest relevance and highest reliability |
+| `score.weight.f2_market` | **0.28** | The only external check on F1; depends on comp-set quality (U12) we don't yet control |
+| `score.weight.f3_trend` | **0.17** | Real signal, but describes timing more than attractiveness; its main role is in the recommendation gates |
+| `score.weight.f4_seasonality` | **0.11** | Overlaps F1's stratified baseline; low weight pending the correlation check |
+| `score.weight.f6_value` | **0.11** | Strategically the differentiator, but the least certain data (U10). Weight reflects data confidence, not importance. Expected to rise in Phase 2 |
 
 Must sum to 1.00; validated on config insert.
+
+> **`score.weight.f5_demand` was removed in config v2.** F5 was an affine function of F1 and carried no independent signal; its 0.10 was redistributed proportionally across the five above. Demand still drives guard W4 and gate G3. See [doc 02 §3, F5](./02-deal-score.md).
 
 ## 3. Deal Score gains and caps
 
@@ -88,7 +89,7 @@ Must sum to 1.00; validated on config insert.
 | `confidence.volatility_cv_max` | 0.35 | Above this, a point estimate is fragile |
 | `confidence.volatility_floor` | 0.25 | Volatility makes a percentile fragile, not false |
 | `confidence.unresolved_share_max` | 0.20 | Tolerated share of unresolved rate terms in a baseline |
-| `confidence.completeness_floor` | 0.75 | Factor completeness scales between this and 1.0. F4 and F5 are expected to be unavailable at launch by design; a raw multiplier would permanently cap confidence for a planned gap |
+| `confidence.completeness_floor` | 0.75 | Factor completeness scales between this and 1.0. F4 is expected to be unavailable at launch by design; a raw multiplier would permanently cap confidence for a planned gap |
 | `confidence.band.high_min` | 75 | |
 | `confidence.band.moderate_min` | 55 | |
 | `confidence.band.low_min` | 40 | |

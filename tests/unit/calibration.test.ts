@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_CONFIG, computeF1, computeF5, withConfig } from '../../packages/core/src/index.js';
+import { DEFAULT_CONFIG, analyze, withConfig } from '../../packages/core/src/index.js';
 import {
   bookNowRegret,
   coverage,
@@ -12,7 +12,15 @@ import {
   type Trial,
 } from '../../packages/calibration/src/metrics.js';
 import { computeLoss, normalize, type WeightVector } from '../../packages/calibration/src/sweep.js';
-import { makeBaseline, makeCurrent } from '../support/fixtures.js';
+import {
+  NOW,
+  checkInWithLeadDays,
+  makeBaseline,
+  makeComparables,
+  makeCurrent,
+  makeQuery,
+  makeSeries,
+} from '../support/fixtures.js';
 
 // ── trial fixtures ─────────────────────────────────────────────────────────
 
@@ -61,35 +69,70 @@ function repeat(n: number, factory: (i: number) => Trial): Trial[] {
   return Array.from({ length: n }, (_, i) => factory(i));
 }
 
-// ── the structural F1/F5 dependency ────────────────────────────────────────
+// ── regression guard: the F1/F5 dependency is gone ─────────────────────────
 
-describe('F5 is an affine function of F1 when demand pressure is constant', () => {
-  it('produces a perfect correlation, which is a design flaw not a data artefact', () => {
-    // F1 = 100(1 − P) and F5 = 50 + D·50·(1 − 2P), so for fixed D:
-    //   F5 = (50 − 50D) + D·F1
-    // F5 therefore carries no information about price attractiveness that F1
-    // does not already carry — it only rescales it. See docs/mvp/02 §3, F5.
-    const f1s: number[] = [];
-    const f5s: number[] = [];
+describe('demand is no longer a scoring factor', () => {
+  it('never appears in the factor breakdown', () => {
+    // F5 was an affine function of F1 — score_F5 = (50 − 50D) + D·score_F1 —
+    // so it double-counted rather than adding a sixth perspective. Removed in
+    // config v2. This guards against it being reintroduced by accident.
+    const { analysis } = analyze(
+      {
+        query: makeQuery(),
+        current: makeCurrent(68900),
+        baseline: makeBaseline({
+          n: 60,
+          ladder: [
+            [0, 60000],
+            [1, 90000],
+          ],
+        }),
+        series: [],
+        comparables: [],
+        benefits: [],
+        demand: { events: [{ name: 'Big event', impactScore: 0.9 }], roomsLeft: 2 },
+        now: NOW,
+      },
+      DEFAULT_CONFIG,
+    );
 
-    for (let i = 0; i <= 20; i += 1) {
-      const current = 50000 + i * 2000;
-      const baseline = makeBaseline({
-        n: 60,
+    const codes = analysis.factors.map((f) => f.code);
+    expect(codes).toEqual(['F1', 'F2', 'F3', 'F4', 'F6']);
+    expect(codes).not.toContain('F5');
+  });
+
+  it('still blocks WAIT through guard W4, which is genuinely independent of F1', () => {
+    // Demand keeps doing real work — it just acts on the recommendation rather
+    // than on the score, so it cannot double-count the percentile.
+    const base = {
+      query: makeQuery({ checkIn: checkInWithLeadDays(60) }),
+      // A rate well above typical: the score is poor, so WAIT is on the table.
+      current: makeCurrent(88000),
+      baseline: makeBaseline({
+        n: 80,
         ladder: [
-          [0, 50000],
-          [1, 90000],
+          [0, 55000],
+          [0.5, 66000],
+          [1, 92000],
         ],
-      });
-      const f1 = computeF1(makeCurrent(current), baseline, DEFAULT_CONFIG);
-      const f5 = computeF5({ compSoldOutShare: 0.7 }, f1.percentileRank, DEFAULT_CONFIG);
-      if (f1.factor.subScore === null || f5.factor.subScore === null) continue;
-      f1s.push(f1.factor.subScore);
-      f5s.push(f5.factor.subScore);
-    }
+      }),
+      series: makeSeries({ points: 8, spanDays: 7, endMinor: 88000, deltaFraction: -0.03 }),
+      comparables: makeComparables({ count: 6, index: 1.0, baselineMedianMinor: 66000 }),
+      benefits: [],
+      now: NOW,
+    };
 
-    expect(f1s.length).toBeGreaterThan(10);
-    expect(Math.abs(pearson(f1s, f5s))).toBeGreaterThan(0.99);
+    const quiet = analyze({ ...base, demand: null }, DEFAULT_CONFIG);
+    const pressured = analyze(
+      { ...base, demand: { events: [{ name: 'Sell-out event', impactScore: 0.9 }] } },
+      DEFAULT_CONFIG,
+    );
+
+    // Identical score — demand no longer touches it.
+    expect(pressured.analysis.dealScore).toBe(quiet.analysis.dealScore);
+    // But the guard fires and removes WAIT.
+    expect(pressured.analysis.waitBlockedBy).toContain('W4');
+    expect(pressured.analysis.recommendation).not.toBe('WAIT');
   });
 });
 
@@ -337,7 +380,7 @@ describe('weight normalization', () => {
         f5Demand: 0.1,
         f6Value: 0.1,
       },
-      { f1Historical: 1, f2Market: 0, f3Trend: 0, f4Seasonality: 0, f5Demand: 0, f6Value: 0 },
+      { f1Historical: 1, f2Market: 0, f3Trend: 0, f4Seasonality: 0, f6Value: 0 },
       {
         f1Historical: 0.333,
         f2Market: 0.333,

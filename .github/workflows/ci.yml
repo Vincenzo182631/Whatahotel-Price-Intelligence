@@ -55,8 +55,8 @@ jobs:
       - name: Scoring config seed is in sync with defaults
         run: |
           node scripts/emit-config-seed.mjs
-          git diff --exit-code db/seeds/002_scoring_config_v1.sql \
-            || (echo "::error::db/seeds/002_scoring_config_v1.sql is stale — run npm run config:seed" && exit 1)
+          git diff --exit-code db/seeds/002_scoring_config.sql \
+            || (echo "::error::db/seeds/002_scoring_config.sql is stale — run npm run config:seed" && exit 1)
 
       - name: Schema behaviour checks
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/checks/schema_checks.sql

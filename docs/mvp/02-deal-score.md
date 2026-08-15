@@ -26,7 +26,7 @@ The proposal's example remains reachable and coherent under this definition. The
 
 ## 2. Structure
 
-Six factors, each producing a sub-score on 0–100, combined as a weighted mean over the factors that are **available** for the query.
+Five factors, each producing a sub-score on 0–100, combined as a weighted mean over the factors that are **available** for the query.
 
 ```
 DealScore = round( Σ (wᵢ_normalized × scoreᵢ) )   for i ∈ Available
@@ -43,21 +43,21 @@ where wᵢ_normalized = wᵢ / Σ(w over Available)
 
 | ID | Factor | Weight | Mandatory | Depends on |
 |---|---|---|---|---|
-| **F1** | Historical Price Percentile | **0.30** | Yes | U3, U4 |
-| **F2** | Market / Comp-Set Position | **0.25** | No | U12 |
-| **F3** | Recent Price Movement | **0.15** | No | U2, U3 |
-| **F4** | Seasonality | **0.10** | No | ≥1yr history |
-| **F5** | Demand / Events | **0.10** | No | U11, U13, U14 |
-| **F6** | Effective Value (Benefits) | **0.10** | No | U10 |
+| **F1** | Historical Price Percentile | **0.33** | Yes | U3, U4 |
+| **F2** | Market / Comp-Set Position | **0.28** | No | U12 |
+| **F3** | Recent Price Movement | **0.17** | No | U2, U3 |
+| **F4** | Seasonality | **0.11** | No | ≥1yr history |
+| ~~F5~~ | ~~Demand / Events~~ | **removed v2** | — | see below |
+| **F6** | Effective Value (Benefits) | **0.11** | No | U10 |
 | | **Total** | **1.00** | | |
 
-**All six weights are configurable** (`score.weight.*`, doc 10). They are starting priors, justified below, to be recalibrated once real data exists — see §4.
+**All five weights are configurable** (`score.weight.*`, doc 10). They are starting priors, justified below, to be recalibrated once real data exists — see §4.
 
 ---
 
 ## 3. The factors
 
-### F1 — Historical Price Percentile · weight 0.30 · mandatory
+### F1 — Historical Price Percentile · weight 0.33 · mandatory
 
 **Why it matters.** This is the question the customer actually asked: *is this cheap for this room?* It is the only factor computable from our own data alone, the only one that works when the hotel has no comparables, and the most defensible to explain. It carries the largest weight because it is both the most relevant and the most reliable.
 
@@ -82,7 +82,7 @@ Mid-rank tie handling avoids a discontinuity when many observations sit at an id
 
 ---
 
-### F2 — Market / Comp-Set Position · weight 0.25
+### F2 — Market / Comp-Set Position · weight 0.28
 
 **Why it matters.** A rate can be cheap for the hotel and still poor value if the whole market is discounting harder that week. This factor supplies the market context the proposal's "Market Comparison" feature promises, and it is the second-largest weight because it is the one signal F1 structurally cannot see.
 
@@ -112,7 +112,7 @@ This is shown to the customer; `index`-based percentile is what scores. Keeping 
 
 ---
 
-### F3 — Recent Price Movement · weight 0.15
+### F3 — Recent Price Movement · weight 0.17
 
 **Why it matters.** Direction of travel changes what to do with the same score. A rate at the 60th percentile that has been climbing 3% a week is a better thing to book today than the same rate drifting down. Weighted moderately in the *score* — because movement describes urgency more than attractiveness — and weighted heavily in the *recommendation engine* (doc 03 §3), which is where it belongs.
 
@@ -138,7 +138,7 @@ score_F3 = clamp( 50 + delta_pct × TREND_GAIN , 0 , 100 )
 
 ---
 
-### F4 — Seasonality · weight 0.10
+### F4 — Seasonality · weight 0.11
 
 **Why it matters.** Identifies structurally cheap periods — a shoulder-season rate is genuinely attractive in a way a peak-season rate at the same percentile is not.
 
@@ -159,58 +159,41 @@ score_F4 = clamp( 50 + (1 − seasonal_index) × SEASON_GAIN , 0 , 100 )
 
 ---
 
-### F5 — Demand / Events · weight 0.10
+### F5 — Demand / Events · **REMOVED in config v2**
 
-**Why it matters.** Context for *why* a price is where it is, and a strong guard against a bad WAIT. A rate at the 70th percentile during a citywide sellout is not going to fall, and recommending WAIT there actively harms the customer.
+**Removed from the Deal Score.** F5 was an affine function of F1 and therefore carried no independent information about price attractiveness.
 
-**Data required** — any of, in priority order:
-1. Event feed for the destination with impact weighting (U14) — best signal, likely absent at MVP
-2. Availability/scarcity signal: rooms remaining, or the proportion of the comp set sold out (U11)
-3. Booking-velocity proxy from WhataHotel's own transaction data (U13)
+The original definition was `score_F5 = 50 + D·50·(1 − 2P)`. Since `F1 = 100(1 − P)`, substituting gives:
 
-**Calculation.**
 ```
-D = demand_pressure ∈ [0,1]   -- max of available signals, each normalized:
-      event:     min(1, Σ event_impact_scores overlapping stay dates)
-      scarcity:  1 − clamp(rooms_left / SCARCITY_NORMAL, 0, 1)
-      velocity:  percentile of bookings-per-day vs hotel's own norm
-
-P = pct_rank from F1
-
-score_F5 = 50 + D × 50 × (1 − 2P)
+score_F5 = (50 − 50D) + D · score_F1
 ```
 
-Behaviour: with no demand signal (D = 0) the factor is neutral at 50. Under maximum demand pressure (D = 1) it swings fully — a rate at the 0th percentile during a sellout scores 100, at the 50th scores 50, at the 100th scores 0. The interaction is the point: **high demand amplifies whatever F1 already says**, rewarding a rate that has stayed low against pressure and punishing one that has been marked up into it.
+At constant demand pressure the correlation with F1 is exactly 1.0; the calibration harness measured 0.82 across a sample where D varied. F5's weight was therefore borrowed from F1 rather than adding a sixth perspective, and the factor-correlation check failed on it correctly.
 
-**Unavailable when** no demand signal of any kind exists for the destination and dates. Note that D = 0 (signal present, no demand detected) and UNAVAILABLE (no signal) are different states and must not be conflated: the first is information, the second is absence of it.
+**Demand did not go away — it moved to where it is genuinely independent.** It continues to drive:
 
-> ### ⚠ Structural finding: F5 is not independent of F1
->
-> The calibration harness measured F1/F5 correlation at **r = 0.82**, and the algebra explains why. Substituting `P = 1 − F1/100` into the formula above:
->
-> ```
-> score_F5 = 50 + D·50·(1 − 2P)
->          = (50 − 50D) + D · score_F1
-> ```
->
-> **F5 is an exact affine function of F1 with slope D.** When demand pressure is constant, the correlation is 1.0 — the residual 0.82 only reflects D varying across the sample. F5 therefore contributes no information about price attractiveness that F1 does not already contain; it merely rescales it, and its 0.10 weight is effectively borrowed from F1 rather than adding a sixth perspective.
->
-> This is a defect in the design above, not in the data or the implementation. Doc 02 §4 anticipated double-counting between F1 and F4; the dependency that actually exists is F1/F5, and it is structural rather than empirical.
->
-> **Two candidate fixes, both a product decision rather than an implementation one:**
->
-> 1. **Remove F5 from the Deal Score** and let demand act only through the never-WAIT guards (W4) and the urgency gate (G3), where it already does real, independent work. Simplest, and loses nothing measurable.
-> 2. **Redefine F5 to measure what F1 cannot see** — for example, how *this* hotel's rate responded to a demand event relative to how the comp set responded. That is genuinely orthogonal information, but it needs event data we do not yet have (U14).
->
-> **Not changed unilaterally.** The scoring model is the product; this is flagged for a decision. Until then F5 remains as specified, and the correlation check will keep failing — correctly.
+- **Guard W4**, which blocks WAIT when demand pressure ≥ 0.60. Rates do not soften into a sell-out, and recommending a wait there actively harms the customer.
+- **Gate G3**, the urgency path to BOOK_NOW.
+- **A displayed reason** (`EVENT_DRIVEN_DEMAND`), so the customer is still told *why* a rate is elevated.
 
-**Regardless of availability, `demand_pressure` feeds the WAIT guards in doc 03 §3.**
+These act on the **recommendation**, not on the score, so they cannot double-count the percentile. That is the distinction the original design missed.
 
----
+**Weight redistribution.** F5's 0.10 was redistributed proportionally across the remaining five factors, preserving their intended relative importance:
 
-### F6 — Effective Value / Benefits · weight 0.10
+| Factor | v1 | v2 |
+|---|---|---|
+| F1 Historical | 0.30 | **0.33** |
+| F2 Market | 0.25 | **0.28** |
+| F3 Trend | 0.15 | **0.17** |
+| F4 Seasonality | 0.10 | **0.11** |
+| F6 Value | 0.10 | **0.11** |
 
-**Why it matters.** The proposal (§5) names this the major differentiator, and it is where WhataHotel's preferred-partner relationships convert into something a competitor cannot copy. It is weighted at 0.10 in v1 not because it matters little, but because **benefit data quality at MVP is the least certain input** (U10) — a weight that reflects data confidence, not strategic importance. Expected to rise substantially in Phase 2 when Effective Stay Value becomes a full surface.
+Folding the whole 0.10 into F1 was considered and rejected: although F5's contribution was partly F1's in disguise, moving it all there would push F1 beyond the importance the original design intended relative to F2 and F3.
+
+### F6 — Effective Value / Benefits · weight 0.11
+
+**Why it matters.** The proposal (§5) names this the major differentiator, and it is where WhataHotel's preferred-partner relationships convert into something a competitor cannot copy. It is weighted at 0.11 not because it matters little, but because **benefit data quality at MVP is the least certain input** (U10) — a weight that reflects data confidence, not strategic importance. Expected to rise substantially in Phase 2 when Effective Stay Value becomes a full surface.
 
 **Data required.** Structured benefits attached to the rate plan or hotel (U10), each with a monetary valuation or valuation rule, and a per-stay vs per-night basis.
 
@@ -259,17 +242,17 @@ Boundaries configurable (`score.band.*`). Band label — never the bare number �
 
 The priors follow a single rule: **weight tracks a factor's reliability and its relevance to the question asked**, in that order.
 
-- F1 (0.30) — directly answers the question and rests on our own data. Highest on both counts.
-- F2 (0.25) — the only external check on F1; slightly lower because it depends on comp-set quality (U12) that we do not yet control.
-- F3 (0.15) — genuinely informative but describes timing more than attractiveness, and its main job is in the recommendation engine.
-- F4, F5, F6 (0.10 each) — each contributes real signal but each rests on the least certain data. Equal weights here are a deliberate admission that we have no basis yet to rank them; calibration should separate them.
+- F1 (0.33) — directly answers the question and rests on our own data. Highest on both counts.
+- F2 (0.28) — the only external check on F1; slightly lower because it depends on comp-set quality (U12) that we do not yet control.
+- F3 (0.17) — genuinely informative but describes timing more than attractiveness, and its main job is in the recommendation engine.
+- F4, F6 (0.11 each) — each contributes real signal but each rests on the least certain data. Equal weights are a deliberate admission that we have no basis yet to rank them; calibration should separate them.
 
 **These are priors, not findings.** They must not survive contact with real data unexamined.
 
 ### Calibration runbook (post-launch, before any weight is treated as settled)
 
 1. **Distribution check** — scores across a representative query sample should be broadly centred near 50 with usable spread. A mean far off 50, or mass piled at the extremes, indicates a mis-set gain constant.
-2. **Factor correlation matrix** — any pair with |r| > 0.6 is double-counting; fold one into the other (F1/F4 is the known suspect).
+2. **Factor correlation matrix** — any pair with |r| > 0.6 is double-counting; fold one into the other. **F1/F5 was found this way and F5 was removed in v2**; F1/F4 remains the outstanding suspect.
 3. **Retrospective accuracy** — for stays where later observations exist, did BOOK_NOW rates in fact prove cheaper than the subsequent 14-day minimum? Track the rate at which a BOOK_NOW was beaten (`book_now_regret_rate`); target below `REGRET_TARGET` (10%).
 4. **WAIT validation** — for WAIT recommendations, did the price actually fall within 14 days? Track `wait_success_rate`; below 60% means the WAIT thresholds are too loose and should tighten.
 5. **Score stability** — the same query re-run a day later should not swing more than `STABILITY_MAX_DELTA` (10 points) absent a real price change. Instability signals a starved baseline.

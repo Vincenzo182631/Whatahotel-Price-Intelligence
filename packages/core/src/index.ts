@@ -59,14 +59,14 @@ export type {
 
 export { bandForScore, composeDealScore } from './scoring/dealScore.js';
 export {
+  computeDemandPressure,
   computeF1,
   computeF2,
   computeF3,
   computeF4,
-  computeF5,
   computeF6,
 } from './scoring/factors.js';
-export type { F1Result, F2Result, F3Result, F5Result, F6Result } from './scoring/factors.js';
+export type { DemandSignal, F1Result, F2Result, F3Result, F6Result } from './scoring/factors.js';
 
 export {
   bandForConfidence,

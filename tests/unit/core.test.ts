@@ -175,7 +175,7 @@ describe('config validation', () => {
 describe('config seed', () => {
   it('matches DEFAULT_CONFIG exactly', () => {
     const sql = readFileSync(
-      new URL('../../db/seeds/002_scoring_config_v1.sql', import.meta.url),
+      new URL('../../db/seeds/002_scoring_config.sql', import.meta.url),
       'utf8',
     );
     const match = sql.match(/\$config\$([\s\S]*?)\$config\$/);

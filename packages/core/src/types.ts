@@ -46,7 +46,18 @@ export type Recommendation = 'BOOK_NOW' | 'WAIT' | 'CONSIDER' | 'INSUFFICIENT_DA
 export type ScoreBand = 'EXCELLENT' | 'GOOD' | 'FAIR' | 'BELOW_AVERAGE' | 'POOR';
 export type ConfidenceBand = 'HIGH' | 'MODERATE' | 'LOW' | 'INSUFFICIENT';
 
-export type FactorCode = 'F1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6';
+/**
+ * F5 (Demand) was removed from the Deal Score in config v2.
+ *
+ * It was an affine function of F1 — `score_F5 = (50 − 50D) + D · score_F1` —
+ * so it contributed no independent information about price attractiveness and
+ * its weight was effectively borrowed from F1. Demand still does real,
+ * independent work in the never-WAIT guard W4 and the urgency gate G3; it just
+ * no longer pretends to be a sixth scoring perspective.
+ *
+ * See docs/mvp/02-deal-score.md §3 and docs/mvp/11-calibration-tooling.md §5.
+ */
+export type FactorCode = 'F1' | 'F2' | 'F3' | 'F4' | 'F6';
 export type GateCode = 'G0' | 'G2' | 'G3' | 'G4' | 'G5';
 export type GuardCode = 'W1' | 'W2' | 'W3' | 'W4' | 'W5' | 'W6' | 'W7' | 'W8';
 

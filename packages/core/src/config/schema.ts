@@ -24,8 +24,7 @@ export function validateConfig(config: ScoringConfig): readonly string[] {
   const issues: string[] = [];
 
   const w = config.score.weight;
-  const weightSum =
-    w.f1Historical + w.f2Market + w.f3Trend + w.f4Seasonality + w.f5Demand + w.f6Value;
+  const weightSum = w.f1Historical + w.f2Market + w.f3Trend + w.f4Seasonality + w.f6Value;
   if (Math.abs(weightSum - 1) > WEIGHT_SUM_TOLERANCE) {
     issues.push(`score.weight.* must sum to 1.0 (got ${weightSum})`);
   }

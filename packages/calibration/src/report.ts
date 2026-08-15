@@ -208,14 +208,14 @@ export function renderMarkdown(input: ReportInput): string {
 
     out.push('### Top candidates by held-out loss');
     out.push('');
-    out.push('| Rank | Holdout loss | Train loss | F1 | F2 | F3 | F4 | F5 | F6 |');
-    out.push('|---|---|---|---|---|---|---|---|---|');
+    out.push('| Rank | Holdout loss | Train loss | F1 | F2 | F3 | F4 | F6 |');
+    out.push('|---|---|---|---|---|---|---|---|');
     sweep.ranked.forEach((c, i) => {
       const w = c.weights;
       out.push(
         `| ${i + 1} | ${c.loss.toFixed(3)} | ${c.trainLoss.toFixed(3)} | ${w.f1Historical.toFixed(2)} | ` +
           `${w.f2Market.toFixed(2)} | ${w.f3Trend.toFixed(2)} | ${w.f4Seasonality.toFixed(2)} | ` +
-          `${w.f5Demand.toFixed(2)} | ${w.f6Value.toFixed(2)} |`,
+          `${w.f6Value.toFixed(2)} |`,
       );
     });
     out.push('');

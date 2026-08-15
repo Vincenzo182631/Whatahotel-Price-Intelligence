@@ -17,7 +17,7 @@ The product answers one question: **is this rate actually a good deal?** It answ
 | M6 · API and widget | ✅ |
 | M7 · Calibration tooling | ✅ harness built; **calibration itself needs real data** |
 
-202 tests passing (scenarios, property invariants, unit, and integration against PostgreSQL), 9 schema behaviour checks, 38 API smoke checks.
+203 tests passing (scenarios, property invariants, unit, and integration against PostgreSQL), 9 schema behaviour checks, 38 API smoke checks.
 
 **Two things to be clear about:**
 
@@ -34,7 +34,7 @@ npm run db:up                              # PostgreSQL 16 on port 5433
 npm run db:reset                           # migrate + seed reference data
 ALLOW_SYNTHETIC_SEED=1 npm run db:seed-dev # synthetic rates, rollups, comp sets
 
-npm test                                   # 202 tests
+npm test                                   # 203 tests
 npm run db:check                           # schema behaviour checks
 npm run api                                # http://localhost:3000
 npm run smoke                              # API contract checks

@@ -19,7 +19,6 @@ export interface ScoringConfig {
       readonly f2Market: number;
       readonly f3Trend: number;
       readonly f4Seasonality: number;
-      readonly f5Demand: number;
       readonly f6Value: number;
     };
     readonly trend: {
@@ -164,16 +163,18 @@ export interface ScoringConfig {
 export const WAIT_CONFIDENCE_HARD_FLOOR = 60;
 
 export const DEFAULT_CONFIG: ScoringConfig = {
-  version: 1,
+  // v2 — F5 (Demand) removed from the Deal Score. Its 0.10 was redistributed
+  // proportionally across the remaining five, preserving their intended
+  // relative importance rather than folding it all into F1.
+  version: 2,
 
   score: {
     weight: {
-      f1Historical: 0.3,
-      f2Market: 0.25,
-      f3Trend: 0.15,
-      f4Seasonality: 0.1,
-      f5Demand: 0.1,
-      f6Value: 0.1,
+      f1Historical: 0.33,
+      f2Market: 0.28,
+      f3Trend: 0.17,
+      f4Seasonality: 0.11,
+      f6Value: 0.11,
     },
     trend: { windowDays: 7, gain: 250, minSeriesPoints: 4 },
     season: { gain: 150, minHistoryDays: 365, correlationMax: 0.6 },

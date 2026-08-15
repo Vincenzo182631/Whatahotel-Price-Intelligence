@@ -106,9 +106,9 @@ data**. Running it against the synthetic seed exercises the harness and nothing
 more — the report says so in a banner, and the CLI exits 0 on a synthetic FAIL
 so it cannot redden a build with a meaningless failure.
 
-Two open items the harness surfaced, both awaiting a product decision rather
-than an implementation:
-- **F5 is an affine function of F1** (`docs/mvp/02` §3, F5). It adds no
-  independent signal. Remove it from the score, or redefine it. Not changed
-  unilaterally.
-- The weights in config v1 remain uncalibrated priors.
+Config v2 removed **F5 (Demand)** from the Deal Score: it was an affine function
+of F1 and carried no independent signal. Demand still drives guard W4 and gate
+G3, where it acts on the recommendation rather than the score. A regression test
+asserts the factor list is exactly `[F1, F2, F3, F4, F6]`.
+
+The weights in config v2 remain uncalibrated priors.
