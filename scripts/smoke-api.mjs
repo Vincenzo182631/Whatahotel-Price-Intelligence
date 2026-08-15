@@ -43,6 +43,35 @@ async function main() {
   check('health reports the config source', health.body?.config_source === 'database');
   check('health reports observations', (health.body?.data?.observations ?? 0) > 0);
 
+  // Provenance is a safety label, so it is asserted rather than trusted. The
+  // harness banner is rendered from it; before this existed the banner was
+  // hardcoded and went on claiming "synthetic" while showing live rates.
+  const provenance = health.body?.data?.provenance;
+  const sources = health.body?.data?.sources ?? [];
+  check(
+    'health reports data provenance',
+    ['REAL', 'SYNTHETIC', 'MIXED', 'EMPTY'].includes(provenance),
+    String(provenance),
+  );
+  check(
+    'every source declares whether it is synthetic',
+    sources.length > 0 && sources.every((s) => typeof s.is_synthetic === 'boolean'),
+  );
+  // CI runs this against the synthetic seed. If that is ever labelled anything
+  // but SYNTHETIC, the label has stopped tracking the data — which is the whole
+  // failure this check exists to catch.
+  if (sources.some((s) => s.code === 'SYNTHETIC_DEV')) {
+    check(
+      'a database seeded with synthetic data is labelled synthetic',
+      provenance === 'SYNTHETIC' || provenance === 'MIXED',
+      provenance,
+    );
+    check(
+      'the synthetic source is flagged is_synthetic',
+      sources.find((s) => s.code === 'SYNTHETIC_DEV')?.is_synthetic === true,
+    );
+  }
+
   // ── hotels ────────────────────────────────────────────────────────────
   const list = await get('/api/v1/hotels?limit=50');
   check('hotel listing returns 200', list.status === 200);
