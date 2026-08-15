@@ -8,12 +8,12 @@ Covers proposal request 1: what to capture, normalized models, timestamping, roo
 
 The product answers "is this rate good?" That question decomposes into four data needs, and everything we capture serves one of them.
 
-| Need | Question it answers | Data required |
-|---|---|---|
-| **Identity** | *What exactly is being priced?* | Hotel, room type, rate plan, occupancy, stay dates |
-| **Price** | *What does it cost, right now and historically?* | Amount, currency, tax basis, capture time |
-| **Context** | *Compared to what?* | Comparable hotels, season, day-of-week, lead time, events |
-| **Value** | *What else is included?* | Benefits attached to the rate or hotel |
+| Need         | Question it answers                              | Data required                                             |
+| ------------ | ------------------------------------------------ | --------------------------------------------------------- |
+| **Identity** | _What exactly is being priced?_                  | Hotel, room type, rate plan, occupancy, stay dates        |
+| **Price**    | _What does it cost, right now and historically?_ | Amount, currency, tax basis, capture time                 |
+| **Context**  | _Compared to what?_                              | Comparable hotels, season, day-of-week, lead time, events |
+| **Value**    | _What else is included?_                         | Benefits attached to the rate or hotel                    |
 
 The non-obvious requirement is the fourth column of the Price row. **A rate without a capture timestamp is worthless to this product** — it can be displayed but never compared. Timestamping is treated as a first-class concern in §5.
 
@@ -91,23 +91,23 @@ This is the highest-risk data problem in the project (R3 in the assessment). It 
 
 Raw room string/code → canonical `room_type`, with a `match_method` and `match_confidence ∈ [0,1]`.
 
-| Step | Method | Confidence | Notes |
-|---|---|---|---|
-| 1 | `SOURCE_ID` — source provides a stable structured room code (U9) | 1.00 | Preferred path. Direct lookup in `room_type.source_code`. |
-| 2 | `ALIAS_EXACT` — normalized string matches a known alias | 0.95 | Alias table grows over time; this becomes the common path. |
-| 3 | `ALIAS_FUZZY` — trigram similarity ≥ threshold against known aliases *for the same hotel* | 0.60–0.90, scaled by similarity | `pg_trgm`. Never fuzzy-match across hotels. |
-| 4 | `ATTRIBUTE_INFERRED` — parse attributes, match on the attribute vector | 0.50 | Last resort. |
-| 5 | `UNMATCHED` | 0.00 | Row is stored but **excluded from all scoring**. Queued for human review. |
+| Step | Method                                                                                    | Confidence                      | Notes                                                                     |
+| ---- | ----------------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------- |
+| 1    | `SOURCE_ID` — source provides a stable structured room code (U9)                          | 1.00                            | Preferred path. Direct lookup in `room_type.source_code`.                 |
+| 2    | `ALIAS_EXACT` — normalized string matches a known alias                                   | 0.95                            | Alias table grows over time; this becomes the common path.                |
+| 3    | `ALIAS_FUZZY` — trigram similarity ≥ threshold against known aliases _for the same hotel_ | 0.60–0.90, scaled by similarity | `pg_trgm`. Never fuzzy-match across hotels.                               |
+| 4    | `ATTRIBUTE_INFERRED` — parse attributes, match on the attribute vector                    | 0.50                            | Last resort.                                                              |
+| 5    | `UNMATCHED`                                                                               | 0.00                            | Row is stored but **excluded from all scoring**. Queued for human review. |
 
 **Normalization before matching** (deterministic, order-fixed): lowercase → strip punctuation/extra whitespace → expand a curated abbreviation dictionary (`ovk`→`ocean view king`, `dbl`→`double`, `ste`→`suite`, `w/`→`with`) → remove marketing filler (`luxury`, `signature`, `our`) → sort nothing (word order is meaningful).
 
 **Attribute extraction** (parsed into structured columns, used by steps 3–5 and by UI):
 
-| Attribute | Values |
-|---|---|
-| `room_class` | ROOM, JUNIOR_SUITE, SUITE, VILLA, RESIDENCE, PENTHOUSE, UNKNOWN |
-| `bed_config` | KING, QUEEN, DOUBLE, TWIN, SINGLE, MULTIPLE, UNKNOWN |
-| `view` | OCEAN, PARTIAL_OCEAN, CITY, GARDEN, POOL, MOUNTAIN, INTERIOR, UNKNOWN |
+| Attribute      | Values                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------ |
+| `room_class`   | ROOM, JUNIOR_SUITE, SUITE, VILLA, RESIDENCE, PENTHOUSE, UNKNOWN                                              |
+| `bed_config`   | KING, QUEEN, DOUBLE, TWIN, SINGLE, MULTIPLE, UNKNOWN                                                         |
+| `view`         | OCEAN, PARTIAL_OCEAN, CITY, GARDEN, POOL, MOUNTAIN, INTERIOR, UNKNOWN                                        |
 | `tier_ordinal` | integer rank within the hotel (standard=0, deluxe=1, premium=2…) derived from price ordering, not from words |
 
 **Hard rule.** `room_class` mismatch blocks a match outright. A ROOM never merges with a SUITE regardless of string similarity — that is the failure mode that most damages the score, and it is cheap to prevent.
@@ -124,12 +124,12 @@ Raw room string/code → canonical `room_type`, with a `match_method` and `match
 
 ### Rate plan dimensions
 
-| Dimension | Values | Source (U5) |
-|---|---|---|
-| `meal_plan` | ROOM_ONLY, BREAKFAST, HALF_BOARD, FULL_BOARD, ALL_INCLUSIVE, UNKNOWN | |
-| `refund_policy` | REFUNDABLE, PARTIALLY_REFUNDABLE, NON_REFUNDABLE, UNKNOWN | |
-| `is_prepaid` | boolean | |
-| `audience` | PUBLIC, MEMBER, CONSORTIA, NEGOTIATED, OPAQUE, UNKNOWN | |
+| Dimension       | Values                                                               | Source (U5) |
+| --------------- | -------------------------------------------------------------------- | ----------- |
+| `meal_plan`     | ROOM_ONLY, BREAKFAST, HALF_BOARD, FULL_BOARD, ALL_INCLUSIVE, UNKNOWN |             |
+| `refund_policy` | REFUNDABLE, PARTIALLY_REFUNDABLE, NON_REFUNDABLE, UNKNOWN            |             |
+| `is_prepaid`    | boolean                                                              |             |
+| `audience`      | PUBLIC, MEMBER, CONSORTIA, NEGOTIATED, OPAQUE, UNKNOWN               |             |
 
 ### Comparability class
 
@@ -160,22 +160,22 @@ This yields 3 × 2 × 2 = 12 classes. Coarse on purpose: finer classes fragment 
 
 Getting this wrong invalidates every metric, so it is stated explicitly:
 
-| Dimension | Column | Meaning |
-|---|---|---|
-| **Observation time** | `observed_at` (timestamptz, UTC) | When *we captured* the price |
-| **Stay time** | `check_in` (date), `nights` (int) | When *the guest stays* |
+| Dimension            | Column                            | Meaning                      |
+| -------------------- | --------------------------------- | ---------------------------- |
+| **Observation time** | `observed_at` (timestamptz, UTC)  | When _we captured_ the price |
+| **Stay time**        | `check_in` (date), `nights` (int) | When _the guest stays_       |
 
 Derived and stored at ingest (not computed at query time):
 
-| Column | Definition | Purpose |
-|---|---|---|
-| `observed_date` | `observed_at` in UTC, date part | Partition-friendly grouping; avoids non-immutable casts in generated columns |
-| `observation_slot` | `observed_at` truncated to `CAPTURE_SLOT_MINUTES` (default 60) | Deduplication key — at most one observation per tuple per slot per source |
-| `lead_time_days` | `check_in - observed_date` | **Critical.** A rate 120 days out is a different economic object from the same hotel 3 days out |
-| `check_out` | `check_in + nights` | Convenience |
-| `stay_dow_bucket` | WEEKDAY / WEEKEND from `check_in` | Baseline stratification |
-| `stay_season_band` | LOW / SHOULDER / HIGH / PEAK / UNKNOWN | Baseline stratification |
-| `nightly_amount_minor` | `round(total_amount_minor / nights)` | Display and comparison unit |
+| Column                 | Definition                                                     | Purpose                                                                                         |
+| ---------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `observed_date`        | `observed_at` in UTC, date part                                | Partition-friendly grouping; avoids non-immutable casts in generated columns                    |
+| `observation_slot`     | `observed_at` truncated to `CAPTURE_SLOT_MINUTES` (default 60) | Deduplication key — at most one observation per tuple per slot per source                       |
+| `lead_time_days`       | `check_in - observed_date`                                     | **Critical.** A rate 120 days out is a different economic object from the same hotel 3 days out |
+| `check_out`            | `check_in + nights`                                            | Convenience                                                                                     |
+| `stay_dow_bucket`      | WEEKDAY / WEEKEND from `check_in`                              | Baseline stratification                                                                         |
+| `stay_season_band`     | LOW / SHOULDER / HIGH / PEAK / UNKNOWN                         | Baseline stratification                                                                         |
+| `nightly_amount_minor` | `round(total_amount_minor / nights)`                           | Display and comparison unit                                                                     |
 
 `lead_time_days` may be negative only for erroneous data; ingest rejects `check_in < observed_date - 1`.
 
@@ -191,10 +191,12 @@ Derived and stored at ingest (not computed at query time):
 `rate_observation` is **append-only**. Prices are not corrected in place — a superseding capture is a new row. This preserves the audit trail needed to reconstruct any score shown to a customer.
 
 Dedup is by unique index on:
+
 ```
 (source_id, hotel_id, room_type_id, rate_plan_id, check_in, nights,
  adults, children, currency, observation_slot)
 ```
+
 A repeat capture within the same slot is an idempotent no-op (`ON CONFLICT DO NOTHING`), so collection retries are safe.
 
 ### Partitioning and retention
@@ -207,11 +209,11 @@ A repeat capture within the same slot is an idempotent no-op (`ON CONFLICT DO NO
 
 Not all stays deserve equal attention. Proposed priority tiers, all configurable:
 
-| Tier | Criteria | Cadence |
-|---|---|---|
-| HOT | Stay viewed/analyzed in last 7 days, or lead time ≤ 30d | Every 6h |
-| WARM | Hotel in MVP set, lead time 31–120d | Daily |
-| COLD | Baseline fill for unviewed dates | Every 3 days |
+| Tier | Criteria                                                | Cadence      |
+| ---- | ------------------------------------------------------- | ------------ |
+| HOT  | Stay viewed/analyzed in last 7 days, or lead time ≤ 30d | Every 6h     |
+| WARM | Hotel in MVP set, lead time 31–120d                     | Daily        |
+| COLD | Baseline fill for unviewed dates                        | Every 3 days |
 
 Rationale: trend detection needs ≥ 4 points in a 7-day window (doc 02, F3), which a daily cadence satisfies; 6-hourly on HOT gives freshness for near-term decisions where the customer acts fastest.
 
@@ -223,15 +225,15 @@ This is the heart of the scoring engine. The proposal says "90-day average" — 
 
 ### Two baselines
 
-**A. Same-stay series `S(Q)`** — *how has the price of this exact stay moved?*
+**A. Same-stay series `S(Q)`** — _how has the price of this exact stay moved?_
 
 All observations matching `(hotel, room_type, comparability_class, check_in, nights, adults, children)`, ordered by `observed_at`, within the last `TREND_WINDOW_DAYS`.
 
 Powers: the price history chart, "price rose 9% in 7 days", factor F3 (Trend).
 
-**B. Historical distribution `H(Q)`** — *what does this room normally cost?*
+**B. Historical distribution `H(Q)`** — _what does this room normally cost?_
 
-Observations for `(hotel, room_type, comparability_class)` across *many different stays*, filtered to comparable conditions, within `LOOKBACK_DAYS` (default 90) of observation time.
+Observations for `(hotel, room_type, comparability_class)` across _many different stays_, filtered to comparable conditions, within `LOOKBACK_DAYS` (default 90) of observation time.
 
 Powers: percentile, average, min, max, factors F1, F2, F4; the "$748 90-day average / $621 low / $925 high" panel from the proposal.
 
@@ -241,14 +243,14 @@ These are not interchangeable. A stay observed once has no series but may have a
 
 `H(Q)` filtered exactly will often be too sparse. Rather than silently loosening filters, the engine walks a **fixed ladder** and records which level it reached. Each level carries a confidence multiplier.
 
-| Level | Filters applied | Confidence multiplier | Meaning |
-|---|---|---|---|
-| **L0** | season band + DOW bucket + lead-time bucket | 1.00 | Ideal: like-for-like |
-| **L1** | season band + DOW bucket | 0.95 | Lead time relaxed |
-| **L2** | season band | 0.88 | Day-of-week relaxed |
-| **L3** | none (full lookback window) | 0.80 | Season relaxed — a summer rate may sit in a winter baseline |
-| **L4** | sibling room types of same `room_class` and adjacent `tier_ordinal` | 0.60 | Borrowing from other rooms; flagged in UI |
-| — | still below `MIN_OBS_ABS` | — | → `INSUFFICIENT_DATA` |
+| Level  | Filters applied                                                     | Confidence multiplier | Meaning                                                     |
+| ------ | ------------------------------------------------------------------- | --------------------- | ----------------------------------------------------------- |
+| **L0** | season band + DOW bucket + lead-time bucket                         | 1.00                  | Ideal: like-for-like                                        |
+| **L1** | season band + DOW bucket                                            | 0.95                  | Lead time relaxed                                           |
+| **L2** | season band                                                         | 0.88                  | Day-of-week relaxed                                         |
+| **L3** | none (full lookback window)                                         | 0.80                  | Season relaxed — a summer rate may sit in a winter baseline |
+| **L4** | sibling room types of same `room_class` and adjacent `tier_ordinal` | 0.60                  | Borrowing from other rooms; flagged in UI                   |
+| —      | still below `MIN_OBS_ABS`                                           | —                     | → `INSUFFICIENT_DATA`                                       |
 
 The engine climbs only as far as needed to reach `MIN_OBS_TARGET` (default 30) observations, and never past L4. `baseline_level` is persisted on the analysis and shown as a caveat when ≥ L3.
 
@@ -259,7 +261,7 @@ The engine climbs only as far as needed to reach `MIN_OBS_TARGET` (default 30) o
 All distribution statistics use **median and percentiles, not mean and standard deviation**:
 
 - Hotel rates are right-skewed with fat tails (peak events, error fares, closeout rates). A single $3,000 New Year's Eve observation moves a mean materially and a median barely.
-- The proposal's UI shows "90-day average" — we will display the **median** and label it *typical rate*, which is both more accurate and more honest. (Flagging this as a deliberate deviation from the proposal's wording; the displayed figure is more robust, not less.)
+- The proposal's UI shows "90-day average" — we will display the **median** and label it _typical rate_, which is both more accurate and more honest. (Flagging this as a deliberate deviation from the proposal's wording; the displayed figure is more robust, not less.)
 - Percentile rank via empirical CDF with mid-rank tie handling.
 - Outlier guard: observations outside `[p1, p99]` of the class distribution are retained in storage but excluded from statistics, and counted in a `outliers_excluded` field that feeds the volatility signal.
 

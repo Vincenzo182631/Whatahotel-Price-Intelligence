@@ -2,7 +2,7 @@
 
 Covers proposal request 6. **PostgreSQL 16.**
 
-> This is a *proposed* schema for review, not an applied migration. Nothing here has been executed. Field names and types in the source-facing columns depend on the unverified inputs (U1–U18) and will need adjustment once real payloads are available.
+> This is a _proposed_ schema for review, not an applied migration. Nothing here has been executed. Field names and types in the source-facing columns depend on the unverified inputs (U1–U18) and will need adjustment once real payloads are available.
 
 Conventions: `snake_case`; surrogate `BIGINT GENERATED ALWAYS AS IDENTITY` keys; natural keys carry unique constraints; all timestamps `timestamptz` in UTC; **money as `BIGINT` minor units with an explicit currency column, never `float`/`numeric` for amounts**.
 

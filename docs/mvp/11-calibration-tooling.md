@@ -12,9 +12,9 @@ npm run calibrate -- --stays 120 --points 8 --report calibration.md
 
 ## 1. Why replay rather than reading stored analyses
 
-The obvious approach — read the `analysis` table and check how those scores fared — cannot answer the question that matters. Stored analyses were produced by one configuration, so they can tell you how *that* config performed and nothing about any alternative. Calibration exists precisely to compare alternatives.
+The obvious approach — read the `analysis` table and check how those scores fared — cannot answer the question that matters. Stored analyses were produced by one configuration, so they can tell you how _that_ config performed and nothing about any alternative. Calibration exists precisely to compare alternatives.
 
-So the harness **replays**: it reconstructs what the engine *would have seen* at a past instant using only observations captured on or before it, re-scores under any candidate configuration, and compares the verdict against what the price actually did next.
+So the harness **replays**: it reconstructs what the engine _would have seen_ at a past instant using only observations captured on or before it, re-scores under any candidate configuration, and compares the verdict against what the price actually did next.
 
 This works only because `rate_observation` is append-only with a capture timestamp. That property was specified in [doc 01 §5](./01-data-architecture.md) for data-integrity reasons; backtesting is the second dividend.
 
@@ -28,10 +28,10 @@ This works only because `rate_observation` is append-only with a capture timesta
 
 ### Two phases, deliberately separated
 
-| Phase | Cost | Runs |
-|---|---|---|
-| `collectSamples` | Database-bound, seconds per stay | **Once** |
-| `evaluate` | Pure, microseconds | Thousands of times |
+| Phase            | Cost                             | Runs               |
+| ---------------- | -------------------------------- | ------------------ |
+| `collectSamples` | Database-bound, seconds per stay | **Once**           |
+| `evaluate`       | Pure, microseconds               | Thousands of times |
 
 That split is what makes a weight sweep affordable, and it guarantees every candidate is judged on **identical evidence** rather than on a fresh sample that might differ for unrelated reasons.
 
@@ -40,20 +40,20 @@ That split is what makes a weight sweep affordable, and it guarantees every cand
 Flagged in every report, because a backtest that hides its own leakage is worse than none:
 
 - **Benefits and demand context are read at current values**, not as of the replay instant. Neither has a history table.
-- **The comparable *set* is current**, though comparable *rates* are as-of.
+- **The comparable _set_ is current**, though comparable _rates_ are as-of.
 
 ---
 
 ## 2. The metrics
 
-| Metric | Asks | Target |
-|---|---|---|
-| Score distribution | Is the score centred and spread, or piled at one end? | mean within ±12 of 50 |
-| Factor correlation | Are two factors measuring the same thing? | no pair above \|r\| 0.6 |
-| BOOK_NOW regret | How often was a rate we said to book beaten shortly after? | ≤ 10% |
-| WAIT success | How often did waiting actually pay off? | ≥ 60% |
-| Score stability | Does the score drift when the price does not? | p95 Δ ≤ 10 points |
-| Coverage | How often can we not answer at all? | ≤ 25% |
+| Metric             | Asks                                                       | Target                  |
+| ------------------ | ---------------------------------------------------------- | ----------------------- |
+| Score distribution | Is the score centred and spread, or piled at one end?      | mean within ±12 of 50   |
+| Factor correlation | Are two factors measuring the same thing?                  | no pair above \|r\| 0.6 |
+| BOOK_NOW regret    | How often was a rate we said to book beaten shortly after? | ≤ 10%                   |
+| WAIT success       | How often did waiting actually pay off?                    | ≥ 60%                   |
+| Score stability    | Does the score drift when the price does not?              | p95 Δ ≤ 10 points       |
+| Coverage           | How often can we not answer at all?                        | ≤ 25%                   |
 
 **Every metric reports `INSUFFICIENT_SAMPLE` rather than a verdict when it lacks evidence.** A report that cannot distinguish "we passed" from "we could not tell" is worse than no report — it converts ignorance into false confidence, which is the exact failure the Confidence Score exists to prevent elsewhere in this product.
 
@@ -68,8 +68,8 @@ Two design notes worth knowing:
 
 Coordinate descent over the five Deal Score weights, with three guards that matter more than the search itself:
 
-1. **Holdout split by stay.** Candidates are ranked on stays the search never saw. Splitting by *trial* rather than by *stay* would leak — two replays of the same stay are not independent.
-2. **A margin requirement.** A candidate must beat the incumbent by `minImprovement` (0.02). Weights that are merely *different* are not better.
+1. **Holdout split by stay.** Candidates are ranked on stays the search never saw. Splitting by _trial_ rather than by _stay_ would leak — two replays of the same stay are not independent.
+2. **A margin requirement.** A candidate must beat the incumbent by `minImprovement` (0.02). Weights that are merely _different_ are not better.
 3. **Reported reliability.** The loss counts only the metric terms the holdout could actually judge, and the sweep **refuses to rank weights when fewer than four of six terms were measurable**. A loss built from one surviving term is not comparable to one built from five.
 
 **The sweep never writes to `scoring_config`.** It emits a ranked suggestion. Activating a configuration is a reviewed decision with evidence attached ([doc 10 §11](./10-configuration-registry.md)), and a search that could silently move the weights would defeat the purpose of versioning them.
@@ -96,13 +96,13 @@ Run against synthetic data, so **none of the metric values are findings**. Two r
 
 Measured r = 0.82; the algebra gives r = 1.0 at constant demand pressure. `score_F5 = (50 − 50D) + D · score_F1` — F5 was an affine transform of F1 and added no independent information.
 
-**Resolved: F5 was removed from the Deal Score**, and its 0.10 redistributed proportionally across the remaining five factors. Demand continues to drive guard W4 and urgency gate G3, where it acts on the *recommendation* rather than the *score* and so cannot double-count the percentile. Full write-up in [doc 02 §3, F5](./02-deal-score.md).
+**Resolved: F5 was removed from the Deal Score**, and its 0.10 redistributed proportionally across the remaining five factors. Demand continues to drive guard W4 and urgency gate G3, where it acts on the _recommendation_ rather than the _score_ and so cannot double-count the percentile. Full write-up in [doc 02 §3, F5](./02-deal-score.md).
 
 A regression test asserts the factor breakdown is exactly `[F1, F2, F3, F4, F6]` and that demand still blocks WAIT — so the dependency cannot return unnoticed.
 
 ### Comparables were not filtered to the subject's comparability class
 
-[Doc 01 §4](./01-data-architecture.md) requires every comp-set comparison to stay within the query's class. The implementation selected each comparable's cheapest room across *all* classes, so a subject's flexible bed-and-breakfast rate could be compared against a comparable's non-refundable room-only discount. **Fixed** in both the live path and the replay.
+[Doc 01 §4](./01-data-architecture.md) requires every comp-set comparison to stay within the query's class. The implementation selected each comparable's cheapest room across _all_ classes, so a subject's flexible bed-and-breakfast rate could be compared against a comparable's non-refundable room-only discount. **Fixed** in both the live path and the replay.
 
 ---
 

@@ -1,6 +1,6 @@
 # 04 — Explanation Engine
 
-Covers proposal request 5. Implements the proposal's §8 principle: *"The AI should not be responsible for deciding whether a rate is good… with AI used to explain the result in natural language."*
+Covers proposal request 5. Implements the proposal's §8 principle: _"The AI should not be responsible for deciding whether a rate is good… with AI used to explain the result in natural language."_
 
 ---
 
@@ -43,7 +43,7 @@ Emitted by the scoring engine, persisted with the analysis, hashed for cache key
     "nights": 3,
     "adults": 2,
     "children": 0,
-    "rate_plan_summary": "Breakfast included · Flexible cancellation"
+    "rate_plan_summary": "Breakfast included · Flexible cancellation",
   },
 
   "verdict": {
@@ -52,7 +52,7 @@ Emitted by the scoring engine, persisted with the analysis, hashed for cache key
     "deal_score_band": "EXCELLENT",
     "confidence": 88,
     "confidence_band": "HIGH",
-    "gate_fired": "G2"
+    "gate_fired": "G2",
   },
 
   "price": {
@@ -61,7 +61,7 @@ Emitted by the scoring engine, persisted with the analysis, hashed for cache key
     "total_minor": 206700,
     "tax_basis": "GROSS",
     "effective_nightly_minor": 65900,
-    "observed_at": "2026-08-14T09:12:00Z"
+    "observed_at": "2026-08-14T09:12:00Z",
   },
 
   "baseline": {
@@ -72,7 +72,7 @@ Emitted by the scoring engine, persisted with the analysis, hashed for cache key
     "p10_nightly_minor": 65200,
     "p90_nightly_minor": 88100,
     "min_nightly_minor": 62100,
-    "max_nightly_minor": 92500
+    "max_nightly_minor": 92500,
   },
 
   // Ordered by contribution to the verdict, strongest first.
@@ -83,7 +83,7 @@ Emitted by the scoring engine, persisted with the analysis, hashed for cache key
       "magnitude": 7.9,
       "unit": "PERCENT",
       "fact": "The current rate is 7.9% below the typical rate for this room over the last 90 days.",
-      "supporting": { "current_minor": 68900, "median_minor": 74800, "percentile": 9 }
+      "supporting": { "current_minor": 68900, "median_minor": 74800, "percentile": 9 },
     },
     {
       "code": "BELOW_COMPARABLE_HOTELS",
@@ -91,7 +91,7 @@ Emitted by the scoring engine, persisted with the analysis, hashed for cache key
       "magnitude": 8.0,
       "unit": "PERCENT",
       "fact": "The rate is 8% below the median of 6 comparable luxury hotels for the same dates.",
-      "supporting": { "comp_count": 6, "comp_median_minor": 74900 }
+      "supporting": { "comp_count": 6, "comp_median_minor": 74900 },
     },
     {
       "code": "PRICE_RISING_7D",
@@ -99,7 +99,7 @@ Emitted by the scoring engine, persisted with the analysis, hashed for cache key
       "magnitude": 9.0,
       "unit": "PERCENT",
       "fact": "The rate for this stay has increased 9% over the past 7 days.",
-      "supporting": { "window_days": 7, "start_minor": 63200 }
+      "supporting": { "window_days": 7, "start_minor": 63200 },
     },
     {
       "code": "BENEFITS_INCLUDED",
@@ -107,8 +107,8 @@ Emitted by the scoring engine, persisted with the analysis, hashed for cache key
       "magnitude": 3000,
       "unit": "CURRENCY_MINOR",
       "fact": "Included benefits are valued at about $30 per night, giving an effective rate of $659.",
-      "supporting": { "benefits": ["Breakfast for 2", "$100 hotel credit"] }
-    }
+      "supporting": { "benefits": ["Breakfast for 2", "$100 hotel credit"] },
+    },
   ],
 
   "caveats": [],
@@ -117,16 +117,16 @@ Emitted by the scoring engine, persisted with the analysis, hashed for cache key
     "allowed_numbers": [91, 88, 7.9, 8, 9, 84, 90, 6, 689, 748, 652, 881, 621, 925, 659, 30, 3, 2],
     "currency_symbol": "$",
     "must_not_predict": true,
-    "max_sentences": 3
-  }
+    "max_sentences": 3,
+  },
 }
 ```
 
 ### Field rules
 
-- **Every element of `factors` is already computed.** `fact` is a complete, correct, human-readable sentence produced deterministically by the engine. The model's job is to *select and combine* these, not to derive them.
+- **Every element of `factors` is already computed.** `fact` is a complete, correct, human-readable sentence produced deterministically by the engine. The model's job is to _select and combine_ these, not to derive them.
 - **`magnitude` is always a number with an explicit `unit`** (`PERCENT`, `CURRENCY_MINOR`, `DAYS`, `COUNT`, `SCORE`) so the renderer and the validator never have to parse prose.
-- **`direction`** is `POSITIVE` / `NEGATIVE` / `NEUTRAL` *with respect to the customer's interest*, not with respect to price. A falling price is `NEGATIVE` for a BOOK_NOW verdict.
+- **`direction`** is `POSITIVE` / `NEGATIVE` / `NEUTRAL` _with respect to the customer's interest_, not with respect to price. A falling price is `NEGATIVE` for a BOOK_NOW verdict.
 - **`caveats`** carries anything qualifying the verdict — thin baseline, loose ladder level, high volatility, poor matching. When non-empty the UI must display at least one, and the explanation must mention it.
 
 ### Reason code enum
@@ -150,6 +150,7 @@ System prompt (fixed, versioned alongside `bundle_version`):
 > You will receive a JSON object containing facts that have already been calculated. Your only task is to express those facts in natural, confident prose.
 >
 > Rules:
+>
 > - Use only the facts provided. Never calculate, infer, estimate, or add information.
 > - Never state or imply a number that does not appear in `constraints.allowed_numbers`.
 > - Never predict what a price will do in the future.
@@ -166,14 +167,14 @@ Model call parameters: temperature ≤ 0.3, capped output tokens, hard timeout `
 
 Applied to every model response before it can be displayed. Any failure discards the response and renders the template instead — silently to the customer, loudly to monitoring.
 
-| # | Check | Rule |
-|---|---|---|
-| V1 | **Numeric allowlist** | Extract every numeral from the output (including those inside `$1,234` and `8%`). Each must appear in `constraints.allowed_numbers` within a rounding tolerance of `NUMERIC_TOLERANCE` (0.5). This is the primary guard against fabricated statistics. |
-| V2 | **Verdict consistency** | Output must not contain language contradicting the recommendation (a WAIT-flavoured phrase under a BOOK_NOW verdict, or vice versa), checked against a phrase list per verdict. |
-| V3 | **No prediction** | Reject forward-looking claims about price ("will drop", "expect to fall", "prices should"), matched against a prohibited-pattern list. The system does not forecast in MVP and must not appear to. |
-| V4 | **Caveat coverage** | If `caveats` is non-empty, at least one caveat concept must appear. |
-| V5 | **Length and format** | Within sentence cap; no markdown, links, or HTML. |
-| V6 | **No invented entities** | Hotel and room names appearing in the output must match `subject`. |
+| #   | Check                    | Rule                                                                                                                                                                                                                                                   |
+| --- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| V1  | **Numeric allowlist**    | Extract every numeral from the output (including those inside `$1,234` and `8%`). Each must appear in `constraints.allowed_numbers` within a rounding tolerance of `NUMERIC_TOLERANCE` (0.5). This is the primary guard against fabricated statistics. |
+| V2  | **Verdict consistency**  | Output must not contain language contradicting the recommendation (a WAIT-flavoured phrase under a BOOK_NOW verdict, or vice versa), checked against a phrase list per verdict.                                                                        |
+| V3  | **No prediction**        | Reject forward-looking claims about price ("will drop", "expect to fall", "prices should"), matched against a prohibited-pattern list. The system does not forecast in MVP and must not appear to.                                                     |
+| V4  | **Caveat coverage**      | If `caveats` is non-empty, at least one caveat concept must appear.                                                                                                                                                                                    |
+| V5  | **Length and format**    | Within sentence cap; no markdown, links, or HTML.                                                                                                                                                                                                      |
+| V6  | **No invented entities** | Hotel and room names appearing in the output must match `subject`.                                                                                                                                                                                     |
 
 Validation failures are logged with the bundle hash and the offending text, and tracked as `explanation_validation_failure_rate`. A sustained rise is a signal to revisit the prompt — and, because the fallback always renders, never a customer-facing incident.
 
