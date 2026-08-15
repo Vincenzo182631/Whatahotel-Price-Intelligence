@@ -26,10 +26,13 @@ carries no rate history (U3), so baselines accrue forward from the first capture
 Expect roughly two weeks of collection before scores appear.
 
 ```bash
-export WAH_API_KEY=...                  # a credential; never committed
+cp .env.example .env                    # then set WAH_API_KEY; .env is gitignored
 npm run collect -- --catalog miami      # sync hotels and their perks
 npm run collect                         # top up the grid + refresh what is due
 ```
+
+Credential setup — local, GitHub Actions and server — is in
+[`docs/runbooks/collection.md`](./docs/runbooks/collection.md#setting-up-the-api-key).
 
 `.github/workflows/collect.yml` runs the same commands in CI. Its schedule is
 **currently commented out** — manual dispatch only until the `WAH_API_KEY` and

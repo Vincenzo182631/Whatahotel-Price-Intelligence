@@ -222,6 +222,78 @@ systemctl list-timers wahpi-collect.timer
 
 ---
 
+## Setting up the API key
+
+The key is a credential. It lives in the environment and nowhere else — never in
+a file that git tracks, never on a command line in a shared shell (it lands in
+`~/.bash_history` and in `ps` output for every user on the box), never in an
+issue, a screenshot, or a log. `redact()` strips it from every URL this project
+logs, which is the last line of defence, not the first.
+
+### Local development
+
+```bash
+cp .env.example .env
+${EDITOR:-nano} .env          # set WAH_API_KEY and DATABASE_URL
+```
+
+`.env` is gitignored. The npm scripts that need credentials pass
+`--env-file-if-exists=.env`, so this is picked up with no further step:
+
+```bash
+npm run collect -- --dry-run  # reads .env; no exported variables needed
+```
+
+Two behaviours worth knowing, both verified:
+
+- **An exported variable beats `.env`.** This is what makes the arrangement safe
+  in CI — a stray `.env` can never shadow a real secret — and it also gives you
+  a one-off override: `WAH_API_KEY=other-key npm run collect -- --dry-run`.
+- **A missing `.env` is not an error.** Node prints `.env not found. Continuing
+without it.` and carries on, which is why CI (where the file never exists) is
+  unaffected. Expect that line in CI logs; it is not a failure.
+
+`npm test` and any direct `node`/`psql` call read the ambient environment rather
+than `.env`. For those:
+
+```bash
+set -a; . ./.env; set +a
+```
+
+### GitHub Actions
+
+Repository secrets, set by someone with admin on the repo:
+
+```bash
+gh secret set WAH_API_KEY  --repo <owner>/<repo>
+gh secret set DATABASE_URL --repo <owner>/<repo>
+```
+
+`gh secret set` prompts for the value on stdin rather than taking it as an
+argument — use that, so the key never enters shell history. The UI equivalent is
+_Settings → Secrets and variables → Actions → New repository secret_.
+
+Never `echo "$KEY" | gh secret set ...` in an interactive shell, and never put
+the value in a workflow file, a `env:` default, or a PR description. Secrets are
+write-only once set: GitHub will not show you the value again, which is a
+feature.
+
+### On a server
+
+See Option B above — `/etc/wahpi.env`, mode `0600`, owned by the service user,
+loaded via `EnvironmentFile=` or `set -a; . /etc/wahpi.env; set +a`. The point is
+the same: readable by exactly one account, never on a command line.
+
+### If a key is exposed
+
+Rotate it. A key that has appeared in a chat log, a terminal transcript, a CI
+log, or a shared screen should be treated as compromised even if nothing
+obviously bad happened — rotation is cheap and certainty is not. Once rotated,
+update the three places it can live: `.env` locally, the repository secret, and
+the server's env file.
+
+---
+
 ## First run on a new database
 
 ```bash
