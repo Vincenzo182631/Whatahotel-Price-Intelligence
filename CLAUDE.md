@@ -32,11 +32,12 @@ WAH_API_KEY=... npm run collect -- --bootstrap       # grid only, skip the due-r
 WAH_API_KEY=... npm run collect -- --dry-run         # show the plan, call nothing
 ```
 
-Scheduled collection is `.github/workflows/collect.yml` (daily, 06:00 UTC).
-**Read [`docs/runbooks/collection.md`](./docs/runbooks/collection.md) before
-changing the schedule** — the scheduler's HOT tier wants a 6-hour refresh, so
-a daily cron deliberately under-serves it, and that trade is written down there
-along with the server cron/systemd alternatives.
+Scheduled collection is `.github/workflows/collect.yml`, every 6 hours — the
+scheduler's shortest tier interval. **Read
+[`docs/runbooks/collection.md`](./docs/runbooks/collection.md) before changing
+it**: anything coarser silently caps every tier at the cron period, and a daily
+job would give HOT stays a quarter of their intended cadence. A finer one buys
+nothing, since no tier asks for it.
 
 Integration tests run only when `DATABASE_URL` is set; they skip otherwise so
 `npm test` works without a database.

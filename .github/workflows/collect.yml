@@ -17,19 +17,20 @@ name: Collect rates
 
 on:
   schedule:
-    # 06:00 UTC daily. Cron here is ALWAYS UTC — GitHub does not observe any
-    # local timezone or daylight saving.
-    - cron: '0 6 * * *'
+    # Every 6 hours, matching the scheduler's shortest tier interval.
     #
-    # The scheduler's own cadence is finer than daily: HOT stays (lead ≤ 30
-    # days — the bookings customers are about to make) want a 6-hour refresh,
-    # WARM 24h, COLD 72h. Running once a day caps every tier at 24h, so HOT
-    # stays are refreshed a quarter as often as designed and factor F3 (trend)
-    # gets far fewer points inside its 7-day window. To honour the tiers,
-    # uncomment the line below and delete the one above — `planCollection`
-    # already decides what is actually due on each firing, so a more frequent
-    # cron does not mean more API calls per stay.
-    # - cron: '0 */6 * * *'
+    # HOT stays — lead ≤ 30 days, the bookings customers are about to make —
+    # want a 6-hour refresh; WARM 24h, COLD 72h. A daily cron would cap every
+    # tier at 24h, giving HOT a quarter of its intended cadence and factor F3
+    # (trend) far fewer points inside its 7-day window.
+    #
+    # This does NOT quadruple API spend. `planCollection` returns only stays
+    # actually due, so WARM and COLD are skipped on the intermediate firings;
+    # the extra cost is roughly the HOT set, which is what the tiering exists
+    # to spend on.
+    #
+    # Cron here is ALWAYS UTC — GitHub observes no local timezone or DST.
+    - cron: '0 */6 * * *'
   workflow_dispatch:
     inputs:
       limit:

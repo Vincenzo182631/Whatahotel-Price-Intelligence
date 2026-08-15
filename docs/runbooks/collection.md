@@ -34,6 +34,12 @@ collector can back off: the first three failures are free, then the retry delay
 doubles — 1h, 2h, 4h … capped at one week. **Any success resets the counter to
 zero**, so a stay that starts pricing again is picked straight back up.
 
+The delay is in hours, so it interacts with how often the cron fires: at
+6-hourly, the early doublings are shorter than the gap between runs and so pass
+unnoticed, and a genuinely dead stay takes roughly a dozen attempts over three
+or four days to settle at the weekly cap. That is deliberate — backing off
+faster would risk exiling a stay that is merely mid-outage.
+
 `last_outcome` says why a stay yielded nothing:
 
 | Outcome           | Meaning                                                    |
@@ -75,19 +81,26 @@ The scheduler assigns each stay a tier and a refresh interval:
 | WARM | everything else inside the horizon           | 24 hours |
 | COLD | far-out, never viewed                        | 72 hours |
 
-**A daily cron caps every tier at 24 hours.** HOT stays — the ones a customer is
-about to book — are then refreshed a quarter as often as designed, and factor
-F3 (trend) gets fewer points inside its 7-day window, which lowers confidence
-and makes the WAIT gate harder to reach.
+**The cron runs every 6 hours**, matching the shortest tier interval. Anything
+coarser silently caps every tier at the cron period: a daily job would give HOT
+stays a quarter of their intended cadence, and factor F3 (trend) far fewer
+points inside its 7-day window, which lowers confidence and makes the WAIT gate
+harder to reach.
 
-Running the cron every 6 hours does **not** multiply API calls by four:
-`planCollection` still only returns stays that are actually due, so WARM and
-COLD stays are skipped on the intermediate firings. The extra cost is roughly
-the HOT set, which is what the tiering was designed to spend on.
+Six-hourly does **not** multiply API calls by four. `planCollection` returns
+only stays that are actually due, so WARM and COLD stays are skipped on the
+intermediate firings; the extra cost is roughly the HOT set, which is what the
+tiering exists to spend on. Measured against a full 15-hotel grid (177 tracked
+stays, 2,570 observations) a firing with nothing due and no gaps plans in 0.14s
+across four queries and makes no API calls.
 
-Daily is the configured default because it is what was asked for. To honour the
-tiers, switch the schedule to `0 */6 * * *` — one line in
-`.github/workflows/collect.yml`, or in the crontab below.
+The one thing a shorter period does multiply is retries of stays that yield
+nothing, since those are re-proposed until the backoff engages — 33 of them on
+the current set, for roughly the first day. That is bounded and self-limiting,
+but it is why the backoff exists at all.
+
+Going finer than 6 hours buys nothing: no tier asks for it, so the extra
+firings would find nothing due and simply idle.
 
 ---
 
@@ -134,8 +147,8 @@ EOF
 ```
 
 ```cron
-# /etc/cron.d/wahpi-collect     (daily at 06:00 local; use 0 */6 for the tiers)
-0 6 * * *  wahpi  set -a; . /etc/wahpi.env; set +a; \
+# /etc/cron.d/wahpi-collect     (every 6 hours, matching the HOT tier)
+0 */6 * * *  wahpi  set -a; . /etc/wahpi.env; set +a; \
   cd /srv/wahpi && /usr/bin/npm run collect -- --limit 500 --concurrency 6 \
   >> /var/log/wahpi/collect.log 2>&1
 ```
@@ -143,7 +156,7 @@ EOF
 `flock` if runs could ever overlap:
 
 ```cron
-0 6 * * *  wahpi  /usr/bin/flock -n /var/lock/wahpi-collect.lock -c '...'
+0 */6 * * *  wahpi  /usr/bin/flock -n /var/lock/wahpi-collect.lock -c '...'
 ```
 
 ### systemd timer instead
@@ -169,10 +182,11 @@ ExecStart=/usr/bin/npm run collect -- --limit 500 --concurrency 6
 ```ini
 # /etc/systemd/system/wahpi-collect.timer
 [Unit]
-Description=Daily WhataHotel rate collection
+Description=WhataHotel rate collection, every 6 hours
 
 [Timer]
-OnCalendar=*-*-* 06:00:00
+# Matches the scheduler's shortest tier interval; see Cadence above.
+OnCalendar=*-*-* 00/6:00:00
 Persistent=true
 
 [Install]
