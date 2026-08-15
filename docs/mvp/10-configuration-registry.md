@@ -88,6 +88,7 @@ Must sum to 1.00; validated on config insert.
 | `confidence.volatility_cv_max` | 0.35 | Above this, a point estimate is fragile |
 | `confidence.volatility_floor` | 0.25 | Volatility makes a percentile fragile, not false |
 | `confidence.unresolved_share_max` | 0.20 | Tolerated share of unresolved rate terms in a baseline |
+| `confidence.completeness_floor` | 0.75 | Factor completeness scales between this and 1.0. F4 and F5 are expected to be unavailable at launch by design; a raw multiplier would permanently cap confidence for a planned gap |
 | `confidence.band.high_min` | 75 | |
 | `confidence.band.moderate_min` | 55 | |
 | `confidence.band.low_min` | 40 | |

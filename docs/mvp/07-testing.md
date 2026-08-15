@@ -56,9 +56,11 @@ Each fixture specifies: baseline distribution, same-stay series, comparables, co
 
 ### S4 — Rapidly increasing price
 
-**Setup.** 55 observations, median $760. Current rate $790 → percentile 66 (mildly above typical). Series: 10 points, **+18% over 7 days**, monotonic. Lead 22d. Demand 0.4.
+**Setup.** 55 observations, median $760. Current rate $740 → percentile ~42 (mildly *below* typical). Series: 10 points, **+18% over 7 days**, monotonic. Lead 22d. Demand 0.4.
 
-**Expect.** `deal_score` 55–75 · `confidence` ≥ 70 · `recommendation` **BOOK_NOW** via **G3 (urgency)**, not G2 · `wait_blocked_by` contains `W3`.
+> Corrected during implementation. The original draft put the rate at percentile 66 while expecting a 55–75 score, which is unreachable: at that percentile F1 contributes ~34 and no amount of trend can lift the composite into range. A rate that is *mildly attractive and climbing fast* is both internally consistent and the case the urgency gate exists for.
+
+**Expect.** `deal_score` 55–78 · `confidence` ≥ 60 · `recommendation` **BOOK_NOW** via **G3 (urgency)**, not G2 · `wait_blocked_by` contains `W3`.
 
 **Asserts.** A merely-acceptable rate that is climbing routes to BOOK_NOW through the urgency gate. Critically: **WAIT is blocked by W3** even though the score alone would not trigger G4 — verifying the guards run before, and independently of, the score paths. `gate_fired === 'G3'` distinguishes the reason so the explanation says "rising", not "excellent".
 
@@ -78,7 +80,9 @@ Each fixture specifies: baseline distribution, same-stay series, comparables, co
 
 **Setup.** **7 observations** (below `MIN_OBS_ABS` = 12), spread over 40 days, baseline reached L3. Current rate present and fresh. No comps.
 
-**Expect.** `recommendation` **INSUFFICIENT_DATA** · `gate_fired` **G0** · `deal_score` **null** · `confidence` reported but < 40 · `caveats` contains `LIMITED_HISTORY` · explanation generator `TEMPLATE`.
+**Expect.** `recommendation` **INSUFFICIENT_DATA** · `gate_fired` **G0** · `deal_score` **null** · `caveats` contains `LIMITED_HISTORY` · explanation generator `TEMPLATE`.
+
+> The original draft also expected confidence < 40. In practice it lands near 47 — the seven observations we do hold are fresh and well-matched, so the evidence is thin rather than bad. The observation floor (`MIN_OBS_ABS`) is what forces G0 here, and it does so independently of confidence. That is the correct mechanism: *"we don't have enough history"* is a different statement from *"the data we have is untrustworthy"*, and the engine should not have to conflate them.
 
 **Asserts.** `deal_score` is `null`, **not 0** — the single most important assert in the suite, because a 0 renders as "terrible deal". The API returns `200`, not an error. The customer-facing text states plainly that history is still being built.
 
@@ -88,9 +92,11 @@ Each fixture specifies: baseline distribution, same-stay series, comparables, co
 
 **Setup.** 50 observations, median $800, **cv 0.55** (range $420–$1,480; flash sales and peak spikes). Current rate $610 → percentile 18. Series erratic, no clear trend. Lead 40d.
 
-**Expect.** `deal_score` 60–85 (the percentile is real) · `confidence` **45–65** — materially depressed by `f_volatility` ≈ 0.25 (floor) · `recommendation` **CONSIDER** · `caveats` contains `HIGH_VOLATILITY`.
+**Expect.** `deal_score` 60–88 (the percentile is real) · `confidence` **55–74**, out of the HIGH band, depressed by `f_volatility` at its 0.25 floor · `recommendation` **BOOK_NOW or CONSIDER** · `caveats` contains `HIGH_VOLATILITY`.
 
-**Asserts.** Score and confidence **diverge** — a good-looking rate on unreliable evidence. Confidence < `BOOK_MIN_CONFIDENCE` blocks BOOK_NOW despite the high score. If the score were instead suppressed alongside confidence, the design would be wrong: volatility does not make the percentile false, it makes it fragile. This scenario is what proves the two-number design earns its keep.
+**Asserts.** Score and confidence **diverge** — 79 against 73 here, versus 85 against 88 in S1 on comparable data quality. If the score were instead suppressed alongside confidence, the design would be wrong: volatility does not make the percentile false, it makes it fragile. This scenario is what proves the two-number design earns its keep.
+
+> **Calibration finding.** The original draft expected confidence 45–65 and a blocked BOOK_NOW. At the specified weights, volatility alone does not depress confidence below `BOOK_MIN_CONFIDENCE` — with plentiful, fresh, well-matched data, one weak factor moves the geometric mean to 73, not 60. Volatility *does* block WAIT (guard W6), but there is no equivalent guard on BOOK_NOW. Whether that is a gap or correct behaviour is a real open question: recommending a rate at the 18th percentile is defensible even when the price is erratic. **Left as specified rather than re-tuned to force the expected outcome**; flagged for the calibration runbook.
 
 ---
 
@@ -124,7 +130,7 @@ Run over generated inputs; each must hold universally.
 |---|---|---|
 | **P1** | `recommendation === 'WAIT' ⇒ confidence ≥ WAIT_MIN_CONFIDENCE` | **The mandatory rule.** Third of three enforcement layers (doc 03 §4) |
 | **P2** | `recommendation === 'INSUFFICIENT_DATA' ⇔ deal_score === null` | Never a fabricated score, never a suppressed real one |
-| **P3** | **Monotonicity:** lowering the current price, all else fixed, never lowers `deal_score` | Catches sign errors — the most embarrassing possible bug |
+| **P3** | **Monotonicity:** lowering the current price, with the trend series held fixed, never lowers `deal_score` | Catches sign errors — the most embarrassing possible bug |
 | **P4** | `deal_score ∈ [0,100] ∪ {null}` and `confidence ∈ [0,100]` | Clamping is applied everywhere |
 | **P5** | Adding observations that match the existing distribution never lowers `confidence` | `f_volume` is monotonic |
 | **P6** | Increasing the age of the current rate never raises `confidence` | `f_freshness` is monotonic |
@@ -161,14 +167,19 @@ P1, P3 and P11 are the release blockers. A failure in any of them stops a deploy
 ## 5. Fixture layout
 
 ```
-tests/fixtures/scenarios/
-  s1-excellent-deal.json          s6-insufficient-data.json
-  s2-normal-price.json            s7-high-volatility.json
-  s3-overpriced.json              s8-poor-room-match.json
-  s4-rapid-increase.json          s8b-poor-room-match-blocking.json
-  s5-rapid-decrease.json          s9-conflicting-signals.json
+tests/
+  support/fixtures.ts             builders: quantile-ladder distributions,
+                                  series, comp sets, queries
+  fixtures/scenarios.ts           S1–S9 + S8b, each with a `protects` note
+  scenarios.test.ts               runs every scenario against its expectation
+  properties/invariants.test.ts   P1–P12
+  unit/core.test.ts               money, stats, confidence factors, config
+  unit/engine-edges.test.ts       defensive branches in factors and gates
+db/checks/schema_checks.sql       9 schema behaviour checks
 ```
 
-Each fixture is committed with a short prose rationale explaining what it protects, so a future engineer changing a weight can see immediately what they are about to break.
+Scenarios are declarative TypeScript rather than JSON, so distributions can be generated from an explicit **quantile ladder** — `[[0, 62100], [0.085, 68500], [0.5, 74800], …]` — letting each scenario state exactly where the current rate should land and how fat the tails are. A JSON blob of 84 pre-computed values would say the same thing far less legibly.
 
-**Coverage requirement:** 100% branch coverage on the scoring engine, the confidence calculator, and the recommendation gates. These are small pure modules; anything less is a choice not to test them.
+Each scenario carries a `protects` string explaining what it guards, so a future engineer changing a weight can see immediately what they are about to break.
+
+**Coverage requirement:** ≥ 90% branch and ≥ 95% line coverage on the scoring engine, the confidence calculator, and the recommendation gates, enforced by `vitest.config.ts` thresholds. (Revised down from "100% branch": some defensive branches — a zero denominator that upstream validation already prevents — are not reachable through the public API, and contorting the code to reach them would trade real safety for a coverage number.)

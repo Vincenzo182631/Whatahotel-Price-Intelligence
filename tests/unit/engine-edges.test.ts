@@ -1,0 +1,408 @@
+/**
+ * Edge paths in the scoring factors and the recommendation engine.
+ *
+ * These are the branches the scenario suite does not naturally reach — the
+ * defensive ones. They matter precisely because they only fire when something
+ * has already gone wrong upstream.
+ */
+
+import { describe, expect, it } from 'vitest';
+
+import { analyze } from '../../packages/core/src/analyze.js';
+import { DEFAULT_CONFIG } from '../../packages/core/src/config/defaults.js';
+import {
+  WaitConfidenceViolation,
+  assertWaitInvariant,
+  evaluateGuards,
+} from '../../packages/core/src/recommendation/engine.js';
+import { composeDealScore } from '../../packages/core/src/scoring/dealScore.js';
+import {
+  computeF2,
+  computeF3,
+  computeF4,
+  computeF5,
+  computeF6,
+} from '../../packages/core/src/scoring/factors.js';
+import type {
+  BaselineDistribution,
+  FactorResult,
+  RecommendationResult,
+} from '../../packages/core/src/types.js';
+import {
+  NOW,
+  checkInWithLeadDays,
+  makeBaseline,
+  makeComparables,
+  makeCurrent,
+  makeQuery,
+  makeSeries,
+} from '../support/fixtures.js';
+
+const baseline: BaselineDistribution = makeBaseline({
+  n: 60,
+  ladder: [
+    [0, 60000],
+    [0.5, 75000],
+    [1, 95000],
+  ],
+});
+
+describe('F2 · market comparison edge paths', () => {
+  it('is unavailable without a baseline median to index against', () => {
+    const r = computeF2(
+      makeCurrent(70000),
+      null,
+      makeComparables({ count: 6, index: 1, baselineMedianMinor: 75000 }),
+      DEFAULT_CONFIG,
+    );
+    expect(r.factor.available).toBe(false);
+    expect(r.factor.unavailableReason).toBe('NO_BASELINE');
+  });
+
+  it('is unavailable below the minimum comparable count', () => {
+    const r = computeF2(
+      makeCurrent(70000),
+      baseline,
+      makeComparables({ count: 2, index: 1, baselineMedianMinor: 75000 }),
+      DEFAULT_CONFIG,
+    );
+    expect(r.factor.available).toBe(false);
+    expect(r.factor.unavailableReason).toBe('INSUFFICIENT_COMPARABLES');
+    expect(r.compCount).toBe(2);
+  });
+
+  it('discards comparables missing a price or a baseline', () => {
+    const comps = [
+      ...makeComparables({ count: 3, index: 1, baselineMedianMinor: 75000 }),
+      {
+        hotelId: 'broken',
+        hotelName: 'Broken',
+        currentNightlyMinor: 0,
+        baselineMedianMinor: 0,
+        observedAt: '2026-08-14T09:00:00Z',
+      },
+    ];
+    const r = computeF2(makeCurrent(70000), baseline, comps, DEFAULT_CONFIG);
+    expect(r.compCount).toBe(3);
+  });
+});
+
+describe('F3 · trend edge paths', () => {
+  it('is unavailable below the minimum point count', () => {
+    const r = computeF3(
+      makeSeries({ points: 2, spanDays: 7, endMinor: 70000, deltaFraction: 0.1 }),
+      NOW,
+      DEFAULT_CONFIG,
+    );
+    expect(r.factor.available).toBe(false);
+    expect(r.factor.unavailableReason).toBe('INSUFFICIENT_SERIES_POINTS');
+    expect(r.pointsUsed).toBe(2);
+  });
+
+  it('ignores points older than the window', () => {
+    const old = makeSeries({
+      points: 8,
+      spanDays: 7,
+      endMinor: 70000,
+      deltaFraction: 0.1,
+      endAt: new Date(NOW.getTime() - 30 * 86_400_000),
+    });
+    expect(computeF3(old, NOW, DEFAULT_CONFIG).factor.available).toBe(false);
+  });
+
+  it('refuses to divide by a zero opening price', () => {
+    const series = [
+      { observedAt: new Date(NOW.getTime() - 6 * 86_400_000).toISOString(), nightlyMinor: 0 },
+      { observedAt: new Date(NOW.getTime() - 4 * 86_400_000).toISOString(), nightlyMinor: 100 },
+      { observedAt: new Date(NOW.getTime() - 2 * 86_400_000).toISOString(), nightlyMinor: 200 },
+      { observedAt: NOW.toISOString(), nightlyMinor: 300 },
+    ];
+    expect(computeF3(series, NOW, DEFAULT_CONFIG).factor.available).toBe(false);
+  });
+
+  it('accepts a window override', () => {
+    const r = computeF3(
+      makeSeries({ points: 10, spanDays: 30, endMinor: 70000, deltaFraction: 0.2 }),
+      NOW,
+      DEFAULT_CONFIG,
+      30,
+    );
+    expect(r.factor.available).toBe(true);
+    expect(r.deltaPct).toBeGreaterThan(0);
+  });
+});
+
+describe('F4 · seasonality', () => {
+  it('is unavailable without input', () => {
+    expect(computeF4(null, DEFAULT_CONFIG).unavailableReason).toBe('INSUFFICIENT_HISTORY');
+  });
+
+  it('is unavailable below the history requirement', () => {
+    const r = computeF4(
+      { seasonalIndex: 0.8, historyDays: 100, seasonBand: 'LOW' },
+      DEFAULT_CONFIG,
+    );
+    expect(r.available).toBe(false);
+  });
+
+  it('rewards a structurally cheap season once a full cycle exists', () => {
+    const r = computeF4(
+      { seasonalIndex: 0.8, historyDays: 400, seasonBand: 'LOW' },
+      DEFAULT_CONFIG,
+    );
+    expect(r.available).toBe(true);
+    expect(r.subScore).toBe(80); // 50 + (1 - 0.8) * 150
+  });
+});
+
+describe('F5 · demand', () => {
+  it('distinguishes "no signal" from "signal shows no demand"', () => {
+    const none = computeF5(null, 0.5, DEFAULT_CONFIG);
+    expect(none.hasSignal).toBe(false);
+    expect(none.factor.available).toBe(false);
+
+    const quiet = computeF5({ roomsLeft: 10 }, 0.5, DEFAULT_CONFIG);
+    expect(quiet.hasSignal).toBe(true);
+    expect(quiet.factor.available).toBe(true);
+  });
+
+  it('derives pressure from scarcity, sell-out share and booking velocity', () => {
+    expect(computeF5({ roomsLeft: 1 }, 0.5, DEFAULT_CONFIG).demandPressure).toBeCloseTo(0.9, 5);
+    expect(computeF5({ compSoldOutShare: 0.7 }, 0.5, DEFAULT_CONFIG).demandPressure).toBeCloseTo(
+      0.7,
+      5,
+    );
+    expect(
+      computeF5({ bookingVelocityPercentile: 0.8 }, 0.5, DEFAULT_CONFIG).demandPressure,
+    ).toBeCloseTo(0.8, 5);
+  });
+
+  it('amplifies a low rate under pressure and punishes a high one', () => {
+    const cheapUnderPressure = computeF5({ compSoldOutShare: 1 }, 0, DEFAULT_CONFIG);
+    const dearUnderPressure = computeF5({ compSoldOutShare: 1 }, 1, DEFAULT_CONFIG);
+    expect(cheapUnderPressure.factor.subScore).toBe(100);
+    expect(dearUnderPressure.factor.subScore).toBe(0);
+  });
+
+  it('is unavailable without a percentile to amplify', () => {
+    expect(computeF5({ compSoldOutShare: 1 }, null, DEFAULT_CONFIG).factor.available).toBe(false);
+  });
+});
+
+describe('F6 · effective value', () => {
+  const query = makeQuery();
+
+  it('is unavailable with no benefits', () => {
+    expect(computeF6(makeCurrent(70000), query, [], DEFAULT_CONFIG).factor.unavailableReason).toBe(
+      'NO_BENEFITS',
+    );
+  });
+
+  it('caps an implausible benefit valuation', () => {
+    const r = computeF6(
+      makeCurrent(70000),
+      query,
+      [
+        {
+          code: 'ABSURD',
+          displayName: 'Absurd credit',
+          basis: 'PER_NIGHT',
+          valueMinor: 500000,
+          realizationFactor: 1,
+        },
+      ],
+      DEFAULT_CONFIG,
+    );
+    expect(r.wasCapped).toBe(true);
+    expect(r.benefitValuePerNightMinor).toBe(70000 * DEFAULT_CONFIG.score.value.benefitCapPct);
+  });
+
+  it('spreads a per-stay benefit across the nights', () => {
+    const r = computeF6(
+      makeCurrent(70000),
+      makeQuery({ nights: 4 }),
+      [
+        {
+          code: 'HOTEL_CREDIT',
+          displayName: 'Credit',
+          basis: 'PER_STAY',
+          valueMinor: 10000,
+          realizationFactor: 0.8,
+        },
+      ],
+      DEFAULT_CONFIG,
+    );
+    expect(r.benefitValuePerNightMinor).toBe(2000); // 10000 * 0.8 / 4
+    expect(r.effectiveNightlyMinor).toBe(68000);
+  });
+});
+
+describe('deal score composition', () => {
+  const factor = (over: Partial<FactorResult>): FactorResult => ({
+    code: 'F1',
+    name: 'x',
+    available: true,
+    subScore: 50,
+    rawValue: 0,
+    unit: 'SCORE',
+    weight: 0.3,
+    weightApplied: 0,
+    unavailableReason: null,
+    ...over,
+  });
+
+  it('returns null when F1 is unavailable, however good the rest look', () => {
+    const result = composeDealScore(
+      [
+        factor({ code: 'F1', available: false, subScore: null }),
+        factor({ code: 'F2', weight: 0.25, subScore: 100 }),
+        factor({ code: 'F3', weight: 0.15, subScore: 100 }),
+        factor({ code: 'F4', weight: 0.1, subScore: 100 }),
+        factor({ code: 'F5', weight: 0.1, subScore: 100 }),
+        factor({ code: 'F6', weight: 0.1, subScore: 100 }),
+      ],
+      DEFAULT_CONFIG,
+    );
+    expect(result.score).toBeNull();
+  });
+
+  it('returns null below the minimum weight coverage', () => {
+    const result = composeDealScore(
+      [
+        factor({ code: 'F1', subScore: 90 }),
+        factor({ code: 'F2', weight: 0.25, available: false, subScore: null }),
+        factor({ code: 'F3', weight: 0.15, available: false, subScore: null }),
+        factor({ code: 'F4', weight: 0.1, available: false, subScore: null }),
+        factor({ code: 'F5', weight: 0.1, available: false, subScore: null }),
+        factor({ code: 'F6', weight: 0.1, available: false, subScore: null }),
+      ],
+      DEFAULT_CONFIG,
+    );
+    expect(result.weightCoverage).toBeCloseTo(0.3, 5);
+    expect(result.score).toBeNull();
+  });
+
+  it('handles an empty factor list without dividing by zero', () => {
+    const result = composeDealScore([], DEFAULT_CONFIG);
+    expect(result.score).toBeNull();
+    expect(result.weightCoverage).toBe(0);
+  });
+});
+
+describe('never-WAIT guards', () => {
+  const guardInput = {
+    dealScore: 20,
+    confidence: 90,
+    current: makeCurrent(70000),
+    baseline,
+    weightCoverage: 0.8,
+    matchQuality: 0.95,
+    leadTimeDays: 60,
+    trendPct: -5,
+    demandPressure: 0,
+    volatilityFactor: 0.9,
+    now: NOW,
+  };
+
+  it('reports every guard as clear on a clean WAIT case', () => {
+    const guards = evaluateGuards(guardInput, DEFAULT_CONFIG);
+    expect(guards).toHaveLength(8);
+    expect(guards.filter((g) => g.tripped)).toHaveLength(0);
+  });
+
+  it('trips W5 on scarce inventory and W7 on non-refundable-only', () => {
+    const guards = evaluateGuards(
+      {
+        ...guardInput,
+        current: makeCurrent(70000, { roomsLeft: 2, onlyNonRefundableAvailable: true }),
+      },
+      DEFAULT_CONFIG,
+    );
+    const tripped = guards.filter((g) => g.tripped).map((g) => g.code);
+    expect(tripped).toContain('W5');
+    expect(tripped).toContain('W7');
+  });
+
+  it('trips W6 when the price is too erratic to time', () => {
+    const guards = evaluateGuards({ ...guardInput, volatilityFactor: 0.1 }, DEFAULT_CONFIG);
+    expect(guards.find((g) => g.code === 'W6')?.tripped).toBe(true);
+  });
+
+  it('trips W8 on a widened baseline', () => {
+    const widened = makeBaseline({
+      n: 60,
+      level: 'L3',
+      ladder: [
+        [0, 60000],
+        [1, 90000],
+      ],
+    });
+    const guards = evaluateGuards({ ...guardInput, baseline: widened }, DEFAULT_CONFIG);
+    expect(guards.find((g) => g.code === 'W8')?.tripped).toBe(true);
+  });
+});
+
+describe('the WAIT boundary assertion', () => {
+  const waitResult: RecommendationResult = {
+    recommendation: 'WAIT',
+    gateFired: 'G4',
+    waitBlockedBy: [],
+    guards: [],
+    insufficientReasons: [],
+  };
+
+  it('throws if a WAIT ever escapes below the confidence floor', () => {
+    expect(() => assertWaitInvariant(waitResult, 65, DEFAULT_CONFIG)).toThrow(
+      WaitConfidenceViolation,
+    );
+  });
+
+  it('passes at or above the floor', () => {
+    expect(() => assertWaitInvariant(waitResult, 70, DEFAULT_CONFIG)).not.toThrow();
+  });
+
+  it('ignores non-WAIT recommendations', () => {
+    expect(() =>
+      assertWaitInvariant({ ...waitResult, recommendation: 'CONSIDER' }, 10, DEFAULT_CONFIG),
+    ).not.toThrow();
+  });
+});
+
+describe('analyze · degenerate inputs', () => {
+  it('reports INSUFFICIENT_DATA with no baseline at all', () => {
+    const { analysis } = analyze(
+      {
+        query: makeQuery({ checkIn: checkInWithLeadDays(30) }),
+        current: makeCurrent(70000),
+        baseline: null,
+        series: [],
+        comparables: [],
+        benefits: [],
+        now: NOW,
+      },
+      DEFAULT_CONFIG,
+    );
+    expect(analysis.recommendation).toBe('INSUFFICIENT_DATA');
+    expect(analysis.dealScore).toBeNull();
+    expect(analysis.baseline.nObservations).toBe(0);
+  });
+
+  it('reports INSUFFICIENT_DATA on a rate older than the staleness limit', () => {
+    const { analysis } = analyze(
+      {
+        query: makeQuery({ checkIn: checkInWithLeadDays(30) }),
+        current: makeCurrent(70000, {
+          observedAt: new Date(NOW.getTime() - 100 * 3_600_000).toISOString(),
+        }),
+        baseline,
+        series: makeSeries({ points: 6, spanDays: 7, endMinor: 70000, deltaFraction: 0 }),
+        comparables: makeComparables({ count: 5, index: 1, baselineMedianMinor: 75000 }),
+        benefits: [],
+        now: NOW,
+      },
+      DEFAULT_CONFIG,
+    );
+    expect(analysis.recommendation).toBe('INSUFFICIENT_DATA');
+    expect(analysis.caveatCodes).toContain('STALE_DATA');
+  });
+});

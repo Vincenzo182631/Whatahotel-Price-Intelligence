@@ -1,0 +1,5 @@
+dist/
+coverage/
+node_modules/
+package-lock.json
+db/seeds/002_scoring_config_v1.sql

@@ -130,6 +130,8 @@ score_F3 = clamp( 50 + delta_pct × TREND_GAIN , 0 , 100 )
 
 **Theil–Sen rather than least squares** because it tolerates the occasional spurious capture (a flash sale, a mis-parsed rate) without swinging the trend. With only 4–10 points, one bad value would dominate an OLS slope.
 
+> **Implementation finding.** That robustness is real at 8 points (a single endpoint spike leaves the slope exactly correct, where OLS is dragged sevenfold) but **not at the configured 4-point minimum** — with four points, an endpoint outlier contaminates 3 of the 6 pairwise slopes, enough to move the median. Raising `score.trend.min_series_points` to 6 would close the gap at the cost of making F3 unavailable more often early on. Both behaviours are covered by explicit unit tests; the choice is left for calibration rather than made unilaterally.
+
 **Sign convention.** Rising price → higher score: the rate in front of the customer is better than what is coming. This is deliberate and is the one place where the Deal Score incorporates timing rather than pure price level. Flagged for calibration review — if it proves to confuse customers ("why did the score go up when the price went up?"), the alternative is to move F3's entire weight into the recommendation engine and drop it from the score. **D7: decision deferred to calibration.**
 
 **Unavailable when** fewer than `MIN_SERIES_POINTS` observations of the same stay exist — which will be common at launch for stays nobody has queried before.

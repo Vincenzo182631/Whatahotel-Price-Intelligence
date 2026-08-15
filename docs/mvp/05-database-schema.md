@@ -203,8 +203,15 @@ CREATE TABLE rate_observation (
 
     CONSTRAINT rate_obs_checkout_ck  CHECK (check_out = check_in + nights),
     CONSTRAINT rate_obs_leadtime_ck  CHECK (check_in >= observed_date - 1),
-    PRIMARY KEY (id, observed_at)
-) PARTITION BY RANGE (observed_at);
+    PRIMARY KEY (id, observation_slot)
+)
+-- Partitioned on observation_slot, NOT observed_at. Postgres requires a unique
+-- index on a partitioned table to include every partition-key column; the dedup
+-- key is the SLOT, so partitioning on observed_at would force the exact instant
+-- into the dedup index and let two captures in the same slot both land.
+-- observation_slot is observed_at truncated to the hour, so monthly ranges
+-- behave identically either way. (Found by applying the DDL to Postgres 16.)
+PARTITION BY RANGE (observation_slot);
 
 -- Monthly partitions, created ahead of time by a scheduled job.
 CREATE TABLE rate_observation_2026_08 PARTITION OF rate_observation
@@ -479,7 +486,7 @@ CREATE INDEX price_alert_active_idx ON price_alert (hotel_id, check_in) WHERE is
 ## 6. Schema notes worth reviewing
 
 1. **`nightly_amount_minor` is a stored generated column**; `lead_time_days` likewise, but only because `observed_date` is written explicitly at ingest. A generated column cannot derive a date from a `timestamptz` — that cast is `STABLE`, not `IMMUTABLE`, and Postgres rejects it. Ingest computes `observed_date` and `observation_slot`.
-2. **The partition key is part of the primary key** (`id, observed_at`) — a Postgres requirement for partitioned tables, and the reason `id` alone is not unique.
+2. **The partition key is part of the primary key** (`id, observation_slot`) — a Postgres requirement for partitioned tables, and the reason `id` alone is not unique. See the comment on the partition clause for why the key is the slot rather than the exact capture instant.
 3. **The dedup index makes collection retry-safe.** Ingest uses `ON CONFLICT DO NOTHING` and counts conflicts as duplicates.
 4. **`comparability_class` is denormalized onto `rate_observation`** rather than joined from `rate_plan`. Deliberate: baseline queries filter on it constantly, and the join would defeat the covering index.
 5. **The `analysis_wait_confidence_ck` constraint duplicates an application rule.** That is the point — three enforcement layers (engine gate, boundary assertion, database constraint) for the one rule with a direct path to customer harm.

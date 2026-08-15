@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wahpi
+          POSTGRES_PASSWORD: wahpi
+          POSTGRES_DB: wahpi
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U wahpi -d wahpi"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://wahpi:wahpi@localhost:5433/wahpi
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Unit, scenario and property tests
+        run: npm test
+
+      - name: Apply migrations and seeds
+        run: node scripts/migrate.mjs --reset
+
+      - name: Scoring config seed is in sync with defaults
+        run: |
+          node scripts/emit-config-seed.mjs
+          git diff --exit-code db/seeds/002_scoring_config_v1.sql \
+            || (echo "::error::db/seeds/002_scoring_config_v1.sql is stale — run npm run config:seed" && exit 1)
+
+      - name: Schema behaviour checks
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/checks/schema_checks.sql
