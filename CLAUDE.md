@@ -10,25 +10,35 @@ like an arbitrary constant is a documented decision.
 ## Commands
 
 ```bash
-npm install
-npm test                 # unit + scenario + property tests
+npm install && npm run build
+npm test                 # unit + scenario + property + integration
 npm run typecheck
-npm run lint
 npm run format
 
 npm run db:up            # Postgres 16 via docker compose (port 5433)
-npm run db:reset         # drop, migrate, seed
+npm run db:reset         # drop, migrate, seed reference data
 npm run db:check         # schema behaviour checks
 npm run config:seed      # regenerate the scoring-config seed from defaults.ts
+
+ALLOW_SYNTHETIC_SEED=1 npm run db:seed-dev   # synthetic rates + rollups + comps
+npm run api              # http://localhost:3000 (widget demo at /)
+npm run smoke            # API contract checks against a running server
 ```
+
+Integration tests run only when `DATABASE_URL` is set; they skip otherwise so
+`npm test` works without a database.
 
 ## Architecture
 
 ```
 packages/core/     pure scoring engine — NO I/O of any kind
+packages/data/     the ONLY SQL in the project
+packages/ingest/   adapters, pipeline, rollups, comp sets, scheduler
+apps/api/          Node http server (docs/mvp/06)
+apps/web/public/   framework-free embeddable widget (docs/mvp/08)
 db/migrations/     schema (docs/mvp/05)
 db/checks/         schema behaviour checks
-tests/             scenarios S1–S9, invariants P1–P12
+tests/             scenarios S1–S9, invariants P1–P12, unit, integration
 ```
 
 `packages/core` has no database, network, clock or filesystem access. Its
@@ -68,11 +78,23 @@ engine.
 4. Re-run the scenario suite — band or recommendation changes in S1–S9 must be
    explained before merging.
 
+7. **Synthetic data never leaves development.** `scripts/seed-dev.mjs` fabricates
+   rates so the pipeline can be exercised. It refuses to run without
+   `ALLOW_SYNTHETIC_SEED=1`, because once synthetic rows are in
+   `rate_observation` they are indistinguishable from real ones. Do not remove
+   that guard, and do not point it at anything but a local database.
+
 ## Current state
 
-Built: schema, migrations, seeds, the full scoring engine, explanation bundle
-and template renderer, and the test suite (S1–S9, P1–P12, 9 DB checks).
+Built and verified: schema and migrations, ingestion pipeline with room-type and
+rate-plan normalization, baseline rollups at every ladder level, comp-set
+builder, collection scheduler, the full scoring engine, the explanation bundle
+and template renderer, the REST API, and the embeddable widget.
 
-Not built: the source adapter (`packages/ingest`), baseline rollup jobs, the API
-and UI. The adapter is blocked on the U1–U18 data questions in
-`docs/mvp/README.md` — it needs real payloads before it can be written honestly.
+**Not built: the production source adapter.** `RateSourceAdapter` defines the
+interface and a synthetic development implementation exists, but the real one is
+blocked on U1–U18 in `docs/mvp/README.md`. Writing it without real payloads would
+produce an adapter that compiles and silently mis-maps every rate — the failure
+mode with no symptom until the scores are already wrong.
+
+Also outstanding: M7 calibration, which needs real data.

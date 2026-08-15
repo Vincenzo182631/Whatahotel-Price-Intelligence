@@ -1,14 +1,28 @@
 -- 0004 — Baseline rollups, comparables, benefits, events
 -- Spec: docs/mvp/05-database-schema.md §4
 
+-- Baselines are precomputed at EVERY level of the widening ladder (docs/mvp/01
+-- §6), so a page view reads exactly one row: the most specific level that has
+-- enough observations. Merging percentile summaries across strata at query time
+-- is not statistically sound, and scanning raw facts per request would put the
+-- fact table on the hot path.
+--
+-- Stratum columns are NULL at the levels that do not use them:
+--   L0  season + day-of-week + lead bucket
+--   L1  season + day-of-week
+--   L2  season
+--   L3  no stratification
+--   L4  no stratification, observations borrowed from sibling room types
 CREATE TABLE rate_baseline (
     id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     hotel_id            BIGINT        NOT NULL REFERENCES hotel(id) ON DELETE CASCADE,
     room_type_id        BIGINT        NOT NULL REFERENCES room_type(id) ON DELETE CASCADE,
     comparability_class TEXT          NOT NULL,
-    stay_season_band    season_band_t NOT NULL,
-    stay_dow_bucket     dow_bucket_t  NOT NULL,
-    lead_bucket         TEXT          NOT NULL,
+    baseline_level      TEXT          NOT NULL
+                                      CHECK (baseline_level IN ('L0','L1','L2','L3','L4')),
+    stay_season_band    season_band_t,
+    stay_dow_bucket     dow_bucket_t,
+    lead_bucket         TEXT,
     currency            CHAR(3)       NOT NULL,
 
     n_observations      INTEGER       NOT NULL,
@@ -25,14 +39,25 @@ CREATE TABLE rate_baseline (
     cv                  NUMERIC(6,4)  NOT NULL,
     n_sources           SMALLINT      NOT NULL DEFAULT 1,
     mean_match_conf     NUMERIC(3,2)  NOT NULL,
+    -- Feed the confidence factors f_consistency and f_match directly, so the
+    -- engine never has to reach back into the fact table for them.
+    cross_source_cv     NUMERIC(6,4),
+    unresolved_share    NUMERIC(4,3)  NOT NULL DEFAULT 0,
 
     window_start        DATE          NOT NULL,
     window_end          DATE          NOT NULL,
-    computed_at         TIMESTAMPTZ   NOT NULL DEFAULT now(),
-
-    UNIQUE (hotel_id, room_type_id, comparability_class, stay_season_band,
-            stay_dow_bucket, lead_bucket, currency)
+    computed_at         TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
+
+-- NULLS NOT DISTINCT (PostgreSQL 15+) so the coarser levels, which leave
+-- stratum columns NULL, still deduplicate correctly.
+CREATE UNIQUE INDEX rate_baseline_key_uidx ON rate_baseline
+    (hotel_id, room_type_id, comparability_class, baseline_level,
+     stay_season_band, stay_dow_bucket, lead_bucket, currency)
+    NULLS NOT DISTINCT;
+
+CREATE INDEX rate_baseline_lookup_idx ON rate_baseline
+    (hotel_id, room_type_id, comparability_class, currency, baseline_level);
 CREATE INDEX rate_baseline_stale_idx ON rate_baseline (computed_at);
 
 CREATE TABLE hotel_comparable (                     -- U12

@@ -76,7 +76,12 @@ Phase 2 (specified, not built): `POST/GET/DELETE /api/v1/alerts`.
     "confidence": 88,
     "confidence_band": "HIGH",
     "recommendation": "BOOK_NOW",
-    "recommendation_label": "Book now"
+    "recommendation_label": "Book now",
+    // Which gate fired. The UI needs it: "good rate AND rising" (G3) is a
+    // materially different message from "excellent rate" (G2), and the customer
+    // is owed the actual reason.
+    "gate_fired": "G2",
+    "wait_blocked_by": []
   },
 
   "baseline": {
@@ -196,7 +201,9 @@ Not an error. The system worked correctly and its answer is "we don't know yet."
 ## 3. Supporting endpoints
 
 ### `GET /api/v1/hotels`
-`q` (min 2 chars), `destination`, `limit` (default 10, max 50). Trigram search over `hotel.name`. Returns `hotel_id`, `name`, `destination`, `luxury_tier`, and `has_price_intelligence` — a boolean telling the UI whether this hotel has enough baseline coverage to be worth analyzing. Prevents leading customers into a guaranteed `INSUFFICIENT_DATA`.
+`q` (**optional**; min 2 chars when given), `limit` (default 10, max 50). With `q`, trigram search over `hotel.name`; without it, a plain alphabetical listing. Returns `hotel_id`, `name`, `destination`, `luxury_tier`, and `has_price_intelligence` — a boolean telling the UI whether this hotel has enough baseline coverage to be worth analyzing. Prevents leading customers into a guaranteed `INSUFFICIENT_DATA`.
+
+> `q` was required in the original draft. A host page needs a browsable picker as well as type-ahead, and forcing it to invent a throwaway query string to get one is the kind of API that gets worked around rather than used.
 
 ### `GET /api/v1/hotels/{hotel_id}/room-types`
 Params `check_in`, `check_out`, `adults`, `children`. Returns available room types with current nightly price, comparability class, `n_observations`, and `intelligence_available`. Populates the room selector.

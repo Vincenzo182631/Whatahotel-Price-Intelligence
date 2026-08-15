@@ -12,6 +12,49 @@ export {
 } from './config/schema.js';
 export type { DeepPartial } from './config/schema.js';
 
+export {
+  ABBREVIATIONS,
+  FILLER_WORDS,
+  normalizeRoomName,
+  trigramSimilarity,
+  trigrams,
+} from './normalize/text.js';
+export { extractAttributes, roomClassesCompatible } from './normalize/attributes.js';
+export type { RoomAttributes } from './normalize/attributes.js';
+export { matchRoomType } from './normalize/roomType.js';
+export type { MatchOptions, RoomTypeCandidate, RoomTypeMatch } from './normalize/roomType.js';
+export {
+  ALL_COMPARABILITY_CLASSES,
+  audienceGroup,
+  classifyComparability,
+  describeRateTerms,
+  mealPlanGroup,
+  refundGroup,
+} from './normalize/ratePlan.js';
+export type {
+  AudienceGroup,
+  ComparabilityResult,
+  MealPlanGroup,
+  RatePlanTerms,
+  RefundGroup,
+} from './normalize/ratePlan.js';
+
+export {
+  BASELINE_LEVELS,
+  LEAD_BUCKETS,
+  LEVEL_STRATA,
+  dowBucketFor,
+  leadBucketFor,
+  seasonBandFor,
+  selectBaselineLevel,
+} from './baseline/ladder.js';
+export type {
+  LadderCandidate,
+  LadderSelection,
+  LeadBucket,
+  LevelStrata,
+} from './baseline/ladder.js';
+
 export { bandForScore, composeDealScore } from './scoring/dealScore.js';
 export {
   computeF1,

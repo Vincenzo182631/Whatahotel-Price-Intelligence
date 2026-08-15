@@ -7,6 +7,15 @@ import type { ScoringConfig } from '../config/defaults.js';
 import { toScore } from '../stats.js';
 import type { DealScoreResult, FactorResult, ScoreBand } from '../types.js';
 
+/**
+ * Weight coverage is a sum of floating-point weights, so a factor set that
+ * exactly meets the minimum can land just under it: 0.30 + 0.15 + 0.10 is
+ * 0.5499999999999999, not 0.55. Without this tolerance a hotel with precisely
+ * the minimum coverage is rejected as INSUFFICIENT_DATA — which is what
+ * happened to two hotels the first time real data ran through the API.
+ */
+export const WEIGHT_COVERAGE_EPSILON = 1e-9;
+
 export function bandForScore(score: number, config: ScoringConfig): ScoreBand {
   const b = config.score.band;
   if (score >= b.excellentMin) return 'EXCELLENT';
@@ -41,7 +50,11 @@ export function composeDealScore(
       f.available && f.subScore !== null && availableWeight > 0 ? f.weight / availableWeight : 0,
   }));
 
-  if (!f1Available || availableWeight === 0 || weightCoverage < config.score.minWeightCoverage) {
+  if (
+    !f1Available ||
+    availableWeight === 0 ||
+    weightCoverage < config.score.minWeightCoverage - WEIGHT_COVERAGE_EPSILON
+  ) {
     return { score: null, band: null, factors: withApplied, weightCoverage };
   }
 

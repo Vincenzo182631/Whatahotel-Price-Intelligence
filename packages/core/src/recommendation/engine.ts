@@ -10,6 +10,7 @@
  */
 
 import type { ScoringConfig } from '../config/defaults.js';
+import { WEIGHT_COVERAGE_EPSILON } from '../scoring/dealScore.js';
 import { hoursBetween } from '../stats.js';
 import type {
   BaselineDistribution,
@@ -112,7 +113,11 @@ function gateZeroReasons(input: RecommendationInput, config: ScoringConfig): rea
   else if (baseline.nObservations < config.rec.minObsAbs) {
     reasons.push('INSUFFICIENT_OBSERVATIONS');
   }
-  if (input.weightCoverage < config.score.minWeightCoverage) reasons.push('INSUFFICIENT_FACTORS');
+  // Same epsilon as composeDealScore — the two gates must agree, or a score is
+  // computed and then rejected (or worse, the reverse).
+  if (input.weightCoverage < config.score.minWeightCoverage - WEIGHT_COVERAGE_EPSILON) {
+    reasons.push('INSUFFICIENT_FACTORS');
+  }
   if (input.matchQuality < config.rec.matchMin) reasons.push('WEAK_ROOM_MATCH');
 
   const ageHours = hoursBetween(new Date(current.observedAt), input.now);

@@ -7,7 +7,8 @@
     "node": ">=22"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/api"
   ],
   "scripts": {
     "build": "tsc --build",
@@ -23,7 +24,11 @@
     "db:migrate": "node scripts/migrate.mjs --seed",
     "db:reset": "node scripts/migrate.mjs --reset",
     "config:seed": "node scripts/emit-config-seed.mjs",
-    "db:check": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f db/checks/schema_checks.sql"
+    "db:check": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f db/checks/schema_checks.sql",
+    "db:seed-dev": "node scripts/seed-dev.mjs",
+    "api": "node apps/api/dist/server.js",
+    "api:dev": "npm run build && node apps/api/dist/server.js",
+    "smoke": "node scripts/smoke-api.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -35,5 +40,9 @@
     "prettier": "^3.4.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@types/pg": "^8.21.0",
+    "pg": "^8.23.0"
   }
 }

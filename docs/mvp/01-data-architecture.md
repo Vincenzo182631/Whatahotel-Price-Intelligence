@@ -265,8 +265,11 @@ All distribution statistics use **median and percentiles, not mean and standard 
 
 ### Materialization
 
-`rate_baseline` stores, per `(hotel, room_type, comparability_class, season_band, dow_bucket, lead_bucket)`:
-`n_observations, p10, p25, p50, p75, p90, min, max, mean, stddev, cv, computed_at, window_start, window_end`.
+`rate_baseline` stores one row **per ladder level**, keyed by
+`(hotel, room_type, comparability_class, baseline_level, [season_band], [dow_bucket], [lead_bucket])`, holding
+`n_observations, p10, p25, p50, p75, p90, min, max, mean, stddev, cv, n_sources, mean_match_conf, cross_source_cv, unresolved_share, computed_at, window_start, window_end`.
+
+> **Refined during implementation.** The original draft stored only the finest stratification and left the ladder to widen at query time. That does not work: merging percentile summaries across strata is not statistically sound, and recomputing from raw facts per request would put the fact table on the hot path — exactly what materialization exists to avoid. The rollup therefore computes every level directly from observations, and the read path selects the most specific row that clears `MIN_OBS_TARGET`. Stratum columns are NULL at the levels that do not use them, which is why the unique index is declared `NULLS NOT DISTINCT`.
 
 Refreshed on a schedule (default hourly for HOT hotels, daily otherwise). **The API never scans raw observations on a page view** — it reads one baseline row plus the current rate. This keeps p95 response time flat as the fact table grows (risk R7 from the assessment).
 

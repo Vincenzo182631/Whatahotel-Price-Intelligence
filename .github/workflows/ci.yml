@@ -43,11 +43,14 @@ jobs:
       - name: Format check
         run: npm run format:check
 
-      - name: Unit, scenario and property tests
-        run: npm test
+      - name: Build
+        run: npm run build
 
       - name: Apply migrations and seeds
         run: node scripts/migrate.mjs --reset
+
+      - name: Unit, scenario, property and integration tests
+        run: npm test
 
       - name: Scoring config seed is in sync with defaults
         run: |
@@ -57,3 +60,19 @@ jobs:
 
       - name: Schema behaviour checks
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/checks/schema_checks.sql
+
+      # Exercises the whole pipeline the way a developer does: synthetic data in,
+      # baselines rolled up, comparables built, API answering.
+      - name: Seed development data
+        run: ALLOW_SYNTHETIC_SEED=1 node scripts/seed-dev.mjs
+
+      - name: API smoke test
+        run: |
+          LOG_REQUESTS=0 node apps/api/dist/server.js &
+          API_PID=$!
+          trap 'kill $API_PID' EXIT
+          for i in $(seq 1 20); do
+            curl -sf localhost:3000/api/v1/health > /dev/null && break
+            sleep 1
+          done
+          node scripts/smoke-api.mjs

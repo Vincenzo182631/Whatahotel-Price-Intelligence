@@ -1,6 +1,21 @@
 # 09 — Implementation Plan
 
-Covers proposal request 10: phases, and the modules to be created. **No code has been written.**
+Covers proposal request 10: phases, and the modules to be created.
+
+## Build status
+
+| Milestone | State |
+|---|---|
+| M0 · Data source verification | **Blocked** — U1–U18 unanswered ([doc 00](./README.md#unverified-inputs-register)) |
+| M1 · Foundation, schema, migrations, CI | ✅ |
+| M2 · Ingestion and normalization | **Partial** — pipeline, normalizer and validation built and tested; the production **source adapter is not built** and cannot be until M0 closes |
+| M3 · Baselines, rollups, comparables, scheduler | ✅ |
+| M4 · Scoring engine | ✅ |
+| M5 · Explanation layer | ✅ template path; model path behind `explanation.enabled` |
+| M6 · API and widget | ✅ |
+| M7 · Calibration | Not started — needs real data |
+
+A synthetic development source (`packages/ingest/src/adapters/synthetic/`) stands in for the real adapter so the rest of the stack could be built and exercised. **Every rate it produces is fabricated**, the seed script refuses to run without `ALLOW_SYNTHETIC_SEED=1`, and none of it may reach a production database.
 
 ---
 
@@ -11,13 +26,16 @@ Covers proposal request 10: phases, and the modules to be created. **No code has
 | Language | TypeScript (strict) | One language across worker, API and UI; the scoring engine benefits most from a type system |
 | Runtime | Node 22 LTS | Available in the environment |
 | Database | PostgreSQL 16 | Available; partitioning, percentiles and `pg_trgm` cover every need here without a second datastore |
-| API + UI | Next.js (App Router) | SSR from day one, because Phase 5 is an SEO play — a client-only SPA would force a rewrite then |
+| API | Node `http` + a small router | See the deviation note below |
+| Widget | Framework-free vanilla JS | It mounts inside a third-party page; a framework payload is cost the host pays for no benefit |
 | Jobs | `pg-boss` (Postgres-backed) | No extra infrastructure; the volume does not justify a broker |
 | Migrations | node-pg-migrate or Drizzle | Plain SQL, reviewable |
 | Tests | Vitest + fast-check | fast-check is required for the property invariants in doc 07 §3 |
 | Explanation | Claude API, server-side only | Cached, validated, always with a template fallback |
 
 **Deliberately not chosen:** microservices, Kubernetes, a message broker, a time-series database, an ORM with heavy query abstraction. The hard problems in this product are data quality and scoring correctness. Additional infrastructure adds operational surface without addressing either.
+
+> **Deviation from the original plan: Next.js → Node `http`.** The plan named Next.js, chosen for SSR because Phase 5 is an SEO play. The MVP has no SSR requirement, and the surface is nine read-mostly endpoints, so the framework would have been carried for a phase that has not arrived. The service is dependency-light and directly testable instead. When Phase 5 does arrive the route handlers port to Next route handlers largely unchanged, and the widget — being framework-free — needs no migration at all. **This is a reversible decision; flagging it rather than quietly substituting.**
 
 ---
 
@@ -69,26 +87,30 @@ whatahotel-price-intelligence/
 │  └─ ingest/                         # ── collection ──
 │     ├─ src/adapters/
 │     │  ├─ RateSourceAdapter.ts       # the interface every source implements
-│     │  └─ whatahotel/                # first adapter (U1–U11)
+│     │  ├─ synthetic/                 # DEV ONLY — fabricated, not real rates
+│     │  └─ whatahotel/                # NOT BUILT — blocked on U1–U11
 │     ├─ src/pipeline/                 # validate → normalize → classify → persist
-│     ├─ src/rollup/baseline.ts        # rate_baseline refresh
+│     ├─ src/rollup/baseline.ts        # rate_baseline refresh, all ladder levels
 │     ├─ src/comparables/builder.ts    # comp-set construction (U12)
 │     └─ src/scheduler/                # HOT/WARM/COLD tiering
 │
 ├─ apps/
-│  ├─ api/                            # Next.js route handlers (doc 06)
-│  │  └─ src/app/api/v1/…
-│  ├─ web/                            # widget + demo page (doc 08)
-│  │  └─ src/components/              # PriceHeader, DealScoreGauge,
-│  │                                  # ConfidenceIndicator, RecommendationBadge,
-│  │                                  # PriceHistoryChart, ReasonList,
-│  │                                  # StatsPanel, ProvenanceFooter, CtaBlock
-│  └─ worker/                         # pg-boss job runner
+│  ├─ api/                            # Node http server (doc 06)
+│  │  ├─ src/http.ts                  # router, error envelope, validation
+│  │  ├─ src/routes/priceIntelligence.ts
+│  │  └─ src/routes/supporting.ts
+│  └─ web/public/                     # widget + demo harness (doc 08)
+│     ├─ widget.js                    # framework-free, embeddable
+│     ├─ widget.css                   # style tokens the host can override
+│     └─ index.html                   # development harness only
+│
+├─ scripts/                           # migrate · seed-dev · smoke-api · emit-config-seed
 │
 └─ tests/
-   ├─ fixtures/scenarios/             # S1–S9 (doc 07)
+   ├─ fixtures/scenarios.ts           # S1–S9 + S8b (doc 07)
    ├─ properties/                     # P1–P12
-   └─ integration/
+   ├─ unit/                           # money, stats, normalize, ladder, edges
+   └─ integration/                    # ingest → rollup → score, against Postgres
 ```
 
 **The load-bearing boundary is `packages/core`.** It has no database, network, clock or filesystem access — its dependencies are its arguments. That is what makes the scoring engine exhaustively testable, makes scores reproducible from stored inputs, and makes the deterministic-engine principle structural rather than aspirational.

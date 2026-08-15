@@ -9,27 +9,49 @@ The product answers one question: **is this rate actually a good deal?** It answ
 | Milestone | State |
 |---|---|
 | M0 · Data source verification | **Blocked** — see [U1–U18](./docs/mvp/README.md#unverified-inputs-register) |
-| M1 · Foundation, schema, migrations, CI | ✅ Done |
-| M2 · Source adapter and ingestion | Not started — needs M0 |
-| M3 · Baseline rollups and scheduling | Not started |
-| M4 · Scoring engine | ✅ Done |
-| M5 · Explanation layer (template path) | ✅ Done — model path behind a config flag |
-| M6 · API and UI | Not started |
-| M7 · Calibration | Not started |
+| M1 · Foundation, schema, migrations, CI | ✅ |
+| M2 · Ingestion and normalization | **Partial** — pipeline built; the production source adapter needs M0 |
+| M3 · Baselines, rollups, comparables, scheduler | ✅ |
+| M4 · Scoring engine | ✅ |
+| M5 · Explanation layer | ✅ template path; model path behind a config flag |
+| M6 · API and widget | ✅ |
+| M7 · Calibration | Not started — needs real data |
 
-134 tests passing: 10 scenarios, 12 property-based invariants, unit and edge coverage. 9 schema behaviour checks against PostgreSQL 16.
+174 tests passing (scenarios, property invariants, unit, and integration against PostgreSQL), 9 schema behaviour checks, 38 API smoke checks.
 
-**The scoring weights have not been calibrated against real data.** They are documented starting priors. See the [calibration runbook](./docs/mvp/02-deal-score.md#4-score-bands-and-calibration).
+**Two things to be clear about:**
+
+1. **The scoring weights have not been calibrated against real data.** They are documented starting priors — see the [calibration runbook](./docs/mvp/02-deal-score.md#4-score-bands-and-calibration).
+2. **The only rate data in this repository is synthetic.** It is fabricated by a seeded generator so the pipeline could be built and exercised. No number it produces reflects a real hotel rate.
 
 ## Quick start
 
 ```bash
 npm install
-npm test
+npm run build
 
-npm run db:up        # PostgreSQL 16 on port 5433
-npm run db:reset     # migrate + seed
-npm run db:check     # schema behaviour checks
+npm run db:up                              # PostgreSQL 16 on port 5433
+npm run db:reset                           # migrate + seed reference data
+ALLOW_SYNTHETIC_SEED=1 npm run db:seed-dev # synthetic rates, rollups, comp sets
+
+npm test                                   # 174 tests
+npm run db:check                           # schema behaviour checks
+npm run api                                # http://localhost:3000
+npm run smoke                              # API contract checks
+```
+
+Then open <http://localhost:3000> for the widget demo harness.
+
+## How it fits together
+
+```
+ rate source ──► ingest pipeline ──► rate_observation ──► rollup ──► rate_baseline
+ (adapter)       validate                (append-only,              (one row per
+                 normalize                partitioned)               ladder level)
+                 classify                                                 │
+                                                                          ▼
+   widget ◄────── API ◄────── scoring engine ◄── loadScoringInput ◄────────┘
+ (vanilla JS)   (Node http)   (pure, no I/O)     (the only SQL seam)
 ```
 
 ## Documentation
