@@ -46,6 +46,46 @@ export function validateConfig(config: ScoringConfig): readonly string[] {
     );
   }
 
+  // ── the live-market model ────────────────────────────────────────────────
+  // Same rule as the Deal Score weights, and for the same reason: these are
+  // renormalized when a signal is missing, and renormalizing a set that does
+  // not sum to 1 silently misweights every score it touches.
+  const live = config.live;
+  if (!live) {
+    issues.push('live.* block is missing — a config predating the live-market model');
+  } else {
+    const lw = live.weight;
+    const liveSum = lw.compSet + lw.calendar + lw.compression;
+    if (Math.abs(liveSum - 1) > WEIGHT_SUM_TOLERANCE) {
+      issues.push(`live.weight.* must sum to 1.0 (got ${liveSum})`);
+    }
+    for (const [key, value] of Object.entries(lw)) {
+      if (value < 0 || value > 1) issues.push(`live.weight.${key} must be in [0,1] (got ${value})`);
+    }
+
+    if (!(live.csi.strongValueMax < live.csi.fairMax)) {
+      issues.push('live.csi.strongValueMax must be below live.csi.fairMax');
+    }
+    if (live.csi.minComps < 1) issues.push('live.csi.minComps must be at least 1');
+
+    if (!(live.calendar.dipMax < live.calendar.normalMax)) {
+      issues.push('live.calendar.dipMax must be below live.calendar.normalMax');
+    }
+    if (live.calendar.windowDays < 1) issues.push('live.calendar.windowDays must be at least 1');
+
+    if (!(live.compression.softMax < live.compression.tightMin)) {
+      issues.push('live.compression.softMax must be below live.compression.tightMin');
+    }
+
+    const lb = live.band;
+    if (!(lb.exceptionalMin > lb.strongMin && lb.strongMin > lb.marketMin)) {
+      issues.push('live.band.* thresholds must be strictly descending');
+    }
+    if (live.minWeightCoverage < 0 || live.minWeightCoverage > 1) {
+      issues.push('live.minWeightCoverage must be in [0,1]');
+    }
+  }
+
   if (config.baseline.minObsAbs < 1) issues.push('baseline.minObsAbs must be at least 1');
   if (config.baseline.minObsTarget < config.baseline.minObsAbs) {
     issues.push('baseline.minObsTarget must be >= baseline.minObsAbs');

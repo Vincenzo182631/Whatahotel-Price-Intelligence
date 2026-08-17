@@ -62,6 +62,39 @@ export type {
 } from './baseline/ladder.js';
 
 export { bandForScore, composeDealScore } from './scoring/dealScore.js';
+
+// ── the live-market model (no history, no prediction) ──────────────────────
+export {
+  computeCalendarDelta,
+  computeCompSetIndex,
+  computeCompression,
+} from './scoring/liveSignals.js';
+export type {
+  CalendarBand,
+  CalendarResult,
+  CompSetResult,
+  CompetitorRate,
+  CompressionBand,
+  CompressionInput,
+  CompressionResult,
+  CsiBand,
+  LiveSignal,
+  LiveSignalCode,
+  LiveSignalUnavailableReason,
+  NearbyDateRate,
+} from './scoring/liveSignals.js';
+export {
+  assessLiveConfidence,
+  composeLiveScore,
+  liveBandLabel,
+  liveVerdictLabel,
+} from './scoring/liveScore.js';
+export type {
+  LiveBand,
+  LiveConfidence,
+  LiveScoreResult,
+  LiveVerdict,
+} from './scoring/liveScore.js';
 export {
   computeDemandPressure,
   computeF1,

@@ -1,4 +1,4 @@
--- Scoring configuration, version 2.
+-- Scoring configuration, version 3.
 --
 -- GENERATED FILE — do not edit by hand.
 -- Source of truth: packages/core/src/config/defaults.ts
@@ -13,14 +13,14 @@
 -- analysis row references the version that produced it, and deleting one would
 -- make those scores irreproducible.
 UPDATE scoring_config SET is_active = false
- WHERE is_active AND version <> 2;
+ WHERE is_active AND version <> 3;
 
 INSERT INTO scoring_config (version, config, is_active, note, created_by)
 VALUES (
-    2,
+    3,
     $config$
 {
-  "version": 2,
+  "version": 3,
   "score": {
     "weight": {
       "f1Historical": 0.33,
@@ -57,6 +57,51 @@ VALUES (
       "goodMin": 70,
       "fairMin": 50,
       "belowAverageMin": 30
+    }
+  },
+  "live": {
+    "csi": {
+      "strongValueMax": 85,
+      "fairMax": 115,
+      "minComps": 3,
+      "maxCompAgeHours": 24,
+      "scoreAtCsi": {
+        "zero": 130,
+        "full": 70
+      }
+    },
+    "calendar": {
+      "dipMax": -15,
+      "normalMax": 15,
+      "windowDays": 21,
+      "minNeighbours": 3,
+      "preferSameDow": true,
+      "delta": {
+        "zero": 35,
+        "full": -35
+      }
+    },
+    "compression": {
+      "tightMin": 0.4,
+      "softMax": 0.15,
+      "minChecked": 3
+    },
+    "weight": {
+      "compSet": 0.45,
+      "calendar": 0.35,
+      "compression": 0.2
+    },
+    "minWeightCoverage": 0.6,
+    "band": {
+      "exceptionalMin": 85,
+      "strongMin": 70,
+      "marketMin": 50
+    },
+    "confidence": {
+      "highMinComps": 4,
+      "highMinNeighbours": 4,
+      "maxRateAgeHours": 12,
+      "mediumMinComps": 3
     }
   },
   "baseline": {
@@ -151,7 +196,7 @@ VALUES (
 }
 $config$::jsonb,
     true,
-    'F5 (Demand) removed from the Deal Score: it was an affine function of F1 (score_F5 = (50 - 50D) + D * score_F1) and carried no independent signal. Its 0.10 weight was redistributed proportionally across the remaining five factors. Demand still drives the never-WAIT guard W4 and urgency gate G3. Still not calibrated against real data.',
+    'Uncalibrated.',
     'mvp-spec'
 )
 ON CONFLICT (version) DO UPDATE
