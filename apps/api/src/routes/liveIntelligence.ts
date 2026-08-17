@@ -129,6 +129,9 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         room_type_id: String(loaded.roomTypeId),
         name: loaded.roomName,
         selected_by: loaded.roomSelectedBy,
+      },
+      rate_plan: {
+        summary: loaded.rateTerms,
         comparability_class: loaded.comparabilityClass,
       },
       stay: { check_in: checkIn, check_out: checkOut, nights, adults, children },
@@ -137,6 +140,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     price: {
       nightly: money(loaded.nightlyMinor, currency),
       total: money(loaded.totalMinor, currency),
+      tax_basis: loaded.taxBasis,
       observed_at: loaded.observedAt,
       age_hours: Math.round(loaded.rateAgeHours * 10) / 10,
     },

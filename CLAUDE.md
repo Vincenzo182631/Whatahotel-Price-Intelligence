@@ -56,6 +56,7 @@ packages/ingest/   adapters, pipeline, rollups, comp sets, scheduler
 packages/calibration/  point-in-time replay, metrics, weight sweep
 apps/api/          Node http server (docs/mvp/06)
 apps/web/public/   framework-free embeddable widget (docs/mvp/08)
+                   mount() defaults to the LIVE model; model: 'history' for the other
 db/migrations/     schema (docs/mvp/05)
 db/checks/         schema behaviour checks
 tests/             scenarios S1–S9, invariants P1–P12, unit, integration

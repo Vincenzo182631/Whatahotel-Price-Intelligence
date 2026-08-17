@@ -55,7 +55,9 @@ export function liveBandLabel(band: LiveBand): string {
 
 const VERDICT_LABEL: Record<LiveVerdict, string> = {
   BOOK_NOW: 'Book now',
-  BOOK_CONSIDER: 'Book / consider',
+  // Not "Book / consider" — a label reading as two options with a slash asks
+  // the customer to make our decision for us.
+  BOOK_CONSIDER: 'Consider booking',
   CONSIDER_ALTERNATIVES: 'Consider alternatives',
   NOT_ENOUGH_DATA: 'Not enough data yet',
 };

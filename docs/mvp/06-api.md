@@ -8,20 +8,40 @@ Covers proposal request 7. REST/JSON over HTTPS. Base path `/api/v1`.
 
 ## 1. Endpoint summary
 
-| Method  | Path                                      | Purpose                        | Auth          |
-| ------- | ----------------------------------------- | ------------------------------ | ------------- |
-| GET     | `/api/v1/health`                          | Liveness + data freshness      | none          |
-| GET     | `/api/v1/hotels`                          | Hotel search / autocomplete    | public key    |
-| GET     | `/api/v1/hotels/{hotel_id}`               | Hotel detail                   | public key    |
-| GET     | `/api/v1/hotels/{hotel_id}/room-types`    | Bookable room types for a stay | public key    |
-| **GET** | **`/api/v1/price-intelligence`**          | **The analysis. The product.** | public key    |
-| GET     | `/api/v1/hotels/{hotel_id}/price-history` | Series for the chart           | public key    |
-| GET     | `/api/v1/hotels/{hotel_id}/comparables`   | Comp-set with same-date rates  | public key    |
-| GET     | `/api/v1/meta/config`                     | Active scoring config version  | internal      |
-| POST    | `/internal/v1/ingest/rate-observations`   | Batch ingest                   | service token |
-| GET     | `/internal/v1/analyses/{public_id}`       | Full decision trace            | service token |
+| Method  | Path                                      | Purpose                                  | Auth          |
+| ------- | ----------------------------------------- | ---------------------------------------- | ------------- |
+| GET     | `/api/v1/health`                          | Liveness + data freshness                | none          |
+| GET     | `/api/v1/hotels`                          | Hotel search / autocomplete              | public key    |
+| GET     | `/api/v1/hotels/{hotel_id}`               | Hotel detail                             | public key    |
+| GET     | `/api/v1/hotels/{hotel_id}/room-types`    | Bookable room types for a stay           | public key    |
+| **GET** | **`/api/v1/live-intelligence`**           | **The live-market answer. The product.** | public key    |
+| GET     | `/api/v1/price-intelligence`              | The accrued-history analysis             | public key    |
+| GET     | `/api/v1/hotels/{hotel_id}/price-history` | Series for the chart                     | public key    |
+| GET     | `/api/v1/hotels/{hotel_id}/comparables`   | Comp-set with same-date rates            | public key    |
+| GET     | `/api/v1/meta/config`                     | Active scoring config version            | internal      |
+| POST    | `/internal/v1/ingest/rate-observations`   | Batch ingest                             | service token |
+| GET     | `/internal/v1/analyses/{public_id}`       | Full decision trace                      | service token |
 
 Phase 2 (specified, not built): `POST/GET/DELETE /api/v1/alerts`.
+
+### The two models
+
+`/live-intelligence` and `/price-intelligence` take the **same query parameters** and describe the **same subject** — they share the hotel, room and current-rate selection, so the two can never show two different prices for one room on one page.
+
+They differ in what they compare it against:
+
+|                | `/live-intelligence`                                               | `/price-intelligence`                          |
+| -------------- | ------------------------------------------------------------------ | ---------------------------------------------- |
+| Benchmark      | The comp set and nearby dates, as priced today                     | This hotel's own accrued history               |
+| Needs baseline | No                                                                 | Yes — ~2 weeks of collection before it answers |
+| Score          | 0–100 and 0.0–10.0                                                 | 0–100                                          |
+| Confidence     | HIGH / MEDIUM / LOW                                                | 0–100 with a band                              |
+| Verdicts       | BOOK_NOW / BOOK_CONSIDER / CONSIDER_ALTERNATIVES / NOT_ENOUGH_DATA | BOOK_NOW / CONSIDER / INSUFFICIENT_DATA        |
+| Persisted      | No                                                                 | Yes, with its full decision trace              |
+
+Neither predicts a future price. The widget defaults to the live model because it answers from the first week of collection; the history model returns `INSUFFICIENT_DATA` until a baseline exists.
+
+`/live-intelligence` deliberately does **not** return named competitor rates. The comp count and the median are the evidence a customer needs; the individual prices are another hotel's commercial data.
 
 ---
 

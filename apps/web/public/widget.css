@@ -409,3 +409,55 @@
 .wahpi__details-panel[hidden] {
   display: none;
 }
+
+/* ── the live-market model ───────────────────────────────────────────────
+   The headline figure is the customer's 0–10 reading. It is deliberately the
+   largest thing in the widget, with the confidence word beside it at the same
+   visual weight — rule 1: never a score without its confidence. */
+.wahpi__live-score {
+  font-size: 2.4rem;
+  letter-spacing: -0.02em;
+}
+.wahpi__live-score .wahpi__metric-sub {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--wahpi-muted);
+}
+.wahpi__live-confidence {
+  font-size: 1.25rem;
+  letter-spacing: 0.04em;
+  padding-top: 8px;
+}
+
+.wahpi__signals {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wahpi__signal {
+  background: var(--wahpi-bg-soft);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.wahpi__signal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.wahpi__signal-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+/* An excluded signal says so here rather than showing a share of a score it
+   did not contribute to. */
+.wahpi__signal-weight {
+  font-size: 0.76rem;
+  color: var(--wahpi-muted);
+  white-space: nowrap;
+}
+.wahpi__signal-detail {
+  font-size: 0.84rem;
+  color: var(--wahpi-muted);
+  margin-top: 3px;
+}

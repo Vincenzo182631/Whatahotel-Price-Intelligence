@@ -40,7 +40,13 @@
         margin: 0;
         background: var(--bg);
         color: var(--ink);
-        font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
         line-height: 1.55;
       }
       .serif {
@@ -380,7 +386,9 @@
           <div class="stay-row"><span>Check in</span><strong id="ciLabel">—</strong></div>
           <div class="stay-row"><span>Check out</span><strong id="coLabel">—</strong></div>
           <div class="stay-row"><span>Guests</span><strong>2 adults</strong></div>
-          <div class="stay-row"><span id="nightsLabel">—</span><strong id="totalLabel">—</strong></div>
+          <div class="stay-row">
+            <span id="nightsLabel">—</span><strong id="totalLabel">—</strong>
+          </div>
           <div class="stay-row total"><span>Total</span><span id="grandTotal">—</span></div>
           <div class="perk">
             <strong>Included with WhataHotel</strong><br />Daily breakfast for two · $100 property
@@ -408,9 +416,19 @@
       // here they come from the query string so the example can be pointed at
       // any hotel and dates.
       var qs = new URLSearchParams(location.search);
-      var hotelId = qs.get('hotel_id') || '1326';
-      var checkIn = qs.get('check_in') || '2026-08-22';
-      var checkOut = qs.get('check_out') || '2026-08-25';
+
+      // Defaults are RELATIVE, and the hotel is discovered rather than named.
+      // Both used to be hardcoded — hotel 1326 and a fixed August stay — which
+      // meant the page rendered "Not found" against any database that did not
+      // happen to contain that hotel, and went stale the moment the fixed dates
+      // fell into the past.
+      function isoDaysFromNow(days) {
+        return new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+      }
+
+      var hotelId = qs.get('hotel_id') || null;
+      var checkIn = qs.get('check_in') || isoDaysFromNow(38);
+      var checkOut = qs.get('check_out') || isoDaysFromNow(41);
 
       var nights = Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86400000);
       var fmtDate = function (d) {
@@ -427,77 +445,96 @@
 
       // Everything below is the host page filling in its own content from the
       // same API the widget uses. A real site would use its own inventory.
-      Promise.all([
-        fetch('/api/v1/hotels/' + encodeURIComponent(hotelId)).then(function (r) {
-          return r.json();
-        }),
-        fetch(
-          '/api/v1/hotels/' +
-            encodeURIComponent(hotelId) +
-            '/room-types?check_in=' +
-            checkIn +
-            '&check_out=' +
-            checkOut,
-        ).then(function (r) {
-          return r.json();
-        }),
-        fetch('/api/v1/health').then(function (r) {
-          return r.json();
-        }),
-      ]).then(function (res) {
-        var hotel = res[0],
-          rooms = res[1].room_types || [],
-          health = res[2];
-
-        document.getElementById('hotelName').textContent = hotel.name || 'Hotel';
-        document.getElementById('hotelWhere').textContent =
-          (hotel.destination || '') + (hotel.star_rating ? ' · ' + hotel.star_rating + '-star' : '');
-
-        var room = rooms[0];
-        if (room) {
-          document.getElementById('roomAName').textContent = room.name;
-          document.getElementById('roomAPrice').textContent = WahPriceIntelligence.formatMoney(
-            room.nightly,
-          );
-          var total = room.nightly.amount_minor * nights;
-          document.getElementById('totalLabel').textContent = WahPriceIntelligence.formatMoney({
-            amount_minor: total,
-            currency: room.nightly.currency,
+      function resolveHotelId() {
+        if (hotelId) return Promise.resolve(hotelId);
+        return fetch('/api/v1/hotels?limit=1')
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (data) {
+            var first = (data.hotels || [])[0];
+            hotelId = first ? first.hotel_id : '';
+            return hotelId;
           });
-          document.getElementById('grandTotal').textContent = WahPriceIntelligence.formatMoney({
-            amount_minor: total,
-            currency: room.nightly.currency,
+      }
+
+      resolveHotelId()
+        .then(function (id) {
+          return Promise.all([
+            fetch('/api/v1/hotels/' + encodeURIComponent(id)).then(function (r) {
+              return r.json();
+            }),
+            fetch(
+              '/api/v1/hotels/' +
+                encodeURIComponent(id) +
+                '/room-types?check_in=' +
+                checkIn +
+                '&check_out=' +
+                checkOut,
+            ).then(function (r) {
+              return r.json();
+            }),
+            fetch('/api/v1/health').then(function (r) {
+              return r.json();
+            }),
+          ]);
+        })
+        .then(function (res) {
+          var hotel = res[0],
+            rooms = res[1].room_types || [],
+            health = res[2];
+
+          document.getElementById('hotelName').textContent = hotel.name || 'Hotel';
+          document.getElementById('hotelWhere').textContent =
+            (hotel.destination || '') +
+            (hotel.star_rating ? ' · ' + hotel.star_rating + '-star' : '');
+
+          var room = rooms[0];
+          if (room) {
+            document.getElementById('roomAName').textContent = room.name;
+            document.getElementById('roomAPrice').textContent = WahPriceIntelligence.formatMoney(
+              room.nightly,
+            );
+            var total = room.nightly.amount_minor * nights;
+            document.getElementById('totalLabel').textContent = WahPriceIntelligence.formatMoney({
+              amount_minor: total,
+              currency: room.nightly.currency,
+            });
+            document.getElementById('grandTotal').textContent = WahPriceIntelligence.formatMoney({
+              amount_minor: total,
+              currency: room.nightly.currency,
+            });
+          }
+
+          // Same lesson as the harness banner: say what the data actually is
+          // rather than asserting something fixed. A production page would not
+          // carry this strip at all — it exists because this one is a mock.
+          var note = document.getElementById('demoNote');
+          if (health && health.data && health.data.provenance === 'SYNTHETIC') {
+            note.textContent =
+              'Mock host page · SYNTHETIC data — every rate and score below is fabricated for development.';
+          } else if (health && health.data && health.data.provenance === 'MIXED') {
+            note.style.background = '#fdecec';
+            note.style.color = '#7a0016';
+            note.textContent =
+              'Mock host page · MIXED data — this database holds both fabricated and real rates. Nothing here is trustworthy.';
+          } else {
+            note.textContent = 'Mock host page · live data from the WhataHotel API.';
+          }
+
+          // ── The integration, in one call. ──
+          WahPriceIntelligence.mount(document.getElementById('price-intelligence'), {
+            hotelId: hotelId,
+            roomTypeId: room ? room.room_type_id : undefined,
+            checkIn: checkIn,
+            checkOut: checkOut,
+            adults: 2,
+            // The live-market model is the default. Pass model: 'history' for the
+            // accrued-history analysis instead.
+            bookingUrl: '#reserve',
+            advisorUrl: '#advisor',
           });
-        }
-
-        // Same lesson as the harness banner: say what the data actually is
-        // rather than asserting something fixed. A production page would not
-        // carry this strip at all — it exists because this one is a mock.
-        var note = document.getElementById('demoNote');
-        if (health && health.data && health.data.provenance === 'SYNTHETIC') {
-          note.textContent =
-            'Mock host page · SYNTHETIC data — every rate and score below is fabricated for development.';
-        } else if (health && health.data && health.data.provenance === 'MIXED') {
-          note.style.background = '#fdecec';
-          note.style.color = '#7a0016';
-          note.textContent =
-            'Mock host page · MIXED data — this database holds both fabricated and real rates. Nothing here is trustworthy.';
-        } else {
-          note.textContent = 'Mock host page · live data from the WhataHotel API.';
-        }
-
-        // ── The integration, in one call. ──
-        WahPriceIntelligence.mount(document.getElementById('price-intelligence'), {
-          hotelId: hotelId,
-          roomTypeId: room ? room.room_type_id : undefined,
-          checkIn: checkIn,
-          checkOut: checkOut,
-          adults: 2,
-          include: 'explanation,history',
-          bookUrl: '#reserve',
-          advisorUrl: '#advisor',
         });
-      });
     </script>
   </body>
 </html>

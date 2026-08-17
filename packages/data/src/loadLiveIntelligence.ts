@@ -12,6 +12,7 @@
 
 import {
   composeLiveScore,
+  describeRateTerms,
   computeCalendarDelta,
   computeCompSetIndex,
   computeCompression,
@@ -19,7 +20,11 @@ import {
   type CompSetResult,
   type CompressionResult,
   type LiveScoreResult,
+  type MealPlan,
+  type RateAudience,
+  type RefundPolicy,
   type ScoringConfig,
+  type TaxBasis,
 } from '@wahpi/core';
 
 import type { Queryable } from './client.js';
@@ -51,6 +56,14 @@ export interface LoadedLiveIntelligence {
   readonly roomName: string;
   readonly roomSelectedBy: 'USER' | 'ENGINE';
   readonly comparabilityClass: string;
+  /**
+   * Human-readable rate terms. Mandatory in the UI, not optional detail: a
+   * customer must be able to see WHICH product was assessed, or the assessment
+   * may not apply to the one they book (docs/mvp/08 §H).
+   */
+  readonly rateTerms: string;
+  /** Whether the price includes taxes. Never left ambiguous on screen. */
+  readonly taxBasis: TaxBasis;
   readonly nightlyMinor: number;
   readonly totalMinor: number;
   readonly observedAt: string;
@@ -171,6 +184,12 @@ export async function loadLiveIntelligence(
     roomName: chosen.canonicalName,
     roomSelectedBy: request.roomTypeId != null ? 'USER' : 'ENGINE',
     comparabilityClass: chosen.comparabilityClass,
+    rateTerms: describeRateTerms({
+      mealPlan: current.mealPlan as MealPlan,
+      refundPolicy: current.refundPolicy as RefundPolicy,
+      audience: current.audience as RateAudience,
+    }),
+    taxBasis: current.taxBasis,
     nightlyMinor: current.nightlyMinor,
     totalMinor: current.totalMinor,
     observedAt: current.observedAt,
