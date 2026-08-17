@@ -49,8 +49,7 @@ export interface PersistAnalysisInput {
  * Persist a computed analysis with its full factor breakdown.
  *
  * This is what makes a customer complaint answerable months later, and the raw
- * material the calibration runbook reads. The database CHECK constraints are
- * the third enforcement layer for the never-WAIT rule.
+ * material the calibration runbook reads.
  */
 export async function persistAnalysis(input: PersistAnalysisInput): Promise<number> {
   const a = input.analysis;
@@ -62,15 +61,15 @@ export async function persistAnalysis(input: PersistAnalysisInput): Promise<numb
           check_in, nights, adults, children, currency,
           current_nightly_minor, current_total_minor, effective_nightly_minor,
           rate_observed_at, deal_score, deal_score_band, confidence, confidence_band,
-          recommendation, gate_fired, wait_blocked_by, reason_codes, caveat_codes,
+          recommendation, gate_fired, reason_codes, caveat_codes,
           baseline_level, n_observations, baseline_p50_minor, baseline_p10_minor,
           baseline_p90_minor, baseline_min_minor, baseline_max_minor, percentile_rank,
           config_version, engine_version, decision_trace, explanation_bundle
        ) VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
           $11,$12,$13,$14,$15,$16::score_band_t,$17,$18::conf_band_t,
-          $19::recommendation_t,$20,$21,$22,$23,
-          $24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35
+          $19::recommendation_t,$20,$21,$22,
+          $23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34
        ) RETURNING id`,
       [
         input.publicId,
@@ -93,7 +92,6 @@ export async function persistAnalysis(input: PersistAnalysisInput): Promise<numb
         a.confidenceBand,
         a.recommendation,
         a.gateFired,
-        a.waitBlockedBy,
         a.reasonCodes,
         a.caveatCodes,
         a.baseline.level,

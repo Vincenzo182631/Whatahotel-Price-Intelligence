@@ -86,7 +86,7 @@ The full MVP specification is in [`docs/mvp/`](./docs/mvp/). Start with [`docs/m
 | ---------------------------------------------------- | -------------------------------------------------- |
 | [01](./docs/mvp/01-data-architecture.md)             | Entities, normalization, timestamping, baselines   |
 | [02](./docs/mvp/02-deal-score.md)                    | Deal Score — six factors, math, weights, rationale |
-| [03](./docs/mvp/03-confidence-and-recommendation.md) | Confidence Score and the BOOK NOW / WAIT engine    |
+| [03](./docs/mvp/03-confidence-and-recommendation.md) | Confidence Score and the recommendation engine     |
 | [04](./docs/mvp/04-explanation-engine.md)            | Explanation bundle and AI guardrails               |
 | [05](./docs/mvp/05-database-schema.md)               | PostgreSQL schema                                  |
 | [06](./docs/mvp/06-api.md)                           | REST API                                           |

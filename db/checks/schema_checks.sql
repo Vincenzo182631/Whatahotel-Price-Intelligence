@@ -165,7 +165,11 @@ BEGIN
     END;
 END $$;
 
--- Check 6 · the never-WAIT rule, enforced by the database ---------------------
+-- Check 6 · WAIT is refused outright ------------------------------------------
+--
+-- This used to assert the confidence floor: WAIT below 70 was rejected. WAIT was
+-- retired in config v4, so the constraint is now flat — the row below carries a
+-- confidence of 95, which the old rule would have accepted.
 DO $$
 DECLARE hid BIGINT;
 BEGIN
@@ -180,12 +184,12 @@ BEGIN
         ) VALUES (
             'an_bad', hid, 'BREAKFAST_INCLUDED|FLEXIBLE|PUBLIC', DATE '2026-09-18', 3, 2, 0,
             'USD', 68900, 206700, now(),
-            30, 'BELOW_AVERAGE', 65, 'MODERATE', 'WAIT',   -- confidence below the floor
-            'G4', 'L0', 40, 1, '1.0.0', '{}'::jsonb, '{}'::jsonb
+            30, 'BELOW_AVERAGE', 95, 'HIGH', 'WAIT',   -- retired: no confidence saves it
+            'G5', 'L0', 40, 1, '1.0.0', '{}'::jsonb, '{}'::jsonb
         );
-        RAISE EXCEPTION 'CHECK 6 FAILED: WAIT at confidence 65 was accepted by the database';
+        RAISE EXCEPTION 'CHECK 6 FAILED: WAIT at confidence 95 was accepted by the database';
     EXCEPTION WHEN check_violation THEN
-        RAISE NOTICE 'CHECK 6  ok — WAIT below the confidence floor rejected (third enforcement layer)';
+        RAISE NOTICE 'CHECK 6  ok — WAIT rejected outright (retired in config v4)';
     END;
 END $$;
 

@@ -21,8 +21,18 @@ const NOTES = {
     'F5 (Demand) removed from the Deal Score: it was an affine function of F1 ' +
     '(score_F5 = (50 - 50D) + D * score_F1) and carried no independent signal. ' +
     'Its 0.10 weight was redistributed proportionally across the remaining five ' +
-    'factors. Demand still drives the never-WAIT guard W4 and urgency gate G3. ' +
+    'factors. Demand still drives the urgency gate G3. ' +
     'Still not calibrated against real data.',
+  3:
+    'Adds the live-market model: Comp-Set Index, Calendar Delta and Market ' +
+    'Compression, scored from rates that exist today rather than from accrued ' +
+    'history. Uncalibrated.',
+  4:
+    'Retires WAIT. "It may be worth waiting" is a claim about tomorrow\'s price ' +
+    'and this system does not forecast. Gate G4, the eight never-WAIT guards and ' +
+    'the rec.wait config block are gone, along with the SHORT_LEAD_TIME caveat ' +
+    'that argued against waiting. rec.book.urgencyScarcityRooms carries over the ' +
+    'one value that did non-predictive work. Uncalibrated.',
 };
 const NOTE = NOTES[DEFAULT_CONFIG.version] ?? 'Uncalibrated.';
 

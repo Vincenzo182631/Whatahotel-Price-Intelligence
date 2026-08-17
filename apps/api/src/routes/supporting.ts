@@ -302,7 +302,6 @@ export const metaConfigHandler: Handler = async (_req, res) => {
     thresholds: {
       score_bands: config.score.band,
       confidence_bands: config.confidence.band,
-      wait_confidence_min: config.rec.wait.confidenceMin,
       book_confidence_min: config.rec.book.confidenceMin,
       min_observations: config.baseline.minObsAbs,
     },

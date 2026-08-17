@@ -1,10 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import {
-  DEFAULT_CONFIG,
-  WAIT_CONFIDENCE_HARD_FLOOR,
-} from '../../packages/core/src/config/defaults.js';
+import { DEFAULT_CONFIG } from '../../packages/core/src/config/defaults.js';
 import { validateConfig, withConfig } from '../../packages/core/src/config/schema.js';
 import { fFreshness, fVolatility, fVolume } from '../../packages/core/src/confidence/confidence.js';
 import {
@@ -149,13 +146,19 @@ describe('config validation', () => {
     expect(validateConfig(bad).some((i) => i.includes('sum to 1.0'))).toBe(true);
   });
 
-  it('refuses to let configuration disable the never-WAIT rule', () => {
-    const bad = withConfig({ rec: { wait: { confidenceMin: 10 } } });
-    const issues = validateConfig(bad);
-    expect(issues.some((i) => i.includes('never-WAIT safety rule'))).toBe(true);
-    expect(DEFAULT_CONFIG.rec.wait.confidenceMin).toBeGreaterThanOrEqual(
-      WAIT_CONFIDENCE_HARD_FLOOR,
-    );
+  it('rejects a config still carrying the retired rec.wait block', () => {
+    // A v3-or-earlier document loaded against a v4 engine. Silently ignoring
+    // the block would leave someone believing thresholds were in force that
+    // nothing reads any more.
+    const stale = {
+      ...DEFAULT_CONFIG,
+      rec: { ...DEFAULT_CONFIG.rec, wait: { confidenceMin: 70, scoreMax: 42 } },
+    } as unknown as typeof DEFAULT_CONFIG;
+    expect(validateConfig(stale).some((i) => i.includes('retired'))).toBe(true);
+  });
+
+  it('does not carry a WAIT verdict anywhere in the shipped config', () => {
+    expect(JSON.stringify(DEFAULT_CONFIG)).not.toContain('wait');
   });
 
   it('rejects non-descending score bands', () => {
@@ -163,12 +166,10 @@ describe('config validation', () => {
     expect(validateConfig(bad).some((i) => i.includes('strictly descending'))).toBe(true);
   });
 
-  it('keeps the BOOK_NOW bar at or below the WAIT bar', () => {
-    // The asymmetry is deliberate: booking a below-average rate has bounded
-    // downside, waiting does not.
-    expect(DEFAULT_CONFIG.rec.book.confidenceMin).toBeLessThanOrEqual(
-      DEFAULT_CONFIG.rec.wait.confidenceMin,
-    );
+  it('keeps the urgency bar below the strong-deal bar', () => {
+    // G3 exists to catch a merely good rate that is about to become
+    // unavailable, so its score threshold must sit below G2's or it never fires.
+    expect(DEFAULT_CONFIG.rec.book.urgencyScoreMin).toBeLessThan(DEFAULT_CONFIG.rec.book.scoreMin);
   });
 });
 

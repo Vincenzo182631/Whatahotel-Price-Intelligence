@@ -1,4 +1,4 @@
--- Scoring configuration, version 3.
+-- Scoring configuration, version 4.
 --
 -- GENERATED FILE — do not edit by hand.
 -- Source of truth: packages/core/src/config/defaults.ts
@@ -13,14 +13,14 @@
 -- analysis row references the version that produced it, and deleting one would
 -- make those scores irreproducible.
 UPDATE scoring_config SET is_active = false
- WHERE is_active AND version <> 3;
+ WHERE is_active AND version <> 4;
 
 INSERT INTO scoring_config (version, config, is_active, note, created_by)
 VALUES (
-    3,
+    4,
     $config$
 {
-  "version": 3,
+  "version": 4,
   "score": {
     "weight": {
       "f1Historical": 0.33,
@@ -157,24 +157,14 @@ VALUES (
       "confidenceMin": 60,
       "urgencyScoreMin": 60,
       "urgencyRisePct": 3,
-      "urgencyDemand": 0.6
-    },
-    "wait": {
-      "confidenceMin": 70,
-      "scoreMax": 42,
-      "minLeadDays": 10,
-      "riseBlockPct": 2,
-      "demandBlock": 0.6,
-      "scarcityBlock": 3,
-      "minVolatilityConfidence": 0.4,
-      "maxTrendPct": 0
+      "urgencyDemand": 0.6,
+      "urgencyScarcityRooms": 3
     }
   },
   "calibration": {
     "outcomeHorizonDays": 14,
     "materialDropPct": 2,
     "bookNowRegretRateMax": 0.1,
-    "waitSuccessRateMin": 0.6,
     "scoreStabilityMaxDelta": 10,
     "stabilityPriceTolerancePct": 1,
     "insufficientDataRateMax": 0.25,
@@ -196,7 +186,7 @@ VALUES (
 }
 $config$::jsonb,
     true,
-    'Uncalibrated.',
+    'Retires WAIT. "It may be worth waiting" is a claim about tomorrow''s price and this system does not forecast. Gate G4, the eight never-WAIT guards and the rec.wait config block are gone, along with the SHORT_LEAD_TIME caveat that argued against waiting. rec.book.urgencyScarcityRooms carries over the one value that did non-predictive work. Uncalibrated.',
     'mvp-spec'
 )
 ON CONFLICT (version) DO UPDATE

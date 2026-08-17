@@ -16,7 +16,7 @@ import {
   type ReasonFact,
 } from './explanation/reasonCodes.js';
 import { renderTemplate, type RenderedExplanation } from './explanation/template.js';
-import { assertWaitInvariant, recommend } from './recommendation/engine.js';
+import { recommend } from './recommendation/engine.js';
 import { composeDealScore } from './scoring/dealScore.js';
 import {
   computeDemandPressure,
@@ -48,8 +48,8 @@ export function analyze(input: ScoringInput, config: ScoringConfig): AnalyzeOutp
   const f6 = computeF6(current, query, benefits, config);
 
   // Demand is NOT a scoring factor (see scoring/factors.ts). It reaches the
-  // verdict only through the never-WAIT guards and the urgency gate, where it
-  // is genuinely independent of F1 rather than an affine transform of it.
+  // verdict only through the urgency gate G3, where it is genuinely
+  // independent of F1 rather than an affine transform of it.
   const demandSignal = computeDemandPressure(input.demand);
 
   const rawFactors: FactorResult[] = [f1.factor, f2.factor, f3.factor, f4, f6.factor];
@@ -93,8 +93,6 @@ export function analyze(input: ScoringInput, config: ScoringConfig): AnalyzeOutp
     },
     config,
   );
-
-  assertWaitInvariant(recommendation, confidenceResult.confidence, config);
 
   // A score is published only when the engine is willing to stand behind it.
   // `null`, never `0` — a zero renders to the customer as "terrible deal".
@@ -140,8 +138,6 @@ export function analyze(input: ScoringInput, config: ScoringConfig): AnalyzeOutp
     nSources: baseline?.nSources ?? 1,
     compCount: f2.compCount,
     minComps: config.score.market.minComps,
-    leadTimeDays,
-    minLeadDays: config.rec.wait.minLeadDays,
     insufficientReasons: recommendation.insufficientReasons,
   });
 
@@ -167,7 +163,6 @@ export function analyze(input: ScoringInput, config: ScoringConfig): AnalyzeOutp
     confidenceBand: confidenceResult.band,
     recommendation: recommendation.recommendation,
     gateFired: recommendation.gateFired,
-    waitBlockedBy: recommendation.waitBlockedBy,
     reasonCodes: reasons.map((r) => r.code),
     caveatCodes: caveats.map((c) => c.code),
     factors: dealScore.factors,
@@ -182,7 +177,6 @@ export function analyze(input: ScoringInput, config: ScoringConfig): AnalyzeOutp
     engineVersion: ENGINE_VERSION,
     decisionTrace: {
       gate: recommendation.gateFired,
-      guards: recommendation.guards,
       insufficientReasons: recommendation.insufficientReasons,
       weightCoverage: dealScore.weightCoverage,
       rawDealScore: dealScore.score,

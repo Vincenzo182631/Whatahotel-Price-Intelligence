@@ -88,7 +88,6 @@
   };
   var RECOMMENDATION_TONE = {
     BOOK_NOW: 'wahpi--good',
-    WAIT: 'wahpi--warn',
     CONSIDER: 'wahpi--neutral',
     INSUFFICIENT_DATA: 'wahpi--neutral',
   };

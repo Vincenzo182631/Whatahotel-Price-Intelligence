@@ -96,26 +96,26 @@ Must sum to 1.00; validated on config insert.
 
 ## 7. Recommendation gates
 
-| Key                                  | Default | Rationale                                                                                                                |
-| ------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `rec.confidence_floor`               | 40      | Below this we publish no recommendation at all                                                                           |
-| `rec.match_min`                      | 0.50    | Below this we cannot claim the history describes this room                                                               |
-| `rec.max_current_age_hours`          | 24      | A day-old price is not a current price                                                                                   |
-| `rec.min_obs_abs`                    | 12      | Mirrors the baseline floor                                                                                               |
-| `rec.l4_confidence_min`              | 55      | Extra bar when the baseline borrowed sibling rooms                                                                       |
-| `rec.book.score_min`                 | 72      | Entry to the strong-deal path                                                                                            |
-| `rec.book.confidence_min`            | **60**  | **Lower than WAIT's bar — deliberate.** Booking a demonstrably below-average rate has bounded downside; waiting does not |
-| `rec.book.urgency_score_min`         | 60      | A decent rate that is climbing is still worth acting on                                                                  |
-| `rec.book.urgency_rise_pct`          | 3.0     |                                                                                                                          |
-| `rec.book.urgency_demand`            | 0.60    |                                                                                                                          |
-| **`rec.wait.confidence_min`**        | **70**  | **The mandatory rule.** Never recommend waiting on weak evidence                                                         |
-| `rec.wait.score_max`                 | 42      | Only a genuinely poor rate justifies waiting                                                                             |
-| `rec.wait.min_lead_days`             | 10      | Closer than this, a decline cannot plausibly materialize                                                                 |
-| `rec.wait.rise_block_pct`            | 2.0     | Prices moving against the customer                                                                                       |
-| `rec.wait.demand_block`              | 0.60    | Event or sellout pressure — rates will not soften                                                                        |
-| `rec.wait.scarcity_block`            | 3       | The room may simply be gone                                                                                              |
-| `rec.wait.min_volatility_confidence` | 0.40    | Too erratic to time                                                                                                      |
-| `rec.wait.max_trend_pct`             | 0.0     | Flat or falling only                                                                                                     |
+| Key                                  | Default | Rationale                                                                                                 |
+| ------------------------------------ | ------- | --------------------------------------------------------------------------------------------------------- |
+| `rec.confidence_floor`               | 40      | Below this we publish no recommendation at all                                                            |
+| `rec.match_min`                      | 0.50    | Below this we cannot claim the history describes this room                                                |
+| `rec.max_current_age_hours`          | 24      | A day-old price is not a current price                                                                    |
+| `rec.min_obs_abs`                    | 12      | Mirrors the baseline floor                                                                                |
+| `rec.l4_confidence_min`              | 55      | Extra bar when the baseline borrowed sibling rooms                                                        |
+| `rec.book.score_min`                 | 72      | Entry to the strong-deal path                                                                             |
+| `rec.book.confidence_min`            | **60**  | Booking a demonstrably below-average rate has bounded downside, so a moderate-evidence bar is appropriate |
+| `rec.book.urgency_score_min`         | 60      | A decent rate that is climbing is still worth acting on                                                   |
+| `rec.book.urgency_rise_pct`          | 3.0     |                                                                                                           |
+| `rec.book.urgency_demand`            | 0.60    |                                                                                                           |
+| **`rec.wait.confidence_min`**        | **70**  | **The mandatory rule.** Never recommend waiting on weak evidence                                          |
+| `rec.wait.score_max`                 | 42      | Only a genuinely poor rate justifies waiting                                                              |
+| `rec.wait.min_lead_days`             | 10      | Closer than this, a decline cannot plausibly materialize                                                  |
+| `rec.wait.rise_block_pct`            | 2.0     | Prices moving against the customer                                                                        |
+| `rec.wait.demand_block`              | 0.60    | Event or sellout pressure — rates will not soften                                                         |
+| `rec.wait.scarcity_block`            | 3       | The room may simply be gone                                                                               |
+| `rec.wait.min_volatility_confidence` | 0.40    | Too erratic to time                                                                                       |
+| `rec.wait.max_trend_pct`             | 0.0     | Flat or falling only                                                                                      |
 
 ## 8. Explanation layer
 
@@ -160,7 +160,6 @@ Not engine inputs — the measurable goals the runbook (doc 02 §4) evaluates ag
 | `calibration.target_score_mean_tolerance`   | 12     | Allowed drift from that centre                                                                                                                      |
 | `calibration.min_sample_size`               | 30     | Below this a metric is reported but not judged                                                                                                      |
 | `calibration.book_now_regret_rate_max`      | 0.10   | Share of BOOK_NOW rates beaten by a lower rate within 14 days                                                                                       |
-| `calibration.wait_success_rate_min`         | 0.60   | Share of WAIT recommendations where the price actually fell within 14 days                                                                          |
 | `calibration.score_stability_max_delta`     | 10     | Maximum score movement on re-run absent a real price change                                                                                         |
 | `calibration.insufficient_data_rate_max`    | 0.25   | Share of queries returning no score — above this, coverage is too thin to launch                                                                    |
 

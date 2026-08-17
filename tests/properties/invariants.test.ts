@@ -162,14 +162,18 @@ function buildInput(k: Knobs, overrides: Partial<Knobs> = {}): ScoringInput {
 
 const run = (k: Knobs, o: Partial<Knobs> = {}) => analyze(buildInput(k, o), DEFAULT_CONFIG);
 
-describe('P1 · WAIT requires confidence at or above the floor [RELEASE BLOCKER]', () => {
+/**
+ * P1 used to read "WAIT requires confidence at or above the floor". WAIT was
+ * retired in config v4 — the engine makes no claim about future price — so the
+ * invariant is now the stronger one: the verdict is never emitted at all.
+ */
+describe('P1 · the engine never recommends waiting [RELEASE BLOCKER]', () => {
   it('holds for all generated inputs', () => {
     fc.assert(
       fc.property(arbKnobs, (k) => {
         const { analysis } = run(k);
-        if (analysis.recommendation === 'WAIT') {
-          expect(analysis.confidence).toBeGreaterThanOrEqual(DEFAULT_CONFIG.rec.wait.confidenceMin);
-        }
+        expect(analysis.recommendation as string).not.toBe('WAIT');
+        expect(analysis.gateFired as string).not.toBe('G4');
       }),
       { numRuns: BLOCKER_RUNS },
     );
@@ -320,14 +324,26 @@ describe('P10 · Too few observations always forces INSUFFICIENT_DATA', () => {
   });
 });
 
-describe('P11 · Any tripped guard removes WAIT [RELEASE BLOCKER]', () => {
+/**
+ * P11 used to assert that any tripped guard removed WAIT from the possible
+ * outputs. With WAIT gone the guards went too, and the rule they served is
+ * better stated at the surface the customer actually reads: the rendered
+ * explanation must not tell anyone what the price is going to do.
+ *
+ * The vocabulary list is deliberately blunt. A false positive here costs one
+ * reworded sentence; a false negative ships a forecast this system has no
+ * basis for making.
+ */
+const PREDICTIVE_VOCABULARY =
+  /\b(will|won't|going to|expect|expected|predict|forecast|likely to|unlikely to|soften|rise|rises|drop further|fall further|before it|book before|soon)\b/i;
+
+describe('P11 · no explanation predicts a future price [RELEASE BLOCKER]', () => {
   it('holds for all generated inputs', () => {
     fc.assert(
       fc.property(arbKnobs, (k) => {
-        const { analysis } = run(k);
-        if (analysis.waitBlockedBy.length > 0) {
-          expect(analysis.recommendation).not.toBe('WAIT');
-        }
+        const { explanation } = run(k);
+        const hit = PREDICTIVE_VOCABULARY.exec(explanation.text);
+        expect(hit?.[0], `predictive wording in "${explanation.text}"`).toBeUndefined();
       }),
       { numRuns: BLOCKER_RUNS },
     );

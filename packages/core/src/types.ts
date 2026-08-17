@@ -42,7 +42,19 @@ export type DowBucket = 'WEEKDAY' | 'WEEKEND';
 export const UNRESOLVED_CLASS = 'UNRESOLVED';
 export type ComparabilityClass = string;
 
-export type Recommendation = 'BOOK_NOW' | 'WAIT' | 'CONSIDER' | 'INSUFFICIENT_DATA';
+/**
+ * WAIT was retired in config v4.
+ *
+ * "It may be worth waiting" is a claim about tomorrow's price, and this system
+ * has no basis for one: there is no reliable rate history behind it, and the
+ * product deliberately does not forecast. Every remaining verdict is a
+ * statement about the rate in front of the customer right now.
+ *
+ * The value is gone from the type, from gate G4, and from the database — see
+ * db/migrations/0008_retire_wait.sql, which now rejects it outright rather than
+ * merely bounding the confidence at which it was allowed.
+ */
+export type Recommendation = 'BOOK_NOW' | 'CONSIDER' | 'INSUFFICIENT_DATA';
 export type ScoreBand = 'EXCELLENT' | 'GOOD' | 'FAIR' | 'BELOW_AVERAGE' | 'POOR';
 export type ConfidenceBand = 'HIGH' | 'MODERATE' | 'LOW' | 'INSUFFICIENT';
 
@@ -52,14 +64,18 @@ export type ConfidenceBand = 'HIGH' | 'MODERATE' | 'LOW' | 'INSUFFICIENT';
  * It was an affine function of F1 — `score_F5 = (50 − 50D) + D · score_F1` —
  * so it contributed no independent information about price attractiveness and
  * its weight was effectively borrowed from F1. Demand still does real,
- * independent work in the never-WAIT guard W4 and the urgency gate G3; it just
- * no longer pretends to be a sixth scoring perspective.
+ * independent work in the urgency gate G3; it just no longer pretends to be a
+ * sixth scoring perspective.
  *
  * See docs/mvp/02-deal-score.md §3 and docs/mvp/11-calibration-tooling.md §5.
  */
 export type FactorCode = 'F1' | 'F2' | 'F3' | 'F4' | 'F6';
-export type GateCode = 'G0' | 'G2' | 'G3' | 'G4' | 'G5';
-export type GuardCode = 'W1' | 'W2' | 'W3' | 'W4' | 'W5' | 'W6' | 'W7' | 'W8';
+
+/**
+ * G4 is absent, not renamed: it was the WAIT gate, and stored analyses record
+ * the gate that produced them. Renumbering would silently reassign the history.
+ */
+export type GateCode = 'G0' | 'G2' | 'G3' | 'G5';
 
 // ── Inputs ────────────────────────────────────────────────────────────────
 
@@ -218,17 +234,9 @@ export interface DealScoreResult {
   readonly weightCoverage: number;
 }
 
-export interface GuardResult {
-  readonly code: GuardCode;
-  readonly tripped: boolean;
-  readonly detail: string;
-}
-
 export interface RecommendationResult {
   readonly recommendation: Recommendation;
   readonly gateFired: GateCode;
-  readonly waitBlockedBy: readonly GuardCode[];
-  readonly guards: readonly GuardResult[];
   readonly insufficientReasons: readonly string[];
 }
 
@@ -253,7 +261,6 @@ export interface AnalysisResult {
   readonly confidenceBand: ConfidenceBand;
   readonly recommendation: Recommendation;
   readonly gateFired: GateCode;
-  readonly waitBlockedBy: readonly GuardCode[];
   readonly reasonCodes: readonly string[];
   readonly caveatCodes: readonly string[];
   readonly factors: readonly FactorResult[];

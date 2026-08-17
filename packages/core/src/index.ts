@@ -2,7 +2,7 @@ export * from './types.js';
 export * from './money.js';
 export * from './stats.js';
 
-export { DEFAULT_CONFIG, ENGINE_VERSION, WAIT_CONFIDENCE_HARD_FLOOR } from './config/defaults.js';
+export { DEFAULT_CONFIG, ENGINE_VERSION } from './config/defaults.js';
 export type { ScoringConfig } from './config/defaults.js';
 export {
   ConfigValidationError,
@@ -117,12 +117,7 @@ export {
 } from './confidence/confidence.js';
 export type { ConfidenceInput } from './confidence/confidence.js';
 
-export {
-  WaitConfidenceViolation,
-  assertWaitInvariant,
-  evaluateGuards,
-  recommend,
-} from './recommendation/engine.js';
+export { recommend } from './recommendation/engine.js';
 export type { RecommendationInput } from './recommendation/engine.js';
 
 export { deriveCaveats, deriveReasons } from './explanation/reasonCodes.js';

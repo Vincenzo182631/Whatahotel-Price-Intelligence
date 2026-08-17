@@ -40,7 +40,7 @@ Each fixture specifies: baseline distribution, same-stay series, comparables, co
 
 **Expect.** `deal_score` 40–60 (FAIR) · `confidence` ≥ 75 · `recommendation` **CONSIDER** · `gate_fired` G5 · `wait_blocked_by` empty (score too high for G4, not a guard).
 
-**Asserts.** CONSIDER, not WAIT — a normal price is not a bad one. This scenario guards against a common calibration error where the WAIT threshold drifts up and the engine starts telling people to wait on ordinary rates.
+**Asserts.** CONSIDER — a normal price is not a bad one, and the verdict for an ordinary rate must stay ordinary.
 
 ---
 
@@ -48,9 +48,9 @@ Each fixture specifies: baseline distribution, same-stay series, comparables, co
 
 **Setup.** 70 observations, median $700, cv 0.16. Current rate $915 → percentile 96. Comps: subject index 1.31 vs market 1.02. Series flat. Lead 50d. No demand signal. No benefits.
 
-**Expect.** `deal_score` ≤ 25 (POOR) · `confidence` ≥ 75 · `recommendation` **WAIT** · `gate_fired` G4 · reasons lead with `ABOVE_HISTORICAL_AVERAGE` and include `ABOVE_COMPARABLE_HOTELS`.
+**Expect.** `deal_score` ≤ 25 (POOR) · `confidence` ≥ 75 · `recommendation` **CONSIDER** · `gate_fired` G5 · reasons lead with `ABOVE_HISTORICAL_AVERAGE` and include `ABOVE_COMPARABLE_HOTELS`.
 
-**Asserts.** This is the _only_ one of the nine that should yield WAIT. Confidence ≥ `WAIT_MIN_CONFIDENCE`. All eight never-WAIT guards evaluated clear.
+**Asserts.** Before config v4 this was the only one of the nine that yielded WAIT, through gate G4 with all eight guards clear. With WAIT retired the same inputs must land on CONSIDER via G5 — the score and the reason codes are unchanged, and they are the part that was ever evidence. The scenario now guards the retirement itself.
 
 ---
 
@@ -62,7 +62,7 @@ Each fixture specifies: baseline distribution, same-stay series, comparables, co
 
 **Expect.** `deal_score` 55–78 · `confidence` ≥ 60 · `recommendation` **BOOK_NOW** via **G3 (urgency)**, not G2 · `wait_blocked_by` contains `W3`.
 
-**Asserts.** A merely-acceptable rate that is climbing routes to BOOK_NOW through the urgency gate. Critically: **WAIT is blocked by W3** even though the score alone would not trigger G4 — verifying the guards run before, and independently of, the score paths. `gate_fired === 'G3'` distinguishes the reason so the explanation says "rising", not "excellent".
+**Asserts.** A merely-acceptable rate that is climbing routes to BOOK_NOW through the urgency gate rather than falling through to CONSIDER. `gate_fired === 'G3'` distinguishes the reason so the explanation says "rising", not "excellent".
 
 ---
 
@@ -72,7 +72,7 @@ Each fixture specifies: baseline distribution, same-stay series, comparables, co
 
 **Expect.** `deal_score` 60–80 · `confidence` ≥ 70 · `recommendation` **CONSIDER** · reasons include `PRICE_FALLING_7D` (direction `NEGATIVE`).
 
-**Asserts.** The hardest genuine case. The rate is good historically (F1 high) but falling (F3 low), and the score lands mid-high while the two factors disagree. The engine must **not** emit WAIT — score 60–80 is far above `WAIT_SCORE_MAX` (42) — and must not emit a confident BOOK_NOW that ignores the decline. CONSIDER with an honest "prices have been falling" reason is the correct, humble answer. This scenario protects the boundary between "good rate" and "good time".
+**Asserts.** The hardest genuine case. The rate is good historically (F1 high) but falling (F3 low), and the score lands mid-high while the two factors disagree. The engine must not emit a confident BOOK_NOW that ignores the decline. CONSIDER with an honest "prices have been falling" reason is the correct, humble answer. This scenario protects the boundary between "good rate" and "good time".
 
 ---
 
@@ -96,7 +96,7 @@ Each fixture specifies: baseline distribution, same-stay series, comparables, co
 
 **Asserts.** Score and confidence **diverge** — 79 against 73 here, versus 85 against 88 in S1 on comparable data quality. If the score were instead suppressed alongside confidence, the design would be wrong: volatility does not make the percentile false, it makes it fragile. This scenario is what proves the two-number design earns its keep.
 
-> **Calibration finding.** The original draft expected confidence 45–65 and a blocked BOOK_NOW. At the specified weights, volatility alone does not depress confidence below `BOOK_MIN_CONFIDENCE` — with plentiful, fresh, well-matched data, one weak factor moves the geometric mean to 73, not 60. Volatility _does_ block WAIT (guard W6), but there is no equivalent guard on BOOK_NOW. Whether that is a gap or correct behaviour is a real open question: recommending a rate at the 18th percentile is defensible even when the price is erratic. **Left as specified rather than re-tuned to force the expected outcome**; flagged for the calibration runbook.
+> **Calibration finding.** The original draft expected confidence 45–65 and a blocked BOOK_NOW. At the specified weights, volatility alone does not depress confidence below `BOOK_MIN_CONFIDENCE` — with plentiful, fresh, well-matched data, one weak factor moves the geometric mean to 73, not 60. Volatility used to block WAIT through guard W6, but there was never an equivalent guard on BOOK_NOW, and with WAIT retired volatility acts on confidence alone. Whether that is a gap or correct behaviour is a real open question: recommending a rate at the 18th percentile is defensible even when the price is erratic. **Left as specified rather than re-tuned to force the expected outcome**; flagged for the calibration runbook.
 
 ---
 
@@ -104,7 +104,7 @@ Each fixture specifies: baseline distribution, same-stay series, comparables, co
 
 **Setup.** 40 observations, but composition: 12 `SOURCE_ID` (1.0), 10 `ALIAS_FUZZY` (0.65), 18 `ATTRIBUTE_INFERRED` (0.5) → `f_match` ≈ 0.66. Baseline reached L4 (borrowed sibling room types). 25% of observations `UNRESOLVED` comparability class.
 
-**Expect.** `confidence` ≤ 55 (LOW) after `f_match`, the L4 multiplier (0.60) and the unresolved-class penalty (0.85) compound · `recommendation` **CONSIDER** or **INSUFFICIENT_DATA** — never WAIT (W8 blocks on baseline ≥ L3), never BOOK_NOW (confidence < 60) · `caveats` contains `WEAK_ROOM_MATCH` and `BASELINE_WIDENED`.
+**Expect.** `confidence` ≤ 55 (LOW) after `f_match`, the L4 multiplier (0.60) and the unresolved-class penalty (0.85) compound · `recommendation` **CONSIDER** or **INSUFFICIENT_DATA** — never BOOK_NOW (confidence < 60) · `caveats` contains `WEAK_ROOM_MATCH` and `BASELINE_WIDENED`.
 
 **Variant S8b.** Same, but `f_match` = 0.45 → **INSUFFICIENT_DATA** via G0 (`MATCH_MIN` = 0.50).
 
@@ -126,20 +126,20 @@ Each fixture specifies: baseline distribution, same-stay series, comparables, co
 
 Run over generated inputs; each must hold universally.
 
-| #       | Invariant                                                                                                 | Why                                                                   |
-| ------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| **P1**  | `recommendation === 'WAIT' ⇒ confidence ≥ WAIT_MIN_CONFIDENCE`                                            | **The mandatory rule.** Third of three enforcement layers (doc 03 §4) |
-| **P2**  | `recommendation === 'INSUFFICIENT_DATA' ⇔ deal_score === null`                                            | Never a fabricated score, never a suppressed real one                 |
-| **P3**  | **Monotonicity:** lowering the current price, with the trend series held fixed, never lowers `deal_score` | Catches sign errors — the most embarrassing possible bug              |
-| **P4**  | `deal_score ∈ [0,100] ∪ {null}` and `confidence ∈ [0,100]`                                                | Clamping is applied everywhere                                        |
-| **P5**  | Adding observations that match the existing distribution never lowers `confidence`                        | `f_volume` is monotonic                                               |
-| **P6**  | Increasing the age of the current rate never raises `confidence`                                          | `f_freshness` is monotonic                                            |
-| **P7**  | Weights of available factors sum to 1.0 after redistribution (±1e-9)                                      | Redistribution is correct                                             |
-| **P8**  | Every number in the rendered explanation appears in `constraints.allowed_numbers`                         | Doc 04 validator V1                                                   |
-| **P9**  | The engine is deterministic — same inputs and config version, same output                                 | No hidden clock or randomness                                         |
-| **P10** | `n_observations < MIN_OBS_ABS ⇒ INSUFFICIENT_DATA`                                                        | G0 cannot be bypassed                                                 |
-| **P11** | Any never-WAIT guard tripping ⇒ `recommendation ≠ 'WAIT'`                                                 | All eight guards, individually and combined                           |
-| **P12** | `baseline_level ≥ L3 ⇒ confidence ≤ 0.80 × unwidened equivalent`                                          | Ladder penalty applied                                                |
+| #       | Invariant                                                                                                 | Why                                                                                                      |
+| ------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **P1**  | `recommendation !== 'WAIT'` and `gate_fired !== 'G4'`                                                     | **The mandatory rule since config v4.** The engine makes no claim about future price (doc 03 §4)         |
+| **P2**  | `recommendation === 'INSUFFICIENT_DATA' ⇔ deal_score === null`                                            | Never a fabricated score, never a suppressed real one                                                    |
+| **P3**  | **Monotonicity:** lowering the current price, with the trend series held fixed, never lowers `deal_score` | Catches sign errors — the most embarrassing possible bug                                                 |
+| **P4**  | `deal_score ∈ [0,100] ∪ {null}` and `confidence ∈ [0,100]`                                                | Clamping is applied everywhere                                                                           |
+| **P5**  | Adding observations that match the existing distribution never lowers `confidence`                        | `f_volume` is monotonic                                                                                  |
+| **P6**  | Increasing the age of the current rate never raises `confidence`                                          | `f_freshness` is monotonic                                                                               |
+| **P7**  | Weights of available factors sum to 1.0 after redistribution (±1e-9)                                      | Redistribution is correct                                                                                |
+| **P8**  | Every number in the rendered explanation appears in `constraints.allowed_numbers`                         | Doc 04 validator V1                                                                                      |
+| **P9**  | The engine is deterministic — same inputs and config version, same output                                 | No hidden clock or randomness                                                                            |
+| **P10** | `n_observations < MIN_OBS_ABS ⇒ INSUFFICIENT_DATA`                                                        | G0 cannot be bypassed                                                                                    |
+| **P11** | No rendered explanation contains predictive language                                                      | The rule at the surface the customer actually reads. Replaced the never-WAIT guard property in config v4 |
+| **P12** | `baseline_level ≥ L3 ⇒ confidence ≤ 0.80 × unwidened equivalent`                                          | Ladder penalty applied                                                                                   |
 
 P1, P3 and P11 are the release blockers. A failure in any of them stops a deploy.
 
@@ -157,7 +157,7 @@ P1, P3 and P11 are the release blockers. A failure in any of them stops a deploy
 | Room-class hard rule    | A SUITE never merges into a ROOM baseline regardless of string similarity                                         |
 | Widening ladder         | Progressive sparsity moves L0→L4 in order and stops at `MIN_OBS_TARGET`                                           |
 | Baseline correctness    | Percentiles from the rollup match direct computation over raw facts                                               |
-| DB constraint           | Attempting to insert a WAIT analysis with confidence 65 is rejected by `analysis_wait_confidence_ck`              |
+| DB constraint           | Attempting to insert a WAIT analysis at any confidence is rejected by `analysis_no_wait_ck`                       |
 | API contract            | Response validates against the published schema for every recommendation type                                     |
 | Cache                   | `INSUFFICIENT_DATA` is not cached as long as a scored result (shorter TTL — it should recover as data arrives)    |
 | Timezone                | A stay date near midnight in the hotel's timezone buckets to the correct DOW and lead time                        |

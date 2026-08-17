@@ -146,8 +146,8 @@ async function main() {
 
   check('response carries an analysis id', typeof d.analysis_id === 'string');
   check(
-    'recommendation is one of the four states',
-    ['BOOK_NOW', 'WAIT', 'CONSIDER', 'INSUFFICIENT_DATA'].includes(v.recommendation),
+    'recommendation is one of the three states',
+    ['BOOK_NOW', 'CONSIDER', 'INSUFFICIENT_DATA'].includes(v.recommendation),
     v.recommendation,
   );
   check('confidence is always present', typeof v.confidence === 'number');
@@ -160,9 +160,9 @@ async function main() {
     `score=${v.deal_score}`,
   );
   check(
-    'WAIT is never returned below the confidence floor',
-    v.recommendation !== 'WAIT' || v.confidence >= 70,
-    `confidence=${v.confidence}`,
+    'WAIT is never returned — it was retired in config v4',
+    v.recommendation !== 'WAIT',
+    v.recommendation,
   );
   check(
     'a scored response always carries a band',

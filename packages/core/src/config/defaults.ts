@@ -210,16 +210,8 @@ export interface ScoringConfig {
       readonly urgencyScoreMin: number;
       readonly urgencyRisePct: number;
       readonly urgencyDemand: number;
-    };
-    readonly wait: {
-      readonly confidenceMin: number;
-      readonly scoreMax: number;
-      readonly minLeadDays: number;
-      readonly riseBlockPct: number;
-      readonly demandBlock: number;
-      readonly scarcityBlock: number;
-      readonly minVolatilityConfidence: number;
-      readonly maxTrendPct: number;
+      /** Rooms remaining at or below which gate G3 treats inventory as scarce. */
+      readonly urgencyScarcityRooms: number;
     };
   };
 
@@ -234,7 +226,6 @@ export interface ScoringConfig {
     /** A drop smaller than this is noise, not a missed opportunity. */
     readonly materialDropPct: number;
     readonly bookNowRegretRateMax: number;
-    readonly waitSuccessRateMin: number;
     readonly scoreStabilityMaxDelta: number;
     /** Price moves under this count as "unchanged" for the stability check. */
     readonly stabilityPriceTolerancePct: number;
@@ -259,21 +250,18 @@ export interface ScoringConfig {
   };
 }
 
-/**
- * Hard floor on the never-WAIT confidence threshold.
- *
- * Configuration must not be able to disable the safety rule it exists to
- * enforce. `validateConfig` rejects any document setting it lower.
- */
-export const WAIT_CONFIDENCE_HARD_FLOOR = 60;
-
 export const DEFAULT_CONFIG: ScoringConfig = {
-  // v3 — adds the `live` block: the comp-set / calendar / compression model
-  // that scores from rates existing today rather than from accrued history.
-  // The v2 factor weights are retained unchanged; the two models coexist while
-  // the live one is wired through, and every analysis records the version that
-  // produced it, so v2 scores stay reproducible.
-  version: 3,
+  // v4 — retires WAIT.
+  //
+  // v3 added the `live` block: the comp-set / calendar / compression model that
+  // scores from rates existing today rather than from accrued history. v4
+  // finishes the job by removing the one output that was a forecast. The
+  // `rec.wait` block went with it; the two of its values that did non-predictive
+  // work are now `rec.shortLeadDays` and `rec.book.urgencyScarcityRooms`.
+  //
+  // The v2 factor weights are retained unchanged, and every analysis records the
+  // version that produced it, so older scores stay reproducible.
+  version: 4,
 
   score: {
     weight: {
@@ -383,16 +371,7 @@ export const DEFAULT_CONFIG: ScoringConfig = {
       urgencyScoreMin: 60,
       urgencyRisePct: 3.0,
       urgencyDemand: 0.6,
-    },
-    wait: {
-      confidenceMin: 70,
-      scoreMax: 42,
-      minLeadDays: 10,
-      riseBlockPct: 2.0,
-      demandBlock: 0.6,
-      scarcityBlock: 3,
-      minVolatilityConfidence: 0.4,
-      maxTrendPct: 0.0,
+      urgencyScarcityRooms: 3,
     },
   },
 
@@ -400,7 +379,6 @@ export const DEFAULT_CONFIG: ScoringConfig = {
     outcomeHorizonDays: 14,
     materialDropPct: 2.0,
     bookNowRegretRateMax: 0.1,
-    waitSuccessRateMin: 0.6,
     scoreStabilityMaxDelta: 10,
     stabilityPriceTolerancePct: 1.0,
     insufficientDataRateMax: 0.25,

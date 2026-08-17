@@ -303,15 +303,14 @@ export function computeF4(
 // attractiveness that F1 did not already carry; it only rescaled it, and its
 // weight was borrowed from F1 rather than adding a sixth perspective.
 //
-// Demand still does real, INDEPENDENT work: it blocks WAIT through guard W4
-// and can trigger BOOK_NOW through the urgency gate G3. Those uses do not
-// double-count F1, because they act on the recommendation rather than the
-// score. See docs/mvp/02-deal-score.md §3.
+// Demand still does real, INDEPENDENT work: it can trigger BOOK_NOW through
+// the urgency gate G3. That use does not double-count F1, because it acts on
+// the recommendation rather than the score. See docs/mvp/02-deal-score.md §3.
 
 const SCARCITY_NORMAL = 10;
 
 export interface DemandSignal {
-  /** Normalized demand pressure 0–1. Feeds guard W4 and gate G3. */
+  /** Normalized demand pressure 0–1. Feeds the urgency gate G3. */
   readonly demandPressure: number;
   /** Distinguishes "no signal at all" from "signal reports no demand". */
   readonly hasSignal: boolean;

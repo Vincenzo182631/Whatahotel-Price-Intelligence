@@ -51,7 +51,6 @@ Flagged in every report, because a backtest that hides its own leakage is worse 
 | Score distribution | Is the score centred and spread, or piled at one end?      | mean within ±12 of 50   |
 | Factor correlation | Are two factors measuring the same thing?                  | no pair above \|r\| 0.6 |
 | BOOK_NOW regret    | How often was a rate we said to book beaten shortly after? | ≤ 10%                   |
-| WAIT success       | How often did waiting actually pay off?                    | ≥ 60%                   |
 | Score stability    | Does the score drift when the price does not?              | p95 Δ ≤ 10 points       |
 | Coverage           | How often can we not answer at all?                        | ≤ 25%                   |
 
@@ -98,7 +97,7 @@ Measured r = 0.82; the algebra gives r = 1.0 at constant demand pressure. `score
 
 **Resolved: F5 was removed from the Deal Score**, and its 0.10 redistributed proportionally across the remaining five factors. Demand continues to drive guard W4 and urgency gate G3, where it acts on the _recommendation_ rather than the _score_ and so cannot double-count the percentile. Full write-up in [doc 02 §3, F5](./02-deal-score.md).
 
-A regression test asserts the factor breakdown is exactly `[F1, F2, F3, F4, F6]` and that demand still blocks WAIT — so the dependency cannot return unnoticed.
+A regression test asserts the factor breakdown is exactly `[F1, F2, F3, F4, F6]` and that demand still reaches the decision trace, where gate G3 reads it — so the dependency cannot return unnoticed.
 
 ### Comparables were not filtered to the subject's comparability class
 
@@ -112,6 +111,6 @@ The harness is ready; the data is not. When real captured rates exist:
 
 1. Run `npm run calibrate -- --stays 200 --points 10 --report calibration-v1.md`.
 2. Expect FAILs. The weights in config v2 are documented priors, not findings, and were never expected to survive contact with data.
-3. Work the blocking metrics in order of customer harm: **BOOK_NOW regret first** — it is the failure a traveler actually feels — then WAIT success, then correlation.
+3. Work the blocking metrics in order of customer harm: **BOOK_NOW regret first** — it is the failure a traveler actually feels — then coverage, then correlation.
 4. Use `--sweep` for a starting direction, never as the decision. Check `loss terms judged`; below 4 of 6 the ranking is not evidence.
 5. Insert the new config as a **new version** with the report attached in `scoring_config.note`, then re-run the golden fixtures (doc 07 §2). Band or recommendation changes in S1–S9 must be explained before activation.

@@ -86,7 +86,7 @@ schedule is commented out for now — see Option A — but this is the cadence t
 run at, whether from Actions or a server.) Anything coarser silently caps every
 tier at the cron period: a daily job would give HOT stays a quarter of their
 intended cadence, and factor F3 (trend) far fewer points inside its 7-day
-window, which lowers confidence and makes the WAIT gate harder to reach.
+window, which lowers confidence and pushes more analyses to INSUFFICIENT_DATA.
 
 Six-hourly does **not** multiply API calls by four. `planCollection` returns
 only stays that are actually due, so WARM and COLD stays are skipped on the

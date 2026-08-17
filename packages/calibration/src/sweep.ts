@@ -149,12 +149,6 @@ export function computeLoss(metrics: readonly MetricResult[], config: ScoringCon
     add('book_now_regret', excess / Math.max(0.01, 1 - config.calibration.bookNowRegretRateMax), 2);
   }
 
-  const wait = judged('wait_success');
-  if (wait !== null) {
-    const shortfall = Math.max(0, config.calibration.waitSuccessRateMin - wait);
-    add('wait_success', shortfall / Math.max(0.01, config.calibration.waitSuccessRateMin));
-  }
-
   const cov = judged('coverage');
   if (cov !== null) {
     const excess = Math.max(0, cov - config.calibration.insufficientDataRateMax);
@@ -176,7 +170,7 @@ export interface SweepResult {
   readonly ranked: readonly Candidate[];
   readonly trainSize: number;
   readonly holdoutSize: number;
-  /** Metric terms the holdout could actually judge, out of six possible. */
+  /** Metric terms the holdout could actually judge, out of five possible. */
   readonly evaluableTerms: number;
   readonly reliable: boolean;
   readonly note: string;

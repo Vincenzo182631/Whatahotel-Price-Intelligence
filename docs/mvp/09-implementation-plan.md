@@ -69,7 +69,6 @@ whatahotel-price-intelligence/
 │  │  │  ├─ factors.ts                # the seven f_* factors
 │  │  │  └─ confidence.ts             # weighted geometric mean
 │  │  ├─ src/recommendation/
-│  │  │  ├─ guards.ts                 # W1–W8 never-WAIT guards
 │  │  │  └─ engine.ts                 # G0–G5, boundary assertion for P1
 │  │  ├─ src/explanation/
 │  │  │  ├─ bundle.ts                 # ExplanationBundle assembly

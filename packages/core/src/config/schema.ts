@@ -1,13 +1,13 @@
 /**
  * Configuration validation.
  *
- * Runs on every config activation. Two rules here are not stylistic:
+ * Runs on every config activation. These rules are not stylistic:
  *  - Deal Score weights must sum to 1.0, or redistribution silently misweights.
- *  - The WAIT confidence threshold cannot be set below its hard floor, because
- *    configuration must not be able to disable a safety rule.
+ *  - Live-model weights must sum to 1.0, for the same reason.
+ *  - Bands must be strictly descending, or a score falls into two of them.
  */
 
-import { DEFAULT_CONFIG, WAIT_CONFIDENCE_HARD_FLOOR, type ScoringConfig } from './defaults.js';
+import { DEFAULT_CONFIG, type ScoringConfig } from './defaults.js';
 
 export class ConfigValidationError extends Error {
   readonly issues: readonly string[];
@@ -32,17 +32,14 @@ export function validateConfig(config: ScoringConfig): readonly string[] {
     if (value < 0 || value > 1) issues.push(`score.weight.${key} must be in [0,1] (got ${value})`);
   }
 
-  if (config.rec.wait.confidenceMin < WAIT_CONFIDENCE_HARD_FLOOR) {
+  // WAIT was retired in config v4, and with it the hard floor that stopped a
+  // configuration from lowering the confidence needed to emit it. A config
+  // still carrying the block is from before the retirement and would be read
+  // with fields the engine no longer honours.
+  if ((config.rec as Record<string, unknown>).wait !== undefined) {
     issues.push(
-      `rec.wait.confidenceMin must be at least ${WAIT_CONFIDENCE_HARD_FLOOR} — ` +
-        `configuration cannot disable the never-WAIT safety rule (got ${config.rec.wait.confidenceMin})`,
-    );
-  }
-
-  if (config.rec.book.confidenceMin > config.rec.wait.confidenceMin) {
-    issues.push(
-      'rec.book.confidenceMin should not exceed rec.wait.confidenceMin — ' +
-        'the asymmetry is deliberate and this inverts it',
+      'rec.wait.* is no longer supported — WAIT was retired in config v4. ' +
+        'rec.book.urgencyScarcityRooms carries over the one value that did non-predictive work',
     );
   }
 

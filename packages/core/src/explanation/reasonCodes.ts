@@ -210,8 +210,6 @@ export interface CaveatInputs {
   readonly nSources: number;
   readonly compCount: number;
   readonly minComps: number;
-  readonly leadTimeDays: number;
-  readonly minLeadDays: number;
   readonly insufficientReasons: readonly string[];
 }
 
@@ -275,12 +273,9 @@ export function deriveCaveats(input: CaveatInputs): readonly CaveatFact[] {
     });
   }
 
-  if (input.leadTimeDays < input.minLeadDays) {
-    caveats.push({
-      code: 'SHORT_LEAD_TIME',
-      text: 'These dates are close enough that rates are unlikely to soften.',
-    });
-  }
+  // SHORT_LEAD_TIME went with WAIT in config v4. Its text — "these dates are
+  // close enough that rates are unlikely to soften" — was a forecast, and it
+  // existed only to argue against a verdict the engine no longer produces.
 
   return caveats;
 }

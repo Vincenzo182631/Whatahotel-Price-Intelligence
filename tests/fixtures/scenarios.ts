@@ -28,7 +28,6 @@ export interface ScenarioExpectation {
   readonly confidenceBand?: ConfidenceBand;
   readonly recommendation: Recommendation | readonly Recommendation[];
   readonly gateFired?: string;
-  readonly waitBlockedByIncludes?: readonly string[];
   readonly reasonCodesInclude?: readonly string[];
   readonly caveatCodesInclude?: readonly string[];
   readonly caveatsEmpty?: boolean;
@@ -134,7 +133,7 @@ const s3: Scenario = {
   id: 'S3',
   title: 'Overpriced hotel',
   protects:
-    'The only scenario that should yield WAIT. All eight never-WAIT guards must evaluate clear.',
+    "A rate well above this hotel's own history and above its comp set. It used to be the one scenario that yielded WAIT; since WAIT was retired in config v4 the same inputs must land on CONSIDER via G5, with the poor score and the reason codes unchanged. What the customer is told changes; what was measured does not.",
   input: {
     query: makeQuery({ checkIn: checkInWithLeadDays(50) }),
     current: makeCurrent(91500),
@@ -156,8 +155,8 @@ const s3: Scenario = {
     dealScore: [0, 28],
     dealScoreBand: 'POOR',
     confidence: [70, 100],
-    recommendation: 'WAIT',
-    gateFired: 'G4',
+    recommendation: 'CONSIDER',
+    gateFired: 'G5',
     reasonCodesInclude: ['ABOVE_HISTORICAL_AVERAGE', 'ABOVE_COMPARABLE_HOTELS'],
   },
 };
@@ -167,7 +166,7 @@ const s4: Scenario = {
   id: 'S4',
   title: 'Rapidly increasing price',
   protects:
-    'Urgency routing (G3) and, critically, that W3 removes WAIT before any score path runs.',
+    'Urgency routing: a merely acceptable score plus a measured 7-day rise must reach BOOK_NOW through G3 rather than falling through to CONSIDER.',
   input: {
     query: makeQuery({ checkIn: checkInWithLeadDays(22) }),
     // Re-tuned when F5 was removed in config v2. Dropping the demand factor
@@ -195,7 +194,6 @@ const s4: Scenario = {
     confidence: [60, 100],
     recommendation: 'BOOK_NOW',
     gateFired: 'G3',
-    waitBlockedByIncludes: ['W3'],
     reasonCodesInclude: ['PRICE_RISING_7D'],
   },
 };
@@ -205,7 +203,7 @@ const s5: Scenario = {
   id: 'S5',
   title: 'Rapidly falling price',
   protects:
-    'The boundary between "good rate" and "good time". F1 high and F3 low must land on CONSIDER — never a confident BOOK_NOW that ignores the decline, never a WAIT the score does not support.',
+    'The boundary between "good rate" and "good time". F1 high and F3 low must land on CONSIDER — never a confident BOOK_NOW that ignores the decline.',
   input: {
     query: makeQuery({ checkIn: checkInWithLeadDays(60) }),
     current: makeCurrent(70000),
