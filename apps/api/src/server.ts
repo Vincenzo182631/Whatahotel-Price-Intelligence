@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { closePool } from '@wahpi/data';
 
 import { ApiError, Router, newRequestId, sendError, sendJson } from './http.js';
+import { liveIntelligenceHandler } from './routes/liveIntelligence.js';
 import { priceIntelligenceHandler } from './routes/priceIntelligence.js';
 import {
   analysisDebugHandler,
@@ -44,6 +45,7 @@ const router = new Router()
   .get('/api/v1/hotels/:hotel_id/price-history', priceHistoryHandler)
   .get('/api/v1/hotels/:hotel_id/comparables', comparablesHandler)
   .get('/api/v1/price-intelligence', priceIntelligenceHandler)
+  .get('/api/v1/live-intelligence', liveIntelligenceHandler)
   .get('/api/v1/meta/config', metaConfigHandler)
   .get('/internal/v1/analyses/:public_id', analysisDebugHandler);
 

@@ -204,6 +204,83 @@ async function main() {
 
   check('responses are cacheable', /max-age=\d+/.test(pi.headers.get('cache-control') ?? ''));
 
+  // ── the live-market model ─────────────────────────────────────────────
+  //
+  // Scores the same stay against today's market rather than against accrued
+  // history. Its contract is checked separately because the widget renders the
+  // 0-10 figure from it, and because the never-predict rule has to hold on
+  // every field a customer can see.
+  const live = await get(`/api/v1/live-intelligence?${q}`);
+  check('live-intelligence returns 200', live.status === 200, `got ${live.status}`);
+  const l = live.body ?? {};
+  const lv = l.verdict ?? {};
+
+  check('live model is declared', l.model === 'LIVE_MARKET');
+  check(
+    'verdict is one of the four live states',
+    ['BOOK_NOW', 'BOOK_CONSIDER', 'CONSIDER_ALTERNATIVES', 'NOT_ENOUGH_DATA'].includes(lv.verdict),
+    lv.verdict,
+  );
+  check(
+    'no live verdict tells the customer to wait',
+    !/wait/i.test(`${lv.verdict} ${lv.verdict_label} ${(lv.reasons ?? []).join(' ')}`),
+    `${lv.verdict_label}`,
+  );
+  check(
+    'no reason predicts a future price',
+    !(lv.reasons ?? []).some((r) =>
+      /\b(will|going to|expect|predict|forecast|rise|rises|fall|falls|soften|before it|soon)\b/i.test(r),
+    ),
+    (lv.reasons ?? []).join(' | '),
+  );
+  check(
+    'confidence is a word, not a number',
+    ['HIGH', 'MEDIUM', 'LOW'].includes(lv.confidence),
+    String(lv.confidence),
+  );
+  check(
+    'an absent live score is null, never 0',
+    lv.verdict !== 'NOT_ENOUGH_DATA' || (lv.score === null && lv.out_of_ten === null),
+    `score=${lv.score}`,
+  );
+  check(
+    'the 0-10 figure matches the 0-100 score',
+    lv.score === null || Math.abs(lv.out_of_ten - lv.score / 10) < 1e-9,
+    `${lv.out_of_ten} vs ${lv.score}`,
+  );
+
+  const ls = l.signals ?? {};
+  const liveSignals = [ls.comp_set, ls.calendar, ls.compression];
+  check('all three live signals are reported', liveSignals.every(Boolean));
+  check(
+    'an unavailable signal states why, and carries no sub-score',
+    liveSignals.every(
+      (sig) =>
+        sig.available ||
+        (typeof sig.unavailable_reason === 'string' && sig.sub_score === null),
+    ),
+  );
+  // The renormalization is the whole reason a missing signal does not drag the
+  // score down. If it silently reported zero the score would look unweighted.
+  check(
+    'available signal weights renormalize to 1',
+    lv.score === null ||
+      Math.abs(liveSignals.reduce((sum, sig) => sum + sig.weight_applied, 0) - 1) < 1e-3,
+    liveSignals.map((sig) => sig.weight_applied).join(' + '),
+  );
+  check(
+    'every competitor counted was live-validated',
+    !ls.comp_set.available || ls.comp_set.comps_used >= 1,
+  );
+  check(
+    'the calendar signal declares whether it held weekday fixed',
+    !ls.calendar.available || typeof ls.calendar.same_weekday_only === 'boolean',
+  );
+  check(
+    'live responses are cacheable',
+    /max-age=\d+/.test(live.headers.get('cache-control') ?? ''),
+  );
+
   // ── the debug endpoint reproduces the decision ────────────────────────
   const debug = await get(`/internal/v1/analyses/${d.analysis_id}`);
   check('stored analysis is retrievable', debug.status === 200);
@@ -225,6 +302,20 @@ async function main() {
     `/api/v1/price-intelligence?hotel_id=${hotelId}&check_in=2031-06-01&check_out=2031-06-04`,
   );
   check('a stay with no stored rate returns 409', noRate.status === 409, `got ${noRate.status}`);
+
+  const liveMissing = await get(
+    '/api/v1/live-intelligence?hotel_id=NOPE&check_in=2030-01-01&check_out=2030-01-04',
+  );
+  check('live-intelligence 404s on an unknown hotel', liveMissing.status === 404);
+
+  const liveNoRate = await get(
+    `/api/v1/live-intelligence?hotel_id=${hotelId}&check_in=2031-06-01&check_out=2031-06-04`,
+  );
+  check(
+    'live-intelligence 409s rather than scoring a stay it has no rate for',
+    liveNoRate.status === 409,
+    `got ${liveNoRate.status}`,
+  );
 
   console.log(`\n${checks - failures}/${checks} checks passed`);
   if (failures > 0) process.exit(1);
