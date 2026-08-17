@@ -682,6 +682,72 @@
     root.appendChild(wrap);
   }
 
+  /**
+   * The supporting evidence, behind a disclosure.
+   *
+   * Embedded in a real hotel page the widget ran taller than the room card it
+   * describes, pushing the rest of the rooms roughly three screens down on
+   * mobile. A price analysis that buries the booking flow works against the
+   * thing it exists to support.
+   *
+   * What collapses is the reasoning, the history chart and the comparison
+   * panel — the three tallest blocks, and the ones a customer consults only
+   * once the headline has made them curious. The WHY bullets in particular
+   * restate the explanation sentence that stays visible above.
+   *
+   * What does NOT collapse: subject, price, the two scores, the verdict, the
+   * explanation, and the whole provenance block including every caveat.
+   * docs/mvp/08 §H calls provenance "mandatory in every state" and "what makes
+   * the product honest" — hiding a caveat to save space would be trading
+   * exactly the wrong thing for room.
+   */
+  function renderDetails(root, data, state) {
+    var wrap = el('section', 'wahpi__section wahpi__details');
+
+    var panel = el('div', 'wahpi__details-panel');
+    panel.id = 'wahpi-details-' + state.uid;
+
+    append(panel, renderReasons(data));
+    append(
+      panel,
+      renderHistory(data, state.windowDays, function (days) {
+        state.windowDays = days;
+        renderAnalysis(root, data, state);
+      }),
+    );
+    append(panel, renderStats(data));
+
+    var toggle = el('button', 'wahpi__disclosure');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-controls', panel.id);
+    toggle.setAttribute('aria-expanded', state.expanded ? 'true' : 'false');
+
+    var label = el('span', 'wahpi__disclosure-label');
+    var caret = el('span', 'wahpi__disclosure-caret');
+    caret.setAttribute('aria-hidden', 'true');
+
+    function paint() {
+      label.textContent = state.expanded
+        ? 'Hide the detail'
+        : 'How we worked this out — history, comparison and reasoning';
+      caret.textContent = state.expanded ? '▲' : '▼';
+      toggle.setAttribute('aria-expanded', state.expanded ? 'true' : 'false');
+      panel.hidden = !state.expanded;
+    }
+
+    toggle.appendChild(label);
+    toggle.appendChild(caret);
+    toggle.addEventListener('click', function () {
+      state.expanded = !state.expanded;
+      paint();
+    });
+
+    paint();
+    wrap.appendChild(toggle);
+    wrap.appendChild(panel);
+    return wrap;
+  }
+
   function renderAnalysis(root, data, state) {
     root.textContent = '';
     root.className = 'wahpi';
@@ -695,15 +761,7 @@
     append(root, renderExplanation(data));
 
     if (data.verdict.recommendation !== 'INSUFFICIENT_DATA') {
-      append(root, renderReasons(data));
-      append(
-        root,
-        renderHistory(data, state.windowDays, function (days) {
-          state.windowDays = days;
-          renderAnalysis(root, data, state);
-        }),
-      );
-      append(root, renderStats(data));
+      append(root, renderDetails(root, data, state));
     }
 
     append(root, renderProvenance(data));
@@ -733,7 +791,15 @@
 
   function mount(root, options) {
     if (!root) throw new Error('WahPriceIntelligence.mount: no element supplied');
-    var state = { windowDays: 90, options: options };
+    var state = {
+      windowDays: 90,
+      options: options,
+      // Collapsed by default. A host page that has room — a dedicated rate
+      // page rather than a room row — can pass expanded: true.
+      expanded: options.expanded === true,
+      // Distinguishes aria-controls ids when several widgets share a page.
+      uid: (mount.seq = (mount.seq || 0) + 1),
+    };
 
     renderLoading(root);
     root.setAttribute('aria-busy', 'true');

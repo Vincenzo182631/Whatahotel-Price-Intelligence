@@ -363,3 +363,49 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* ── progressive disclosure ────────────────────────────────────────────────
+   The reasoning, history chart and comparison panel sit behind this. See the
+   note above renderDetails in widget.js: embedded in a real hotel page the
+   widget ran taller than the room card it describes. Provenance and caveats
+   are deliberately NOT in here — docs/mvp/08 §H makes them mandatory in every
+   state. */
+.wahpi__details {
+  padding-top: 0;
+}
+.wahpi__disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 13px;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #1f3f66;
+  text-align: left;
+  background: #f5f8fc;
+  border: 1px solid #dbe5f0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.wahpi__disclosure:hover {
+  background: #eef4fb;
+}
+/* Keyboard users must be able to see where they are. */
+.wahpi__disclosure:focus-visible {
+  outline: 2px solid #1a63b8;
+  outline-offset: 2px;
+}
+.wahpi__disclosure-caret {
+  font-size: 0.7rem;
+  color: #5b6270;
+  flex: none;
+}
+.wahpi__details-panel {
+  margin-top: 4px;
+}
+.wahpi__details-panel[hidden] {
+  display: none;
+}
