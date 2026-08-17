@@ -29,9 +29,23 @@ export {
   DEFAULT_GRID_SPEC,
   backoffHours,
   findMissingGridStays,
+  gridLeadDays,
   recordCollectionAttempts,
 } from './repositories/collection.js';
 export type { AttemptOutcome, GridSpec, GridStay } from './repositories/collection.js';
+
+export {
+  findCompetitorRates,
+  findMarketCompression,
+  findNearbyDateRates,
+} from './repositories/liveContext.js';
+
+export { isLiveLoadFailure, loadLiveIntelligence } from './loadLiveIntelligence.js';
+export type {
+  LiveLoadFailure,
+  LiveRequest,
+  LoadedLiveIntelligence,
+} from './loadLiveIntelligence.js';
 
 export {
   findBenefits,

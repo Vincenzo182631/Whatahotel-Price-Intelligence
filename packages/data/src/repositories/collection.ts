@@ -17,8 +17,28 @@ export interface GridStay {
 }
 
 export interface GridSpec {
-  /** Lead times, in days from today, the grid should always cover. */
-  readonly leadDays: readonly number[];
+  /**
+   * Anchor lead times, in days from today.
+   *
+   * Anchors come in pairs three days apart (14/17, 35/38, …) so the grid
+   * samples two different weekdays rather than one. A single track would make
+   * every collected stay share a weekday, and a customer asking about a
+   * midweek stay would find nothing comparable.
+   */
+  readonly anchorLeadDays: readonly number[];
+  /**
+   * Offsets around each anchor, in days. Multiples of seven on purpose: an
+   * offset stay lands on the SAME weekday as its anchor, which is what makes
+   * it a valid neighbour for the calendar-delta signal.
+   *
+   * The previous grid was a flat list of lead times — 7, 14, 21, 30, 45, 60,
+   * 90 — under which only 7/14/21 shared a weekday. A stay at lead 30 had no
+   * same-weekday neighbour anywhere in the grid, so the calendar signal could
+   * not be computed for most of what was collected.
+   */
+  readonly satelliteOffsetDays: readonly number[];
+  /** Never request a stay closer in than this. */
+  readonly minLeadDays: number;
   readonly nights: readonly number[];
   readonly adults: number;
   /**
@@ -30,7 +50,17 @@ export interface GridSpec {
 }
 
 export const DEFAULT_GRID_SPEC: GridSpec = {
-  leadDays: [7, 14, 21, 30, 45, 60, 90],
+  // Three horizons × two weekday tracks. With the offsets below this yields
+  // ~19 distinct check-in dates per hotel per stay length, each with two to
+  // four same-weekday neighbours inside a ±14 day window — which is what the
+  // calendar signal needs.
+  //
+  // Cost: roughly 2.7× the previous grid on a cold fill. There is no cheaper
+  // route: the source has no calendar endpoint, so a nearby-date price only
+  // exists if it was collected as its own stay.
+  anchorLeadDays: [14, 17, 35, 38, 63, 66],
+  satelliteOffsetDays: [-14, -7, 0, 7, 14],
+  minLeadDays: 3,
   nights: [1, 3],
   adults: 2,
   backoffAfterFailures: 3,
@@ -91,7 +121,7 @@ export async function findMissingGridStays(
 
   const out: GridStay[] = [];
   for (const hotel of hotels) {
-    for (const lead of spec.leadDays) {
+    for (const lead of gridLeadDays(spec)) {
       const checkIn = new Date(now.getTime() + lead * 86_400_000).toISOString().slice(0, 10);
       for (const nights of spec.nights) {
         const key = `${hotel.id}|${checkIn}|${nights}|${spec.adults}`;
@@ -107,6 +137,25 @@ export async function findMissingGridStays(
     }
   }
   return out;
+}
+
+/**
+ * The lead times the grid covers: every anchor expanded by its offsets,
+ * deduplicated and sorted.
+ *
+ * Anchors overlap deliberately — 35+14 and 63−14 both land on 49 — so the
+ * horizon is continuous rather than three islands. Deduplication is what stops
+ * that costing a second API call for the same stay.
+ */
+export function gridLeadDays(spec: GridSpec = DEFAULT_GRID_SPEC): number[] {
+  const leads = new Set<number>();
+  for (const anchor of spec.anchorLeadDays) {
+    for (const offset of spec.satelliteOffsetDays) {
+      const lead = anchor + offset;
+      if (lead >= spec.minLeadDays) leads.add(lead);
+    }
+  }
+  return [...leads].sort((a, b) => a - b);
 }
 
 export interface AttemptOutcome {
