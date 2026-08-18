@@ -38,15 +38,14 @@ WAH_API_KEY=... npm run collect -- --dry-run         # show the plan, call nothi
 `confirm: apply` — it never needs the connection string outside a repository
 secret. See [`docs/runbooks/database.md`](./docs/runbooks/database.md).
 
-Collection runs from `.github/workflows/collect.yml`. **Its schedule is
-currently commented out** — it is manual-dispatch only until a database
-reachable from GitHub-hosted runners exists, because a scheduled run with no
-`DATABASE_URL` fails four times a day and buries real failures in noise. The
-cadence to restore is 6 hours, the scheduler's shortest tier interval; anything
-coarser silently caps every tier at the cron period. **Read
+Collection runs from `.github/workflows/collect.yml` **every 6 hours**, live
+since 2026-08-18. Six hours is the scheduler's shortest tier interval; anything
+coarser silently caps every tier at the cron period. It does not quadruple API
+spend — `planCollection` returns only stays actually due. **Read
 [`docs/runbooks/collection.md`](./docs/runbooks/collection.md) before changing
-it** — and note that every day the schedule stays off is a day of baseline this
-source cannot backfill.
+it**, and if it ever has to be switched off, comment the two `schedule:` lines
+rather than deleting them and record why: every day it is off is a day of
+baseline this source cannot backfill.
 
 Integration tests run only when `DATABASE_URL` is set; they skip otherwise so
 `npm test` works without a database.

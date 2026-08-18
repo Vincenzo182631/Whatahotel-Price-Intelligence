@@ -81,10 +81,9 @@ The scheduler assigns each stay a tier and a refresh interval:
 | WARM | everything else inside the horizon           | 24 hours |
 | COLD | far-out, never viewed                        | 72 hours |
 
-**Collect every 6 hours**, matching the shortest tier interval. (The GitHub
-schedule is commented out for now — see Option A — but this is the cadence to
-run at, whether from Actions or a server.) Anything coarser silently caps every
-tier at the cron period: a daily job would give HOT stays a quarter of their
+**Collect every 6 hours**, matching the shortest tier interval. That is what
+the GitHub schedule runs at (Option A, live since 2026-08-18). Anything coarser
+silently caps every tier at the cron period: a daily job would give HOT stays a quarter of their
 intended cadence, and factor F3 (trend) far fewer points inside its 7-day
 window, which lowers confidence and pushes more analyses to INSUFFICIENT_DATA.
 
@@ -105,28 +104,31 @@ firings would find nothing due and simply idle.
 
 ---
 
-## Option A — GitHub Actions (schedule currently OFF)
+## Option A — GitHub Actions (schedule LIVE)
 
-> **The `schedule:` block in `.github/workflows/collect.yml` is commented out.**
-> The workflow exists and can be run manually, but nothing fires on its own.
+> **`.github/workflows/collect.yml` fires on `cron: '0 */6 * * *'`.** It was
+> turned on 2026-08-18, after the first real run against the production
+> database succeeded: 690 stays planned, 8,549 rates ingested, 0 rejected,
+> 6,072 baseline rows, 104 comparable pairs across 15 hotels.
 >
-> This is deliberate and temporary. With the schedule active and no
+> The schedule was held off until then for a specific reason worth remembering
+> if it is ever switched off again: with the schedule active and no
 > `DATABASE_URL`, the job fails four times a day — correct behaviour, since a
 > silent healthy-looking no-op would be far worse, but it fills the Actions tab
-> with red that everyone learns to ignore. Better to be honestly off than
-> noisily broken.
+> with red that everyone learns to ignore. Better honestly off than noisily
+> broken. That trade no longer applies: both secrets are set and the run is
+> green.
 >
-> **To turn collection on:**
+> **If you need to turn it off**, comment out the two `schedule:` lines rather
+> than deleting the block, and say here why and until when. Every day the
+> schedule stays off is a day of baseline this source cannot backfill — see U3
+> at the top of this document. Off is a pause, not a resting state.
 >
-> 1. Provision a Postgres reachable from GitHub-hosted runners.
-> 2. Set both secrets (below).
-> 3. Run the workflow manually with `dry_run: true` — it plans and calls
->    nothing, proving credentials and connectivity without spending budget.
-> 4. Uncomment the two `schedule:` lines in the workflow.
->
-> Until step 4, run collection from a server (Option B). Every day the schedule
-> stays off is a day of baseline this source cannot backfill — see U3 at the
-> top of this document. Off is a pause, not a resting state.
+> **Turning it back on** is the same four steps it took the first time:
+> provision a Postgres reachable from GitHub-hosted runners, set both secrets
+> (below), run the workflow manually with `dry_run: true` to prove credentials
+> and connectivity without spending budget, then uncomment the `schedule:`
+> lines.
 
 `.github/workflows/collect.yml`. Requires two repository secrets:
 
