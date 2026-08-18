@@ -157,8 +157,19 @@ const OFFER_PROSE = [
   /\bresort fee\b/i,
 ];
 
+/**
+ * Names that ARE a non-room artifact in their entirety, not prose containing
+ * offer language. Found by the production audit of 2026-08-18: InterContinental
+ * Miami carried THREE room types each named exactly "perks" — a section header
+ * from the payload, not a room. A substring match on "perks" would be unsafe
+ * ("Club Perks Suite" is imaginable); an exact match on the bare word is not —
+ * no hotel names a room "perks" and nothing else.
+ */
+const NON_ROOM_NAMES = [/^perks$/i];
+
 export function looksLikeOfferProse(text: string | null | undefined): boolean {
   const value = (text ?? '').trim();
   if (value === '') return false;
+  if (NON_ROOM_NAMES.some((pattern) => pattern.test(value))) return true;
   return OFFER_PROSE.some((pattern) => pattern.test(value));
 }

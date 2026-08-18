@@ -97,7 +97,10 @@ async function main() {
   if (odd.length > 0) {
     console.log(`\nWORTH A HUMAN LOOK — ${odd.length} name(s) the detector does not flag:\n`);
     for (const r of odd.slice(0, 15)) {
-      console.log(`  #${r.id}  ${r.hotel_name}: "${r.canonical_name}"`);
+      console.log(
+        `  #${r.id}  ${r.hotel_name}: "${r.canonical_name}"` +
+          `  · ${r.observations} obs, ${r.baselines} baseline(s)`,
+      );
     }
     if (odd.length > 15) console.log(`  … and ${odd.length - 15} more`);
   }
