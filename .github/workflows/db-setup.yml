@@ -1,0 +1,179 @@
+# One-time (and repeatable) preparation of a production database.
+#
+# Runs from Actions rather than from a laptop ON PURPOSE: the connection string
+# is a credential, and this way it only ever exists as a repository secret. It
+# is never pasted into a terminal, a chat window, or a shell history file.
+#
+# Required repository secret:
+#   DATABASE_URL   a Postgres 16+ reachable from GitHub-hosted runners
+#
+# Safe to re-run. Migrations are forward-only and recorded in schema_migration;
+# the seeds are reference data and upsert. There is no reset here and there
+# never should be — this workflow points at the database that holds every rate
+# this source can never re-serve (U3).
+
+name: Database setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type the word apply to run migrations. Anything else = report only.'
+        required: true
+        default: 'report'
+
+concurrency:
+  group: db-setup
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGCONNECT_TIMEOUT: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Fail early if the secret is missing
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL secret is not set. Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Check the connection string before using it
+        run: |
+          # These need no network, so they run FIRST: a URL with no sslmode
+          # against a provider that demands TLS would otherwise fail on the
+          # first psql call with a driver-level error instead of this message.
+          # Nothing here echoes $DATABASE_URL — it carries the password, and
+          # Actions logs are readable by anyone with repo access.
+          set -euo pipefail
+          echo "### Target database" >> "$GITHUB_STEP_SUMMARY"
+
+          mode=$(printf '%s' "$DATABASE_URL" | sed -n 's/.*[?&]sslmode=\([^&]*\).*/\1/p')
+          case "$mode" in
+            require|verify-ca|verify-full)
+              echo "- TLS: requested \`sslmode=$mode\`" >> "$GITHUB_STEP_SUMMARY" ;;
+            "")
+              echo "::error::DATABASE_URL has no sslmode. Append ?sslmode=require."
+              exit 1 ;;
+            *)
+              echo "::error::DATABASE_URL uses sslmode=$mode, which permits an unencrypted connection. Use require."
+              exit 1 ;;
+          esac
+
+          # The single most likely way for this to be misconfigured. A
+          # transaction pooler hands consecutive statements to different
+          # backends, which breaks DDL migrations and the transaction-scoped
+          # schema checks — and it breaks them confusingly, mid-run.
+          if printf '%s' "$DATABASE_URL" | grep -qE -- '-pooler|:6543'; then
+            echo "::error::DATABASE_URL points at a transaction pooler. Use the direct endpoint — see docs/runbooks/database.md §2."
+            exit 1
+          fi
+
+      - name: Check the server can host this schema
+        run: |
+          set -euo pipefail
+
+          version=$(psql "$DATABASE_URL" -tAc "SHOW server_version;")
+          major=${version%%.*}
+          echo "- PostgreSQL \`$version\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$major" -lt 16 ]; then
+            echo "::error::PostgreSQL $version is too old. The schema relies on features from 16."
+            exit 1
+          fi
+
+          # Informational only. Neon and other proxied providers terminate TLS
+          # at the proxy and report ssl=false for the backend leg, so gating on
+          # this would block setup on a properly encrypted connection. The
+          # sslmode check above is the one that means something.
+          backend_ssl=$(psql "$DATABASE_URL" -tAc \
+            "SELECT coalesce((SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid())::text,'unknown');")
+          echo "- Backend leg reports ssl=\`$backend_ssl\` (proxied providers report false; not a fault)" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+          # pg_trgm and btree_gist are created by migration 0001. A provider
+          # that does not offer them fails here rather than halfway through it.
+          for ext in pg_trgm btree_gist; do
+            ok=$(psql "$DATABASE_URL" -tAc \
+              "SELECT count(*) FROM pg_available_extensions WHERE name = '$ext';")
+            if [ "$ok" != "1" ]; then
+              echo "::error::Extension $ext is not available on this server. Migration 0001 needs it."
+              exit 1
+            fi
+            echo "- Extension \`$ext\` available" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Report pending migrations
+        run: |
+          set -euo pipefail
+          applied=$(psql "$DATABASE_URL" -tAc \
+            "SELECT count(*) FROM schema_migration;" 2>/dev/null || echo 0)
+          total=$(ls db/migrations/*.sql | wc -l)
+          {
+            echo
+            echo "### Migrations"
+            echo
+            echo "- applied: **$applied**"
+            echo "- in repo: **$total**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply migrations and reference seeds
+        if: inputs.confirm == 'apply'
+        run: node scripts/migrate.mjs --seed
+
+      - name: Verify the schema behaves
+        if: inputs.confirm == 'apply'
+        run: |
+          # Not just "the DDL parsed": these assert the guarantees — dedup,
+          # partition routing, the never-WAIT constraint, the partition horizon.
+          # The whole run is a transaction ending in ROLLBACK.
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/checks/schema_checks.sql
+
+      - name: Readiness report
+        if: always() && inputs.confirm == 'apply'
+        run: |
+          set -euo pipefail
+          # Provenance is asserted, not assumed. A production database that
+          # somehow contains synthetic rows is a stop-everything condition:
+          # once in rate_observation they are indistinguishable from real ones.
+          synthetic=$(psql "$DATABASE_URL" -tAc \
+            "SELECT count(*) FROM source WHERE is_synthetic;" 2>/dev/null || echo '?')
+          {
+            echo
+            echo "### Readiness"
+            echo
+            echo '```'
+            psql "$DATABASE_URL" -c "
+              SELECT
+                (SELECT count(*) FROM schema_migration)      AS migrations,
+                (SELECT count(*) FROM hotel)                 AS hotels,
+                (SELECT count(*) FROM rate_observation)      AS observations,
+                (SELECT count(*) FROM benefit)               AS benefits,
+                (SELECT version FROM scoring_config WHERE is_active) AS config_version;"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$synthetic" != "0" ]; then
+            echo "::error::This database contains $synthetic synthetic source(s). It must never be used for production."
+            exit 1
+          fi
+
+          {
+            echo "Next: run **Collect rates** with \`dry_run: true\` to prove the API key,"
+            echo "then once with \`dry_run: false\` to seed the hotel catalogue."
+          } >> "$GITHUB_STEP_SUMMARY"

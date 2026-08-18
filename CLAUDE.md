@@ -17,7 +17,7 @@ npm run format
 
 npm run db:up            # Postgres 16 via docker compose (port 5433)
 npm run db:reset         # drop, migrate, seed reference data
-npm run db:check         # schema behaviour checks
+npm run db:check         # schema behaviour checks (safe against a populated DB)
 npm run config:seed      # regenerate the scoring-config seed from defaults.ts
 
 ALLOW_SYNTHETIC_SEED=1 npm run db:seed-dev   # synthetic rates + rollups + comps
@@ -33,6 +33,10 @@ WAH_API_KEY=... npm run collect                      # top up the grid + refresh
 WAH_API_KEY=... npm run collect -- --bootstrap       # grid only, skip the due-refresh
 WAH_API_KEY=... npm run collect -- --dry-run         # show the plan, call nothing
 ```
+
+**Setting up a production database:** run the **Database setup** workflow with
+`confirm: apply` — it never needs the connection string outside a repository
+secret. See [`docs/runbooks/database.md`](./docs/runbooks/database.md).
 
 Collection runs from `.github/workflows/collect.yml`. **Its schedule is
 currently commented out** — it is manual-dispatch only until a database
@@ -125,7 +129,12 @@ engine.
     stays it can already see. Without the top-up the tracked set freezes at
     whatever the first run captured and empties after ~90 days — with every run
     still exiting 0. See `findMissingGridStays`.
-15. **A stay that yields nothing must back off.** It has no observation, so the
+15. **Partitions must stay ahead of the data.** `rate_observation` is
+    partitioned monthly and has a `DEFAULT`, so running past the last real
+    partition is silent — rows keep landing, and then _block_ the partition that
+    should have held them. `ensure_rate_observation_partitions()` (migration 0009) maintains the window and rescues anything stranded; `scripts/migrate.mjs`
+    calls it on every run. Schema checks 10 and 11 enforce it.
+16. **A stay that yields nothing must back off.** It has no observation, so the
     grid sees it as missing and would re-request it every run forever;
     `collection_attempt` exists solely to stop that. It is not a fact table —
     nothing in it reaches a baseline or a score. Any success resets the counter.

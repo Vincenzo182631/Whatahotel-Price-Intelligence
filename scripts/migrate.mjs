@@ -92,12 +92,48 @@ async function main() {
 
   console.log(count === 0 ? '• No pending migrations' : `• Applied ${count} migration(s)`);
 
+  await ensurePartitions();
+
   if (doSeed) {
     for (const file of await listSql('db/seeds')) {
       process.stdout.write(`• Seeding ${file} … `);
       await psqlFile(join(root, 'db/seeds', file));
       console.log('ok');
     }
+  }
+}
+
+/**
+ * Keep the rate_observation partitions ahead of the data.
+ *
+ * Runs on EVERY invocation, not only when 0009 is first applied — the whole
+ * point is that a database left alone for a few months still has somewhere to
+ * put tomorrow's observations. The collection workflow calls this script on
+ * every run, so the horizon maintains itself.
+ *
+ * Skipped silently on a database that predates the function, so an older
+ * checkout can still migrate forward.
+ */
+async function ensurePartitions() {
+  const exists = (
+    await psql(
+      "SELECT 1 FROM pg_proc WHERE proname = 'ensure_rate_observation_partitions' LIMIT 1;",
+    )
+  ).includes('1');
+  if (!exists) return;
+
+  const out = await psql(
+    'SELECT partition_name || \' — \' || action FROM ensure_rate_observation_partitions();',
+  );
+  const rows = out
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('rate_observation_'));
+
+  if (rows.length === 0) {
+    console.log('• Partitions already cover the working window');
+  } else {
+    for (const row of rows) console.log(`• Partition ${row}`);
   }
 }
 
