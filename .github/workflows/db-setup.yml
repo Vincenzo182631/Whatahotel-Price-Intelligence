@@ -46,7 +46,11 @@ jobs:
       - name: Fail early if the secret is missing
         run: |
           if [ -z "$DATABASE_URL" ]; then
-            echo "::error::DATABASE_URL secret is not set. Add it under Settings → Secrets and variables → Actions."
+            # The usual cause is not a missing secret but a secret in the wrong
+            # place: Settings → Secrets and variables has three tabs, and only
+            # the Actions one is visible here. An environment secret is also
+            # invisible unless the job declares that environment.
+            echo "::error::DATABASE_URL is empty. Check Settings → Secrets and variables → **Actions** (not Codespaces, not Dependabot), that the name is exactly DATABASE_URL, and that it is a repository secret rather than an environment secret."
             exit 1
           fi
 
@@ -145,7 +149,12 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/checks/schema_checks.sql
 
       - name: Readiness report
-        if: always() && inputs.confirm == 'apply'
+        # NOT always(). This used to run even after an earlier step had failed,
+        # and then failed itself trying to reach a database it had no URL for —
+        # burying "DATABASE_URL secret is not set" under a confusing
+        # "connection to server on socket /var/run/postgresql/.s.PGSQL.5432
+        # failed". The first error is the one that matters.
+        if: inputs.confirm == 'apply'
         run: |
           set -euo pipefail
           # Provenance is asserted, not assumed. A production database that
