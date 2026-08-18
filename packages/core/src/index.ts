@@ -15,6 +15,7 @@ export type { DeepPartial } from './config/schema.js';
 export {
   ABBREVIATIONS,
   FILLER_WORDS,
+  looksLikeOfferProse,
   normalizeRoomName,
   trigramSimilarity,
   trigrams,

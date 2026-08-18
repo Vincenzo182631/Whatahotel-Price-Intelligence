@@ -11,6 +11,7 @@ import {
   classifyComparability,
   dowBucketFor,
   extractAttributes,
+  looksLikeOfferProse,
   matchRoomType,
   normalizeRoomName,
   seasonBandFor,
@@ -90,6 +91,7 @@ export type RejectReason =
   | 'NIGHTS_OUT_OF_RANGE'
   | 'OCCUPANCY_OUT_OF_RANGE'
   | 'UNMATCHED_ROOM_TYPE'
+  | 'OFFER_PROSE_AS_ROOM_NAME'
   | 'IMPLAUSIBLE_AMOUNT';
 
 export function validateRecord(
@@ -98,6 +100,15 @@ export function validateRecord(
   options: IngestOptions,
 ): RejectReason | null {
   if (!record.rawRoomName || record.rawRoomName.trim() === '') return 'MISSING_ROOM_NAME';
+  // A room name that is actually offer prose identifies nothing. Rejected
+  // rather than ingested under a fabricated identity: rates for genuinely
+  // different rooms would collect under it and mix price tiers inside one
+  // baseline, and the string reaches the customer as the name of their room.
+  // Rejecting is visible — it lands in ingest_reject with the payload and is
+  // counted in the run summary — where silently skipping it was not.
+  if (looksLikeOfferProse(record.rawRoomName) || looksLikeOfferProse(record.displayRoomName)) {
+    return 'OFFER_PROSE_AS_ROOM_NAME';
+  }
   if (!Number.isFinite(record.totalAmountMinor) || record.totalAmountMinor <= 0) {
     return 'NON_POSITIVE_AMOUNT';
   }
