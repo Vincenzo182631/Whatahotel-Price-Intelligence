@@ -27,6 +27,24 @@ import { db, type Queryable } from '../client.js';
  * model compares raw prices and needs no baseline, so this returns the cheapest
  * live rate per comp hotel and says whether it is bookable.
  */
+/**
+ * Competitor rates for the same stay, matched on RATE TERMS rather than on the
+ * comparability class.
+ *
+ * The class cannot do this job. In production it is `WAH:<rateCode>|<offer>` —
+ * the source's own plan identity, which is hotel-specific by construction, so
+ * a competitor can never share it. Measured over 40 real stays, every
+ * competitor survived every other filter and none survived this one: 0/40.
+ *
+ * Matching on meal plan, refundability and audience instead is tolerant by
+ * nature, because SQL equality already treats UNKNOWN = UNKNOWN as a match
+ * while never matching UNKNOWN to a stated value. That is exactly the rule
+ * normalize/compMatch.ts argues for, and the reason this function does not
+ * reuse `classifyComparability`: that classifier poisons an unresolved
+ * dimension to UNRESOLVED, which is correct for baselines and fatal here.
+ *
+ * Baselines still key on the class. Only the comp set uses these terms.
+ */
 export async function findCompetitorRates(
   hotelId: number,
   checkIn: string,
@@ -34,7 +52,7 @@ export async function findCompetitorRates(
   adults: number,
   children: number,
   currency: string,
-  comparabilityClass: string,
+  terms: { mealPlan: string; refundPolicy: string; audience: string },
   limit: number,
   maxAgeHours: number,
   q?: Queryable,
@@ -52,9 +70,10 @@ export async function findCompetitorRates(
               o.hotel_id, o.nightly_amount_minor, o.observed_at, o.is_available
          FROM rate_observation o
          JOIN comps ON comps.hotel_id = o.hotel_id
+         JOIN rate_plan rp ON rp.id = o.rate_plan_id
         WHERE o.check_in = $2::date AND o.nights = $3 AND o.adults = $4
           AND o.children = $5 AND o.currency = $6
-          AND o.comparability_class = $7
+          AND rp.meal_plan = $7 AND rp.refund_policy = $10 AND rp.audience = $11
           AND o.observed_at >= now() - ($9 || ' hours')::interval
         ORDER BY o.hotel_id, o.room_type_id, o.observed_at DESC
      ),
@@ -68,7 +87,19 @@ export async function findCompetitorRates(
        FROM cheapest ch
        JOIN hotel h ON h.id = ch.hotel_id
       ORDER BY ch.nightly_amount_minor`,
-    [hotelId, checkIn, nights, adults, children, currency, comparabilityClass, limit, maxAgeHours],
+    [
+      hotelId,
+      checkIn,
+      nights,
+      adults,
+      children,
+      currency,
+      terms.mealPlan,
+      limit,
+      maxAgeHours,
+      terms.refundPolicy,
+      terms.audience,
+    ],
   );
 
   return rows.map((r) => ({

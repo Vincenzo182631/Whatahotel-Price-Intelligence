@@ -178,6 +178,12 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         // hotel's commercial data.
         comps_used: compSet.compsUsed,
         comps_excluded: compSet.compsExcluded,
+        // How much of the cross-hotel match rested on stated terms, and what
+        // the source left unstated. Exposed because a consumer rendering the
+        // index without this would present a term-blind comparison as
+        // like-for-like. See packages/core/src/normalize/compMatch.ts.
+        match_strength: compSet.matchStrength,
+        unknown_dimensions: compSet.unknownDimensions,
       },
       calendar: {
         available: calendar.signal.available,

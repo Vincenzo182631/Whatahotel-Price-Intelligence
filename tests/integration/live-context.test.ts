@@ -30,6 +30,14 @@ const SOURCE = 'LC_SRC';
 const SUBJECT = 'LC-SUBJECT';
 const COMPS = ['LC-COMP-1', 'LC-COMP-2', 'LC-COMP-3', 'LC-COMP-4'];
 const CLASS = 'WAH:TEST|OFFER';
+// What the comp set actually matches on. The class above is deliberately
+// hotel-specific — a competitor never shares it — so terms are the only thing
+// that can cross a hotel boundary.
+const SUBJECT_TERMS = {
+  mealPlan: 'ROOM_ONLY',
+  refundPolicy: 'REFUNDABLE',
+  audience: 'CONSORTIA',
+};
 const CURRENCY = 'USD';
 
 /** A Thursday, so weekday matching can be exercised deliberately. */
@@ -90,8 +98,9 @@ suite('integration · live-market context queries', () => {
 
     // The subject's observations need a rate plan: findCurrentRate inner-joins
     // it to read the refund policy, so an observation without one is invisible
-    // to the loader. Competitor rows do not need one — the comp-set query does
-    // not join it.
+    // to the loader. Competitors need one too, now that the comp set matches on
+    // rate TERMS rather than the hotel-specific comparability class — an
+    // observation with no plan has no terms and cannot be compared to anything.
     const { rows: rp } = await pool.query(
       `INSERT INTO rate_plan (hotel_id, source_id, source_plan_code, meal_plan,
                               refund_policy, audience, comparability_class)
@@ -162,11 +171,33 @@ suite('integration · live-market context queries', () => {
     await insert(subjectId, roomTypeId, iso(SUBJECT_CHECK_IN, 60), 100, { planId: ratePlanId });
 
     // ── competitors, for the subject's exact stay ──
-    await insert(hotelIds.get('LC-COMP-1')!, null, SUBJECT_CHECK_IN, 850);
-    await insert(hotelIds.get('LC-COMP-2')!, null, SUBJECT_CHECK_IN, 900);
-    await insert(hotelIds.get('LC-COMP-3')!, null, SUBJECT_CHECK_IN, 800);
+    // Each carries its own plan with the SAME terms as the subject. Their
+    // comparability classes stay hotel-specific, which is the point: the comp
+    // set must find them on terms alone.
+    const compPlan = async (hotelId: number, terms = "'ROOM_ONLY','REFUNDABLE','CONSORTIA'") => {
+      const { rows } = await pool.query(
+        `INSERT INTO rate_plan (hotel_id, source_id, source_plan_code, meal_plan,
+                                refund_policy, audience, comparability_class)
+         VALUES ($1,$2,'LC-COMP-PLAN',${terms},$3) RETURNING id`,
+        [hotelId, sourceId, `WAH:C${hotelId}|OFFER`],
+      );
+      return rows[0].id as number;
+    };
+
+    for (const [code, nightly] of [
+      ['LC-COMP-1', 850],
+      ['LC-COMP-2', 900],
+      ['LC-COMP-3', 800],
+    ] as const) {
+      const hid = hotelIds.get(code)!;
+      await insert(hid, null, SUBJECT_CHECK_IN, nightly, { planId: await compPlan(hid) });
+    }
     // Stale — must be excluded by the freshness bound.
-    await insert(hotelIds.get('LC-COMP-4')!, null, SUBJECT_CHECK_IN, 875, { ageHours: 72 });
+    const comp4 = hotelIds.get('LC-COMP-4')!;
+    await insert(comp4, null, SUBJECT_CHECK_IN, 875, {
+      ageHours: 72,
+      planId: await compPlan(comp4),
+    });
 
     // COMP-4 was also asked and reported sold out.
     await pool.query(
@@ -209,7 +240,7 @@ suite('integration · live-market context queries', () => {
       2,
       0,
       CURRENCY,
-      CLASS,
+      SUBJECT_TERMS,
       8,
       24,
     );
@@ -226,7 +257,7 @@ suite('integration · live-market context queries', () => {
       2,
       0,
       CURRENCY,
-      CLASS,
+      SUBJECT_TERMS,
       8,
       24,
     );
@@ -240,7 +271,7 @@ suite('integration · live-market context queries', () => {
       2,
       0,
       CURRENCY,
-      CLASS,
+      SUBJECT_TERMS,
       8,
       240,
     );
@@ -255,7 +286,7 @@ suite('integration · live-market context queries', () => {
       2,
       0,
       CURRENCY,
-      CLASS,
+      SUBJECT_TERMS,
       8,
       24,
     );
