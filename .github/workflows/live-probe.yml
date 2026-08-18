@@ -1,0 +1,104 @@
+# Real-data probe — run the API against production rates and read the answers.
+#
+# Manual dispatch only. This is the one place the whole chain is exercised
+# against real collected data: SQL → scoring engine → HTTP → rendered sentence.
+# Unit tests prove the engine from fixtures and `npm run smoke` proves the HTTP
+# contract from the synthetic seed; neither can tell you whether a real Miami
+# hotel on a real Tuesday produces something a customer could be shown.
+#
+# READ-ONLY. It issues SELECTs and GETs. It writes nothing, so it is safe to
+# run against production at any time.
+#
+# The connection string never leaves the secret store: the server and the probe
+# both read DATABASE_URL from the job environment, and the probe prints only
+# hotel ids, dates and scores. Its error handler prints `err.message` rather
+# than the error object precisely because a pg connection error can carry the
+# connection string in its payload.
+name: Live probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'How many hotels to probe (each gets both models)'
+        required: false
+        default: '4'
+
+concurrency:
+  group: live-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Named explicitly, never enumerated. Serializing the whole secret store
+      # to check what is in it is what tripped GitHub's malicious-workflow
+      # detector on the database-setup workflow and held every dispatch for
+      # manual approval for two hours.
+      - name: Check the database secret is set
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+        run: |
+          if [ "$HAS_DATABASE_URL" != "true" ]; then
+            echo "::error::DATABASE_URL is not set. This probe reads real data or it reads nothing."
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Start the API
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          npm run api > api.log 2>&1 &
+          echo $! > api.pid
+          # Poll rather than sleep: a fixed wait is either too short on a cold
+          # runner or wasted time on a warm one.
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/api/v1/health > /dev/null 2>&1; then
+              echo "API up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API did not become healthy in 60s."
+          # api.log carries no credential: the server logs request lines, and
+          # its startup errors are messages, not connection strings.
+          tail -40 api.log
+          exit 1
+
+      - name: Probe
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -o pipefail
+          npm run probe -- --targets "${{ inputs.targets }}" 2>&1 | tee probe.log
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo '## Live probe'
+            echo
+            echo '```'
+            # The probe prints hotel ids, dates, scores and rendered sentences.
+            # Nothing here is a credential, and the rendered sentences are the
+            # point — they are what a customer would read.
+            cat probe.log 2>/dev/null || echo '(probe produced no output)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop the API
+        if: always()
+        run: kill "$(cat api.pid)" 2>/dev/null || true
