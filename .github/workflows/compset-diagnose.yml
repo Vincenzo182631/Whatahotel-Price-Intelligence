@@ -64,6 +64,15 @@ jobs:
           set -o pipefail
           npm run diagnose:keys 2>&1 | tee -a compset.log
 
+      # This workflow has become the database-diagnostics dispatch point; the
+      # audit rides along so one dispatch answers every open data question.
+      - name: Audit room-type names
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -o pipefail
+          npm run diagnose:roomtypes 2>&1 | tee -a compset.log
+
       - name: Summarise
         if: always()
         run: |
