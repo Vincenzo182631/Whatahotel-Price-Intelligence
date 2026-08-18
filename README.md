@@ -34,10 +34,10 @@ npm run collect                         # top up the grid + refresh what is due
 Credential setup — local, GitHub Actions and server — is in
 [`docs/runbooks/collection.md`](./docs/runbooks/collection.md#setting-up-the-api-key).
 
-`.github/workflows/collect.yml` runs the same commands in CI. Its schedule is
-**currently commented out** — manual dispatch only until the `WAH_API_KEY` and
-`DATABASE_URL` repository secrets exist and the database is reachable from
-GitHub-hosted runners. Restore the 6-hourly cadence by uncommenting two lines. See
+`.github/workflows/collect.yml` runs the same commands in CI, **every 6 hours,
+live since 2026-08-18** — the cadence matches the scheduler's shortest tier
+interval, and it can still be dispatched manually (including `dry_run: true`,
+which plans and calls nothing). See
 [`docs/runbooks/collection.md`](./docs/runbooks/collection.md) for the cadence
 trade-off, the server cron/systemd alternatives, and what to do when a run
 fails — with no rate history in the source, a missed run is unrecoverable data.
