@@ -296,6 +296,10 @@ the server's env file.
 
 ## First run on a new database
 
+> Provisioning, credentials and partition maintenance are in
+> [`database.md`](./database.md). Do that first — this section assumes the
+> database exists and the `DATABASE_URL` secret is set.
+
 ```bash
 node scripts/migrate.mjs --reset                 # schema + reference seeds
 npm run collect -- --catalog miami               # hotels and their perks

@@ -7,8 +7,8 @@
 -- Every check RAISEs on failure, so a non-zero exit means a real regression.
 --
 -- Safe to run against a database that already holds data. Every fixture is
--- namespaced (source TEST_SRC, hotel CHECK-2962) and every assertion is scoped
--- to those fixtures. The earlier version counted whole tables and read
+-- namespaced (source TEST_SRC, hotel CHECK-2962, destination
+-- check-2962-destination) and every assertion is scoped to those fixtures. The earlier version counted whole tables and read
 -- `FROM rate_observation LIMIT 1`, which silently asserted against an
 -- arbitrary real row once the first rates were collected. The whole run is
 -- wrapped in a transaction that ends in ROLLBACK, so nothing is left behind.
@@ -19,11 +19,16 @@ BEGIN;
 INSERT INTO source (code, display_name, is_authoritative)
 VALUES ('TEST_SRC', 'Test source', true);
 
+-- Namespaced like every other fixture here. It used to be slug 'miami-beach',
+-- which collides with the real destination as soon as the catalogue is synced —
+-- so the whole file aborted on `duplicate key value violates unique constraint
+-- "destination_slug_key"` against exactly the databases it most needs to verify.
 INSERT INTO destination (slug, name, country_code)
-VALUES ('miami-beach', 'Miami Beach', 'US');
+VALUES ('check-2962-destination', 'Check Fixture Destination', 'US');
 
 INSERT INTO hotel (wah_hotel_id, name, destination_id, luxury_tier)
-SELECT 'CHECK-2962', 'Test Hotel', id, 5 FROM destination WHERE slug = 'miami-beach';
+SELECT 'CHECK-2962', 'Test Hotel', id, 5
+  FROM destination WHERE slug = 'check-2962-destination';
 
 INSERT INTO room_type (hotel_id, canonical_name, normalized_name, room_class, bed_config, view_type)
 SELECT id, 'Ocean View King', 'ocean view king', 'ROOM', 'KING', 'OCEAN' FROM hotel WHERE wah_hotel_id = 'CHECK-2962';
@@ -249,6 +254,67 @@ BEGIN
         RAISE EXCEPTION 'CHECK 9 FAILED: % deal-score weights sum to % (expected 1.0)', n, w;
     END IF;
     RAISE NOTICE 'CHECK 9  ok — % seeded config weights sum to 1.0', n;
+END $$;
+
+-- Check 10 · the partition horizon stays ahead of the data --------------------
+--
+-- 0003 shipped partitions for three fixed months and a DEFAULT. Because DEFAULT
+-- accepts anything, running past the last real partition is SILENT: collection
+-- keeps reporting healthy while every new observation piles into one unpruned
+-- heap — and those rows then block the partition that should have held them.
+-- This asserts the horizon, so the failure surfaces here rather than in an
+-- incident months later.
+DO $$
+DECLARE
+    horizon date;
+    months  int;
+BEGIN
+    SELECT max(upper(r)::date) INTO horizon
+      FROM (
+        SELECT ('[' || split_part(substr(pg_get_expr(c.relpartbound, c.oid),
+                                         strpos(pg_get_expr(c.relpartbound, c.oid), '(') + 1),
+                                  '''', 2) || ',' ||
+                       split_part(substr(pg_get_expr(c.relpartbound, c.oid),
+                                         strpos(pg_get_expr(c.relpartbound, c.oid), 'TO')),
+                                  '''', 2) || ')')::daterange AS r
+          FROM pg_class c
+          JOIN pg_inherits i ON i.inhrelid = c.oid
+         WHERE i.inhparent = 'rate_observation'::regclass
+           AND c.relpartbound IS NOT NULL
+           AND pg_get_expr(c.relpartbound, c.oid) <> 'DEFAULT'
+      ) bounds;
+
+    IF horizon IS NULL THEN
+        RAISE EXCEPTION 'CHECK 10 FAILED: rate_observation has no explicit partitions';
+    END IF;
+
+    months := (EXTRACT(YEAR FROM age(horizon, CURRENT_DATE)) * 12
+               + EXTRACT(MONTH FROM age(horizon, CURRENT_DATE)))::int;
+
+    IF months < 3 THEN
+        RAISE EXCEPTION
+            'CHECK 10 FAILED: partitions run out on % — only % month(s) ahead. '
+            'Run scripts/migrate.mjs, which calls ensure_rate_observation_partitions().',
+            horizon, months;
+    END IF;
+    RAISE NOTICE 'CHECK 10 ok — partitions cover to % (% months ahead)', horizon, months;
+END $$;
+
+-- Check 11 · nothing is stranded in the DEFAULT partition ----------------------
+--
+-- A non-empty DEFAULT means the horizon was already missed at least once. The
+-- data is not lost, but it is unpartitioned and it blocks the repair, so this
+-- is a warning that must not stay unread.
+DO $$
+DECLARE n bigint;
+BEGIN
+    SELECT count(*) INTO n FROM rate_observation_default;
+    IF n > 0 THEN
+        RAISE EXCEPTION
+            'CHECK 11 FAILED: % row(s) stranded in rate_observation_default. '
+            'ensure_rate_observation_partitions() moves them; run scripts/migrate.mjs.', n;
+    END IF;
+    RAISE NOTICE 'CHECK 11 ok — DEFAULT partition is empty';
 END $$;
 
 ROLLBACK;
