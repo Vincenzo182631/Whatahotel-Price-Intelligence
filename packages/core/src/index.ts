@@ -131,6 +131,11 @@ export type {
 } from './explanation/reasonCodes.js';
 export { BUNDLE_VERSION, buildExplanationBundle } from './explanation/bundle.js';
 export type { ExplanationBundle } from './explanation/bundle.js';
+export {
+  PREDICTIVE_VOCABULARY,
+  containsPredictiveLanguage,
+  findPredictiveLanguage,
+} from './explanation/predictive.js';
 export { renderTemplate } from './explanation/template.js';
 export type { RenderedExplanation } from './explanation/template.js';
 

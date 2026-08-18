@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { analyze } from '../../packages/core/src/analyze.js';
 import { DEFAULT_CONFIG } from '../../packages/core/src/config/defaults.js';
 import { numeralsIn } from '../../packages/core/src/explanation/bundle.js';
+import { PREDICTIVE_VOCABULARY } from '../../packages/core/src/explanation/predictive.js';
 import type { BaselineLevel, MatchMethod, ScoringInput } from '../../packages/core/src/types.js';
 import {
   NOW,
@@ -330,12 +331,10 @@ describe('P10 · Too few observations always forces INSUFFICIENT_DATA', () => {
  * better stated at the surface the customer actually reads: the rendered
  * explanation must not tell anyone what the price is going to do.
  *
- * The vocabulary list is deliberately blunt. A false positive here costs one
- * reworded sentence; a false negative ships a forecast this system has no
- * basis for making.
+ * The vocabulary itself lives in packages/core (explanation/predictive.ts) so
+ * that this suite and scripts/live-probe.mjs — which applies the same rule to
+ * explanations rendered from production data — cannot drift apart.
  */
-const PREDICTIVE_VOCABULARY =
-  /\b(will|won't|going to|expect|expected|predict|forecast|likely to|unlikely to|soften|rise|rises|drop further|fall further|before it|book before|soon)\b/i;
 
 describe('P11 · no explanation predicts a future price [RELEASE BLOCKER]', () => {
   it('holds for all generated inputs', () => {

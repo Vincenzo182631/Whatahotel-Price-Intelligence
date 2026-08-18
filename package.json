@@ -30,6 +30,7 @@
     "api:dev": "npm run build && npm run api",
     "collect": "node --env-file-if-exists=.env scripts/collect.mjs",
     "smoke": "node --env-file-if-exists=.env scripts/smoke-api.mjs",
+    "probe": "node --env-file-if-exists=.env scripts/live-probe.mjs",
     "calibrate": "node --env-file-if-exists=.env scripts/calibrate.mjs"
   },
   "devDependencies": {
