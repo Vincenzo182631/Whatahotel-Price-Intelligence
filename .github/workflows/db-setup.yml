@@ -43,6 +43,28 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Which secrets can this workflow actually see?
+        # Names only, never values — and Actions masks values in logs anyway.
+        # This exists because "the secret is set" and "the workflow can see the
+        # secret" are different claims, and only this one can tell them apart.
+        # Settings → Secrets and variables has three tabs (Actions, Codespaces,
+        # Dependabot) that look nearly identical, and environment secrets are
+        # invisible unless the job declares the environment.
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Secrets visible to this workflow"
+            echo
+            printf '%s' "$SECRETS_JSON" | jq -r 'keys[]' | sed 's/^/- `/; s/$/`/'
+            echo
+            echo "If DATABASE_URL is absent above, it is not a **repository** secret"
+            echo "on the **Actions** tab, whatever another tab may show."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          printf '%s' "$SECRETS_JSON" | jq -r 'keys[]' | sed 's/^/  visible secret: /'
+
       - name: Fail early if the secret is missing
         run: |
           if [ -z "$DATABASE_URL" ]; then
