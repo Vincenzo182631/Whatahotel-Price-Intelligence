@@ -56,6 +56,15 @@ describe('offer prose is not a room name', () => {
     }
   });
 
+  it('catches a bare non-room artifact — found live at InterContinental Miami', () => {
+    // Exact-name rule, not a substring: "perks" alone is a payload section
+    // header that became three room types in production. A room genuinely
+    // NAMED around the word must survive, which is why the pattern is ^perks$.
+    expect(looksLikeOfferProse('perks')).toBe(true);
+    expect(looksLikeOfferProse('  Perks ')).toBe(true);
+    expect(looksLikeOfferProse('Club Perks Suite')).toBe(false);
+  });
+
   it('treats an empty or absent name as not-prose — that is MISSING_ROOM_NAME', () => {
     // Two different faults with two different reject reasons. Conflating them
     // would hide which one a run is actually hitting.
