@@ -32,6 +32,7 @@
     "smoke": "node --env-file-if-exists=.env scripts/smoke-api.mjs",
     "probe": "node --env-file-if-exists=.env scripts/live-probe.mjs",
     "diagnose:compset": "node --env-file-if-exists=.env scripts/compset-diagnose.mjs",
+    "diagnose:keys": "node --env-file-if-exists=.env scripts/compset-keys.mjs",
     "calibrate": "node --env-file-if-exists=.env scripts/calibrate.mjs"
   },
   "devDependencies": {
