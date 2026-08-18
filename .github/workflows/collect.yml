@@ -45,6 +45,10 @@ on:
   # backfill (U3), so this is a pause, not a resting state.
   workflow_dispatch:
     inputs:
+      catalog:
+        description: 'Sync the hotel catalogue for this city instead of collecting rates (e.g. miami). Leave blank to collect.'
+        required: false
+        default: ''
       limit:
         description: 'Max stays to collect in this run'
         required: false
@@ -99,7 +103,37 @@ jobs:
       - name: Apply any pending migrations
         run: node scripts/migrate.mjs
 
+      # A collection run against an empty catalogue plans nothing and exits 0 —
+      # the healthy-looking no-op this workflow's header exists to prevent. The
+      # grid is built per hotel, so no hotels means no stays, and "no gaps in
+      # the grid" is true and useless. Distinguish it from the legitimate
+      # nothing-is-due case by looking at the catalogue, not the plan.
+      - name: Refuse to collect against an empty catalogue
+        if: inputs.catalog == ''
+        run: |
+          set -euo pipefail
+          hotels=$(psql "$DATABASE_URL" -tAc \
+            "SELECT count(*) FROM hotel WHERE is_active AND collection_tier <> 'OFF';")
+          echo "Active hotels in the catalogue: $hotels"
+          if [ "$hotels" = "0" ]; then
+            echo "::error::The catalogue is empty, so this run would plan 0 stays and report success. Run this workflow once with catalog: miami first."
+            exit 1
+          fi
+
+      - name: Sync the hotel catalogue
+        if: inputs.catalog != ''
+        run: |
+          # There is no dry run for a catalogue sync: it always calls the API.
+          # Saying otherwise would spend real calls under a flag that promises
+          # not to.
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "::error::dry_run has no meaning for a catalogue sync — it always calls the API. Re-run with dry_run unchecked."
+            exit 1
+          fi
+          npm run collect -- --catalog "${{ inputs.catalog }}" --concurrency 6 2>&1 | tee collect.log
+
       - name: Collect
+        if: inputs.catalog == ''
         run: |
           npm run collect -- \
             --limit "${{ inputs.limit || 500 }}" \
