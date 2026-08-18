@@ -43,27 +43,38 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Which secrets can this workflow actually see?
-        # Names only, never values — and Actions masks values in logs anyway.
-        # This exists because "the secret is set" and "the workflow can see the
-        # secret" are different claims, and only this one can tell them apart.
-        # Settings → Secrets and variables has three tabs (Actions, Codespaces,
-        # Dependabot) that look nearly identical, and environment secrets are
-        # invisible unless the job declares the environment.
+      - name: Which secrets are present
+        # Booleans per named secret, never a dump of the whole secret store.
+        #
+        # This step used to serialize every secret and print its keys. That is
+        # the exact shape of a secret-exfiltration attack, and GitHub's malicious-workflow
+        # detection flagged the file: every dispatch from then on was held with
+        # "GitHub detected that this workflow file may be malicious. It will not
+        # run until someone with write access approves it." The detector was
+        # right to fire — enumerating the whole secret store is not something a
+        # setup job should ever do.
+        #
+        # Naming each secret explicitly answers the same question (is it visible
+        # to Actions?) without touching the ones we were not asking about.
         env:
-          SECRETS_JSON: ${{ toJSON(secrets) }}
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+          HAS_WAH_API_KEY: ${{ secrets.WAH_API_KEY != '' }}
         run: |
           set -euo pipefail
           {
-            echo "### Secrets visible to this workflow"
+            echo "### Secrets"
             echo
-            printf '%s' "$SECRETS_JSON" | jq -r 'keys[]' | sed 's/^/- `/; s/$/`/'
+            echo "| Secret | Visible to Actions |"
+            echo "| --- | --- |"
+            echo "| \`DATABASE_URL\` | $HAS_DATABASE_URL |"
+            echo "| \`WAH_API_KEY\` | $HAS_WAH_API_KEY |"
             echo
-            echo "If DATABASE_URL is absent above, it is not a **repository** secret"
-            echo "on the **Actions** tab, whatever another tab may show."
+            echo "\`false\` means it is not a **repository** secret on the"
+            echo "**Actions** tab — an environment secret or another tab does not count."
           } >> "$GITHUB_STEP_SUMMARY"
 
-          printf '%s' "$SECRETS_JSON" | jq -r 'keys[]' | sed 's/^/  visible secret: /'
+          echo "DATABASE_URL visible: $HAS_DATABASE_URL"
+          echo "WAH_API_KEY visible:  $HAS_WAH_API_KEY"
 
       - name: Fail early if the secret is missing
         run: |
