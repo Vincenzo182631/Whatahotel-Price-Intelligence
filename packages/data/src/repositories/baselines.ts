@@ -123,6 +123,94 @@ export interface BaselineUpsert {
   readonly windowEnd: string;
 }
 
+/**
+ * Upsert many baselines in one statement per chunk.
+ *
+ * The single-row `upsertBaseline` issued one INSERT per baseline, sequentially.
+ * Against a remote database that is one network round trip per row: the first
+ * production refresh wrote 6,960 rows in 223 seconds — half the collection
+ * run — almost all of it latency, not work. Batching via UNNEST turns a chunk
+ * of 500 rows into one round trip; the conflict clause is identical to the
+ * single-row path, so the write semantics do not change.
+ *
+ * 500 per chunk keeps each statement's parameter payload comfortably inside
+ * protocol limits (26 arrays, not 26×N placeholders) while making chunk count,
+ * and therefore latency, negligible.
+ */
+export async function upsertBaselines(
+  baselines: readonly BaselineUpsert[],
+  q?: Queryable,
+): Promise<void> {
+  const CHUNK = 500;
+  for (let at = 0; at < baselines.length; at += CHUNK) {
+    const chunk = baselines.slice(at, at + CHUNK);
+    const col = <T>(f: (b: BaselineUpsert) => T): T[] => chunk.map(f);
+    await db(q).query(
+      `INSERT INTO rate_baseline (
+          hotel_id, room_type_id, comparability_class, baseline_level,
+          stay_season_band, stay_dow_bucket, lead_bucket, currency,
+          n_observations, n_outliers_excluded,
+          p10_minor, p25_minor, p50_minor, p75_minor, p90_minor,
+          min_minor, max_minor, mean_minor, stddev_minor, cv,
+          n_sources, mean_match_conf, cross_source_cv, unresolved_share,
+          window_start, window_end, computed_at
+       )
+       SELECT t.*, now() FROM UNNEST(
+          $1::bigint[], $2::bigint[], $3::text[], $4::text[],
+          $5::season_band_t[], $6::dow_bucket_t[], $7::text[], $8::char(3)[],
+          $9::int[], $10::int[],
+          $11::bigint[], $12::bigint[], $13::bigint[], $14::bigint[], $15::bigint[],
+          $16::bigint[], $17::bigint[], $18::bigint[], $19::bigint[], $20::numeric[],
+          $21::int[], $22::numeric[], $23::numeric[], $24::numeric[],
+          $25::date[], $26::date[]
+       ) AS t
+       ON CONFLICT (hotel_id, room_type_id, comparability_class, baseline_level,
+                    stay_season_band, stay_dow_bucket, lead_bucket, currency)
+       DO UPDATE SET
+          n_observations = EXCLUDED.n_observations,
+          n_outliers_excluded = EXCLUDED.n_outliers_excluded,
+          p10_minor = EXCLUDED.p10_minor, p25_minor = EXCLUDED.p25_minor,
+          p50_minor = EXCLUDED.p50_minor, p75_minor = EXCLUDED.p75_minor,
+          p90_minor = EXCLUDED.p90_minor, min_minor = EXCLUDED.min_minor,
+          max_minor = EXCLUDED.max_minor, mean_minor = EXCLUDED.mean_minor,
+          stddev_minor = EXCLUDED.stddev_minor, cv = EXCLUDED.cv,
+          n_sources = EXCLUDED.n_sources, mean_match_conf = EXCLUDED.mean_match_conf,
+          cross_source_cv = EXCLUDED.cross_source_cv,
+          unresolved_share = EXCLUDED.unresolved_share,
+          window_start = EXCLUDED.window_start, window_end = EXCLUDED.window_end,
+          computed_at = now()`,
+      [
+        col((b) => b.hotelId),
+        col((b) => b.roomTypeId),
+        col((b) => b.comparabilityClass),
+        col((b) => b.baselineLevel),
+        col((b) => b.seasonBand),
+        col((b) => b.dowBucket),
+        col((b) => b.leadBucket),
+        col((b) => b.currency),
+        col((b) => b.nObservations),
+        col((b) => b.nOutliersExcluded),
+        col((b) => b.p10),
+        col((b) => b.p25),
+        col((b) => b.p50),
+        col((b) => b.p75),
+        col((b) => b.p90),
+        col((b) => b.min),
+        col((b) => b.max),
+        col((b) => b.mean),
+        col((b) => b.stddev),
+        col((b) => b.cv),
+        col((b) => b.nSources),
+        col((b) => b.meanMatchConfidence),
+        col((b) => b.crossSourceCv),
+        col((b) => b.unresolvedShare),
+        col((b) => b.windowStart),
+        col((b) => b.windowEnd),
+      ],
+    );
+  }
+}
+
 export async function upsertBaseline(b: BaselineUpsert, q?: Queryable): Promise<void> {
   await db(q).query(
     `INSERT INTO rate_baseline (

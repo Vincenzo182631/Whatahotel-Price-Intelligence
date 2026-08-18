@@ -8,7 +8,7 @@
  */
 
 import { LEAD_BUCKETS, type BaselineLevel } from '@wahpi/core';
-import { db, upsertBaseline, type Queryable } from '@wahpi/data';
+import { db, upsertBaselines, type BaselineUpsert, type Queryable } from '@wahpi/data';
 
 export interface RollupOptions {
   readonly lookbackDays: number;
@@ -171,44 +171,47 @@ export async function refreshBaselines(
 
     const { rows } = await db(q).query(buildQuery(level, filterHotels), params);
 
+    // Collected and written in batches rather than upserted row by row: the
+    // first production refresh spent 223 of a 458-second run on 6,960
+    // sequential single-row round trips to the remote database. The rows are
+    // small; the latency was the cost.
+    const batch: BaselineUpsert[] = [];
     for (const row of rows) {
       const mean = Number(row.mean_minor);
       const stddev = Number(row.stddev_minor);
-      await upsertBaseline(
-        {
-          hotelId: row.hotel_id as number,
-          roomTypeId: row.room_type_id as number,
-          comparabilityClass: row.comparability_class as string,
-          baselineLevel: level,
-          seasonBand: (row.season_band as string) ?? null,
-          dowBucket: (row.dow_bucket as string) ?? null,
-          leadBucket: (row.lead_bucket as string) ?? null,
-          currency: row.currency as string,
-          nObservations: row.n_observations as number,
-          nOutliersExcluded: Math.max(0, row.n_outliers_excluded as number),
-          p10: Math.round(Number(row.p10)),
-          p25: Math.round(Number(row.p25)),
-          p50: Math.round(Number(row.p50)),
-          p75: Math.round(Number(row.p75)),
-          p90: Math.round(Number(row.p90)),
-          min: row.min_minor as number,
-          max: row.max_minor as number,
-          mean: Math.round(mean),
-          stddev: Math.round(stddev),
-          cv: mean === 0 ? 0 : Number((stddev / mean).toFixed(4)),
-          nSources: row.n_sources as number,
-          meanMatchConfidence: Number(Number(row.mean_match_conf).toFixed(2)),
-          // Cross-source agreement needs at least two sources to mean anything.
-          crossSourceCv: (row.n_sources as number) > 1 ? Number((stddev / mean).toFixed(4)) : null,
-          unresolvedShare: Number(Number(row.unresolved_share).toFixed(3)),
-          windowStart: (row.window_start as Date).toISOString().slice(0, 10),
-          windowEnd: (row.window_end as Date).toISOString().slice(0, 10),
-        },
-        q,
-      );
+      batch.push({
+        hotelId: row.hotel_id as number,
+        roomTypeId: row.room_type_id as number,
+        comparabilityClass: row.comparability_class as string,
+        baselineLevel: level,
+        seasonBand: (row.season_band as string) ?? null,
+        dowBucket: (row.dow_bucket as string) ?? null,
+        leadBucket: (row.lead_bucket as string) ?? null,
+        currency: row.currency as string,
+        nObservations: row.n_observations as number,
+        nOutliersExcluded: Math.max(0, row.n_outliers_excluded as number),
+        p10: Math.round(Number(row.p10)),
+        p25: Math.round(Number(row.p25)),
+        p50: Math.round(Number(row.p50)),
+        p75: Math.round(Number(row.p75)),
+        p90: Math.round(Number(row.p90)),
+        min: row.min_minor as number,
+        max: row.max_minor as number,
+        mean: Math.round(mean),
+        stddev: Math.round(stddev),
+        cv: mean === 0 ? 0 : Number((stddev / mean).toFixed(4)),
+        nSources: row.n_sources as number,
+        meanMatchConfidence: Number(Number(row.mean_match_conf).toFixed(2)),
+        // Cross-source agreement needs at least two sources to mean anything.
+        crossSourceCv: (row.n_sources as number) > 1 ? Number((stddev / mean).toFixed(4)) : null,
+        unresolvedShare: Number(Number(row.unresolved_share).toFixed(3)),
+        windowStart: (row.window_start as Date).toISOString().slice(0, 10),
+        windowEnd: (row.window_end as Date).toISOString().slice(0, 10),
+      });
       rowsWritten += 1;
       levelCounts[level] += 1;
     }
+    await upsertBaselines(batch, q);
   }
 
   return { rowsWritten, levelCounts, durationMs: Date.now() - started };

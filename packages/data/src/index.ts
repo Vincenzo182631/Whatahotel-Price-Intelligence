@@ -22,6 +22,7 @@ export {
   countStaleBaselines,
   resolveBaseline,
   upsertBaseline,
+  upsertBaselines,
 } from './repositories/baselines.js';
 export type { BaselineLookup, BaselineUpsert } from './repositories/baselines.js';
 
