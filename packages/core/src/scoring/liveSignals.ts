@@ -18,6 +18,7 @@
  * absent score as zero.
  */
 
+import type { CompMatchStrength } from '../normalize/compMatch.js';
 import type { Minor } from '../money.js';
 import { median } from '../stats.js';
 import type { ScoringConfig } from '../config/defaults.js';
@@ -81,6 +82,16 @@ export interface CompetitorRate {
 
 export interface CompSetResult {
   readonly signal: LiveSignal;
+  /**
+   * How much of the cross-hotel match rested on stated terms.
+   *
+   * Carried on the result rather than inferred downstream, because a caller
+   * that has to reconstruct it will eventually forget to — and the failure
+   * mode is a comparison presented as firmer than it is. See compMatch.ts.
+   */
+  readonly matchStrength: CompMatchStrength;
+  /** Dimensions the source left unstated on both sides of the comparison. */
+  readonly unknownDimensions: readonly string[];
   /** subject ÷ median competitor × 100. Null when unavailable. */
   readonly csi: number | null;
   readonly band: CsiBand | null;
@@ -105,6 +116,14 @@ export function computeCompSetIndex(
   competitors: readonly CompetitorRate[],
   config: ScoringConfig,
   now: Date,
+  /**
+   * How the competitors were matched. Defaults to RESOLVED so existing
+   * callers and fixtures keep their meaning; the loader passes the real value.
+   */
+  match: { strength: CompMatchStrength; unknown: readonly string[] } = {
+    strength: 'RESOLVED',
+    unknown: [],
+  },
 ): CompSetResult {
   const cfg = config.live.csi;
   const weight = config.live.weight.compSet;
@@ -114,6 +133,8 @@ export function computeCompSetIndex(
     band: null,
     pctBelowMedian: null,
     medianCompetitorNightlyMinor: null,
+    matchStrength: match.strength,
+    unknownDimensions: match.unknown,
   } as const;
 
   if (!Number.isFinite(subjectNightlyMinor) || subjectNightlyMinor <= 0) {
@@ -160,6 +181,8 @@ export function computeCompSetIndex(
       weightApplied: 0,
       unavailableReason: null,
     },
+    matchStrength: match.strength,
+    unknownDimensions: match.unknown,
     csi,
     band,
     pctBelowMedian,

@@ -25,6 +25,8 @@ export {
   viewsCompatible,
 } from './normalize/attributes.js';
 export type { RoomAttributes } from './normalize/attributes.js';
+export { compMatchKey, compMatchStrength, unknownDimensions } from './normalize/compMatch.js';
+export type { CompMatchStrength, CompMatchTerms } from './normalize/compMatch.js';
 export { matchRoomType } from './normalize/roomType.js';
 export type { MatchOptions, RoomTypeCandidate, RoomTypeMatch } from './normalize/roomType.js';
 export {

@@ -16,6 +16,8 @@ import {
   computeCalendarDelta,
   computeCompSetIndex,
   computeCompression,
+  compMatchStrength,
+  unknownDimensions,
   type CalendarResult,
   type CompSetResult,
   type CompressionResult,
@@ -133,6 +135,20 @@ export async function loadLiveIntelligence(
   // The three queries are independent, so they run together rather than in
   // sequence. On a page view this is the difference between one round trip and
   // three.
+  // The comparison key, and how much of it the source actually stated. Both
+  // derive from the chosen rate's own terms, so a caller cannot get a strength
+  // that disagrees with the match that produced it.
+  const subjectTerms = {
+    mealPlan: chosen.mealPlan,
+    refundPolicy: chosen.refundPolicy,
+    audience: chosen.audience,
+  };
+  const matchTerms = {
+    mealPlan: chosen.mealPlan as MealPlan,
+    refundPolicy: chosen.refundPolicy as RefundPolicy,
+    audience: chosen.audience as RateAudience,
+  };
+
   const [competitors, neighbours, compressionInput] = await Promise.all([
     findCompetitorRates(
       hotel.id,
@@ -141,7 +157,9 @@ export async function loadLiveIntelligence(
       request.adults,
       request.children,
       request.currency,
-      chosen.comparabilityClass,
+      // Terms, not the class: the class is hotel-specific and can never match
+      // a competitor. See findCompetitorRates and normalize/compMatch.ts.
+      subjectTerms,
       // One more than needed, so a single stale comp does not drop the set
       // below the minimum.
       Math.max(live.csi.minComps + 3, 8),
@@ -174,7 +192,10 @@ export async function loadLiveIntelligence(
     ),
   ]);
 
-  const compSet = computeCompSetIndex(current.nightlyMinor, competitors, config, now);
+  const compSet = computeCompSetIndex(current.nightlyMinor, competitors, config, now, {
+    strength: compMatchStrength(matchTerms),
+    unknown: unknownDimensions(matchTerms),
+  });
   const calendar = computeCalendarDelta(current.nightlyMinor, neighbours, config);
   const compression = computeCompression(compressionInput, config);
 

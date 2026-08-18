@@ -92,6 +92,18 @@ engine.
 5. **Compare like with like.** Rates only ever compare within the same
    comparability class (meal plan × refundability × audience). A `ROOM` never
    merges into a `SUITE` baseline regardless of name similarity.
+   **Baselines and the comp set key differently, on purpose.** Baselines use
+   the class, which poisons to `UNRESOLVED` when a term is unstated — right for
+   "what is normal for THIS room at THIS hotel". The Comp-Set Index uses the
+   tolerant key in `normalize/compMatch.ts`, where `UNKNOWN` matches `UNKNOWN`
+   but never a stated value. The class is `WAH:<rateCode>|<offer>` in
+   production — the source's own plan identity, hotel-specific by construction
+   — so a competitor can never share it: measured over 40 real stays, every
+   competitor survived every other filter and none survived the class filter.
+   Symmetric ignorance is a fair comparison; ignorance against knowledge is a
+   false equivalence, and that merge stays forbidden. The tolerant match is
+   weaker evidence, so `assessLiveConfidence` cannot return `HIGH` on it and
+   returns `LOW` when nothing was stated at all.
 6. **Weights and thresholds are config, not code.** They live in
    `packages/core/src/config/defaults.ts`, are versioned in `scoring_config`,
    and every `analysis` row records the version that produced it. They are

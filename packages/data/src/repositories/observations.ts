@@ -185,6 +185,10 @@ export async function findAvailableRoomTypes(
     roomClass: string;
     nightlyMinor: number;
     comparabilityClass: string;
+    /** Rate terms as ingested — the comp set matches on these, not the class. */
+    mealPlan: string;
+    refundPolicy: string;
+    audience: string;
     observedAt: string;
     nObservations: number;
   }>
@@ -193,6 +197,7 @@ export async function findAvailableRoomTypes(
     `SELECT DISTINCT ON (o.room_type_id)
             o.room_type_id, rt.canonical_name, rt.room_class,
             o.nightly_amount_minor, o.comparability_class, o.observed_at,
+            rp.meal_plan, rp.refund_policy, rp.audience,
             COALESCE((
               SELECT max(b.n_observations) FROM rate_baseline b
                WHERE b.hotel_id = o.hotel_id AND b.room_type_id = o.room_type_id
@@ -200,6 +205,7 @@ export async function findAvailableRoomTypes(
             ), 0) AS n_observations
        FROM rate_observation o
        JOIN room_type rt ON rt.id = o.room_type_id
+       JOIN rate_plan rp ON rp.id = o.rate_plan_id
       WHERE o.hotel_id = $1 AND o.check_in = $2 AND o.nights = $3
         AND o.adults = $4 AND o.children = $5 AND o.currency = $6
         AND o.is_available AND o.room_type_id IS NOT NULL
@@ -214,6 +220,9 @@ export async function findAvailableRoomTypes(
       roomClass: row.room_class as string,
       nightlyMinor: row.nightly_amount_minor as number,
       comparabilityClass: row.comparability_class as string,
+      mealPlan: row.meal_plan as string,
+      refundPolicy: row.refund_policy as string,
+      audience: row.audience as string,
       observedAt: (row.observed_at as Date).toISOString(),
       nObservations: row.n_observations as number,
     }))

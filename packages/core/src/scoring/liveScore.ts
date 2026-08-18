@@ -100,13 +100,20 @@ export function assessLiveConfidence(
   // valid competitors must not read as reliable.
   if (!compSet.signal.available || compSet.compsUsed < cfg.mediumMinComps) return 'LOW';
 
+  // A comparison built on terms the source never stated is real evidence but
+  // weaker evidence, and it must not be able to reach the top band. OPAQUE —
+  // nothing stated on either side — is weaker still: the competitors are alike
+  // only in being unclassifiable, which is a thin basis for a confident
+  // verdict. See normalize/compMatch.ts for why the tolerant key exists at all.
+  if (compSet.matchStrength === 'OPAQUE') return 'LOW';
+
   const strongComps = compSet.compsUsed >= cfg.highMinComps;
   const strongCalendar =
     calendar.signal.available && calendar.neighboursUsed >= cfg.highMinNeighbours;
+  const resolvedMatch = compSet.matchStrength === 'RESOLVED';
 
-  if (strongComps && strongCalendar && compression.signal.available) return 'HIGH';
-  if (strongComps && strongCalendar) return 'HIGH';
-  if (compSet.compsUsed >= cfg.mediumMinComps && calendar.signal.available) return 'MEDIUM';
+  if (strongComps && strongCalendar && resolvedMatch) return 'HIGH';
+  if (compSet.compsUsed >= cfg.mediumMinComps) return 'MEDIUM';
   return 'MEDIUM';
 }
 
@@ -195,6 +202,12 @@ function verdictFor(band: LiveBand, confidence: LiveConfidence): LiveVerdict {
  * Only measured facts, phrased in the present tense. No sentence here may
  * describe a direction of travel.
  */
+/** "a, b and c" — an Oxford-comma-free list for prose, not a debug dump. */
+function listPhrase(items: readonly string[]): string {
+  if (items.length === 1) return items[0] as string;
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
 function buildReasons(
   compSet: CompSetResult,
   calendar: CalendarResult,
@@ -217,6 +230,13 @@ function buildReasons(
           ? `${pct}% below comparable luxury hotels`
           : `${pct}% above comparable luxury hotels`,
     );
+    // Say what the comparison could NOT hold fixed. Without this the bullet
+    // above reads as like-for-like on cancellation terms, which the tolerant
+    // key does not guarantee — it matched rates the source left equally
+    // unstated. Disclosing the limit is the price of using the weaker key.
+    if (compSet.matchStrength !== 'RESOLVED' && compSet.unknownDimensions.length > 0) {
+      out.push(`Comparison does not account for ${listPhrase(compSet.unknownDimensions)}`);
+    }
   }
 
   if (calendar.signal.available && calendar.deltaPct !== null) {
