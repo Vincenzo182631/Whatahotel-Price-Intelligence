@@ -31,6 +31,7 @@
     "collect": "node --env-file-if-exists=.env scripts/collect.mjs",
     "smoke": "node --env-file-if-exists=.env scripts/smoke-api.mjs",
     "probe": "node --env-file-if-exists=.env scripts/live-probe.mjs",
+    "diagnose:compset": "node --env-file-if-exists=.env scripts/compset-diagnose.mjs",
     "calibrate": "node --env-file-if-exists=.env scripts/calibrate.mjs"
   },
   "devDependencies": {

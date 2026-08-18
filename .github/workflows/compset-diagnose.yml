@@ -1,0 +1,71 @@
+# Comp-set diagnosis — why the Comp-Set Index has no competitors.
+#
+# Manual dispatch, read-only, pure SQL. No API server and no source calls, so
+# it is cheap and safe to run against production whenever the question comes up.
+#
+# The live-market model currently produces no score because the Comp-Set Index
+# is absent, dropping weight coverage to 0.55 against a 0.60 floor. This walks
+# the competitor query's filters one at a time and reports which one empties the
+# set, over a sample of real stays rather than one anecdote.
+#
+# DATABASE_URL stays in the secret store and is checked by name, never
+# enumerated — enumerating the secret store is what tripped GitHub's
+# malicious-workflow detector on the database-setup workflow.
+name: Diagnose comp-set
+
+on:
+  workflow_dispatch:
+    inputs:
+      stays:
+        description: 'How many subject stays to sample'
+        required: false
+        default: '30'
+
+concurrency:
+  group: compset-diagnose
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Check the database secret is set
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+        run: |
+          if [ "$HAS_DATABASE_URL" != "true" ]; then
+            echo "::error::DATABASE_URL is not set. This diagnosis reads real data or it reads nothing."
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Diagnose
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -o pipefail
+          npm run diagnose:compset -- --stays "${{ inputs.stays }}" 2>&1 | tee compset.log
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo '## Comp-set diagnosis'
+            echo
+            echo '```'
+            # Counts, class names and hotel counts only — no credential, and
+            # no competitor pricing.
+            cat compset.log 2>/dev/null || echo '(no output captured)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
