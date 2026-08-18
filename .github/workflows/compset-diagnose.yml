@@ -57,6 +57,13 @@ jobs:
           set -o pipefail
           npm run diagnose:compset -- --stays "${{ inputs.stays }}" 2>&1 | tee compset.log
 
+      - name: Study the candidate keys
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -o pipefail
+          npm run diagnose:keys 2>&1 | tee -a compset.log
+
       - name: Summarise
         if: always()
         run: |
