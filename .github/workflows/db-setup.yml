@@ -50,37 +50,60 @@ jobs:
             exit 1
           fi
 
-      - name: Check what we are pointed at
+      - name: Check the connection string before using it
         run: |
-          # Every value printed here is deliberately non-secret. Never echo
-          # $DATABASE_URL: it carries the password, and Actions logs are
-          # readable by anyone with repo access.
+          # These need no network, so they run FIRST: a URL with no sslmode
+          # against a provider that demands TLS would otherwise fail on the
+          # first psql call with a driver-level error instead of this message.
+          # Nothing here echoes $DATABASE_URL — it carries the password, and
+          # Actions logs are readable by anyone with repo access.
           set -euo pipefail
           echo "### Target database" >> "$GITHUB_STEP_SUMMARY"
+
+          mode=$(printf '%s' "$DATABASE_URL" | sed -n 's/.*[?&]sslmode=\([^&]*\).*/\1/p')
+          case "$mode" in
+            require|verify-ca|verify-full)
+              echo "- TLS: requested \`sslmode=$mode\`" >> "$GITHUB_STEP_SUMMARY" ;;
+            "")
+              echo "::error::DATABASE_URL has no sslmode. Append ?sslmode=require."
+              exit 1 ;;
+            *)
+              echo "::error::DATABASE_URL uses sslmode=$mode, which permits an unencrypted connection. Use require."
+              exit 1 ;;
+          esac
+
+          # The single most likely way for this to be misconfigured. A
+          # transaction pooler hands consecutive statements to different
+          # backends, which breaks DDL migrations and the transaction-scoped
+          # schema checks — and it breaks them confusingly, mid-run.
+          if printf '%s' "$DATABASE_URL" | grep -qE -- '-pooler|:6543'; then
+            echo "::error::DATABASE_URL points at a transaction pooler. Use the direct endpoint — see docs/runbooks/database.md §2."
+            exit 1
+          fi
+
+      - name: Check the server can host this schema
+        run: |
+          set -euo pipefail
 
           version=$(psql "$DATABASE_URL" -tAc "SHOW server_version;")
           major=${version%%.*}
           echo "- PostgreSQL \`$version\`" >> "$GITHUB_STEP_SUMMARY"
           if [ "$major" -lt 16 ]; then
-            echo "::error::PostgreSQL $version is too old. The schema uses features this project relies on from 16."
+            echo "::error::PostgreSQL $version is too old. The schema relies on features from 16."
             exit 1
           fi
 
-          # The connection must be encrypted. This database will hold commercial
-          # rate data and is reachable from the public internet.
-          ssl=$(psql "$DATABASE_URL" -tAc \
+          # Informational only. Neon and other proxied providers terminate TLS
+          # at the proxy and report ssl=false for the backend leg, so gating on
+          # this would block setup on a properly encrypted connection. The
+          # sslmode check above is the one that means something.
+          backend_ssl=$(psql "$DATABASE_URL" -tAc \
             "SELECT coalesce((SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid())::text,'unknown');")
-          echo "- TLS: \`$ssl\`" >> "$GITHUB_STEP_SUMMARY"
-          # Postgres renders a boolean as true/false here, not t/f — comparing
-          # against "t" would reject every connection, encrypted or not.
-          if [ "$ssl" != "true" ]; then
-            echo "::error::This connection is not using TLS. Append ?sslmode=require to DATABASE_URL."
-            exit 1
-          fi
+          echo "- Backend leg reports ssl=\`$backend_ssl\` (proxied providers report false; not a fault)" \
+            >> "$GITHUB_STEP_SUMMARY"
 
-          # pg_trgm and btree_gist are created by migration 0001. A managed
-          # provider that does not offer them fails here rather than halfway
-          # through the first migration.
+          # pg_trgm and btree_gist are created by migration 0001. A provider
+          # that does not offer them fails here rather than halfway through it.
           for ext in pg_trgm btree_gist; do
             ok=$(psql "$DATABASE_URL" -tAc \
               "SELECT count(*) FROM pg_available_extensions WHERE name = '$ext';")

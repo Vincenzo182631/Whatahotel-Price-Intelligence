@@ -23,6 +23,12 @@ created, prepared, and kept healthy.
 Any managed Postgres meets this. The choice is about operational preference, not
 capability.
 
+**We use [Neon](https://neon.tech).** It scales to zero between the 6-hourly
+collection runs, which suits an intermittent cron better than an always-on
+instance, and the free tier is comfortably above what §5 projects. Nothing in
+this project depends on Neon specifically — the only provider-shaped detail is
+the pooled-endpoint trap below, and that applies to Supabase too.
+
 ## 2. Getting the connection string to the runner
 
 **Do not paste the URL into a terminal, a chat window, or an issue.** It carries
@@ -35,11 +41,25 @@ the password.
 
 That is the only place the credential needs to exist.
 
+### On Neon, concretely
+
+1. Create a project. **Postgres 16 or 17**, region **AWS US East (Ohio)** or
+   **N. Virginia** — GitHub-hosted runners are mostly US East, and the collector
+   makes thousands of small round trips per run, so latency there is worth more
+   than it looks.
+2. On the dashboard's connection widget, **turn "Connection pooling" OFF**. The
+   URL should read `…@ep-something.us-east-2.aws.neon.tech/neondb` with **no**
+   `-pooler` in the host. See below for why.
+3. Neon appends `?sslmode=require` already. Keep it.
+4. Leave autosuspend at its default. A cold start costs the first query of a run
+   a few hundred milliseconds, which is nothing against a 45-minute timeout.
+
 ### Pooled vs direct URLs
 
 Several providers offer two endpoints — a direct connection and a transaction
 pooler (Neon's `-pooler` host, Supabase's port 6543). **Use the direct URL for
-`DATABASE_URL`.** Migrations run DDL and the schema checks run inside a single
+`DATABASE_URL`.** A `-pooler` host in the secret is the single most likely way
+for this setup to go wrong, and it fails confusingly rather than cleanly. Migrations run DDL and the schema checks run inside a single
 transaction; a transaction pooler can hand consecutive statements to different
 backends, which breaks both. The API's connection volume is nowhere near needing
 a pooler.
