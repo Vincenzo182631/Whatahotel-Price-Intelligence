@@ -34,6 +34,7 @@
     "diagnose:compset": "node --env-file-if-exists=.env scripts/compset-diagnose.mjs",
     "diagnose:keys": "node --env-file-if-exists=.env scripts/compset-keys.mjs",
     "diagnose:roomtypes": "node --env-file-if-exists=.env scripts/roomtype-audit.mjs",
+    "cleanup:roomtypes": "node --env-file-if-exists=.env scripts/cleanup-roomtypes.mjs",
     "calibrate": "node --env-file-if-exists=.env scripts/calibrate.mjs"
   },
   "devDependencies": {

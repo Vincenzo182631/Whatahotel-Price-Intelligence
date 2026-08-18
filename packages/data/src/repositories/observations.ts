@@ -209,6 +209,10 @@ export async function findAvailableRoomTypes(
       WHERE o.hotel_id = $1 AND o.check_in = $2 AND o.nights = $3
         AND o.adults = $4 AND o.children = $5 AND o.currency = $6
         AND o.is_available AND o.room_type_id IS NOT NULL
+        -- A deactivated room type must not be offered to a guest, however
+        -- fresh its observations: deactivation is how a poisoned type (an
+        -- offer-prose name) is retired while its history stays auditable.
+        AND rt.is_active
       ORDER BY o.room_type_id, o.observed_at DESC`,
     [hotelId, checkIn, nights, adults, children, currency],
   );
