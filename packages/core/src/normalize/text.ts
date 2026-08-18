@@ -117,3 +117,48 @@ export function trigramSimilarity(a: string, b: string): number {
   const union = ta.size + tb.size - shared;
   return union === 0 ? 0 : shared / union;
 }
+
+/**
+ * Does this text describe an OFFER rather than a room?
+ *
+ * The source sometimes puts promotional prose in `roomName`. Observed live at
+ * Kimpton EPIC Miami, where the field arrived as
+ * "PER STAY. 30USD DAILY BREAKFAST CREDIT FOR" — the tail of a hotel-credit
+ * offer, truncated at the field's ~45-character limit. Nothing rejected it, so
+ * it became a room type, accrued a baseline, and rendered to the customer as
+ * the name of the room they were being quoted on.
+ *
+ * Two separate harms, and the quieter one is worse. The visible harm is
+ * nonsense in a customer-facing sentence. The invisible harm is that a room
+ * type keyed on offer text is not a room: rates for genuinely different rooms
+ * collect under it and mix price tiers inside one baseline — the same failure
+ * the view rule exists to prevent (docs/mvp/01 §3).
+ *
+ * The vocabulary is deliberately narrow, and the asymmetry is deliberate too.
+ * A false positive discards a real, priced rate; a false negative ships one odd
+ * name. So only phrases that cannot occur in a room name are listed here —
+ * money amounts, per-stay qualifiers, cancellation terms, discount language.
+ * Room names carry view, class and bed words, and none of those appear below.
+ */
+const OFFER_PROSE = [
+  /\bper stay\b/i,
+  /\bper night\b/i,
+  /\b\d+\s*usd\b/i,
+  /\bus\$\s*\d/i,
+  /\$\s*\d/,
+  /\bcredit\b/i,
+  /\bdaily breakfast\b/i,
+  /\b\d+\s*(%|pct)\s*off\b/i,
+  /\bprepay\b/i,
+  /\bnon-?refundable\b/i,
+  /\bnon-?changeable\b/i,
+  /\bupgrade upon availability\b/i,
+  /\bvalued at\b/i,
+  /\bresort fee\b/i,
+];
+
+export function looksLikeOfferProse(text: string | null | undefined): boolean {
+  const value = (text ?? '').trim();
+  if (value === '') return false;
+  return OFFER_PROSE.some((pattern) => pattern.test(value));
+}
