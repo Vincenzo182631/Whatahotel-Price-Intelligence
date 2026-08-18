@@ -71,7 +71,13 @@ export async function findCompetitorRates(
          FROM rate_observation o
          JOIN comps ON comps.hotel_id = o.hotel_id
          JOIN rate_plan rp ON rp.id = o.rate_plan_id
-        WHERE o.check_in = $2::date AND o.nights = $3 AND o.adults = $4
+         -- LEFT JOIN: fixtures carry observations with no room type, and a
+         -- missing type is not a deactivated one. Only a type known to be
+         -- inactive is excluded — a retired (poisoned) room must not price a
+         -- competitor comparison any more than it may be offered to a guest.
+         LEFT JOIN room_type rt ON rt.id = o.room_type_id
+        WHERE (rt.id IS NULL OR rt.is_active)
+          AND o.check_in = $2::date AND o.nights = $3 AND o.adults = $4
           AND o.children = $5 AND o.currency = $6
           AND rp.meal_plan = $7 AND rp.refund_policy = $10 AND rp.audience = $11
           AND o.observed_at >= now() - ($9 || ' hours')::interval

@@ -1,0 +1,74 @@
+# Retire room types whose names are offer prose.
+#
+# Manual dispatch, and it WRITES to production when told to — the same
+# confirm: apply convention as the database-setup workflow, so nothing changes
+# data on a stray click. Without the confirmation it prints the plan and stops.
+#
+# The change itself is deliberately small: deactivate the poisoned types,
+# delete their baseline rows, keep their observations. The script header in
+# scripts/cleanup-roomtypes.mjs carries the full reasoning.
+#
+# DATABASE_URL stays in the secret store and is checked by name, never
+# enumerated — enumerating the secret store is what tripped GitHub's
+# malicious-workflow detector on the database-setup workflow.
+name: Cleanup room types
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "apply" to actually write. Anything else plans only.'
+        required: false
+        default: ''
+
+concurrency:
+  group: cleanup-roomtypes
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Check the database secret is set
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+        run: |
+          if [ "$HAS_DATABASE_URL" != "true" ]; then
+            echo "::error::DATABASE_URL is not set."
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Cleanup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -o pipefail
+          if [ "$CONFIRM" = "apply" ]; then
+            npm run cleanup:roomtypes -- --apply 2>&1 | tee cleanup.log
+          else
+            npm run cleanup:roomtypes 2>&1 | tee cleanup.log
+          fi
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo '## Room-type cleanup'
+            echo
+            echo '```'
+            cat cleanup.log 2>/dev/null || echo '(no output captured)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
