@@ -12,7 +12,6 @@ import type { ExplanationBundle } from './bundle.js';
 
 const VERDICT_CLAUSE: Readonly<Record<string, string>> = {
   BOOK_NOW: 'Based on this, we recommend booking now.',
-  WAIT: 'Based on this, it may be worth waiting.',
   CONSIDER: 'On balance this looks like an ordinary rate for this room.',
   INSUFFICIENT_DATA: '',
 };

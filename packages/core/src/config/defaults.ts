@@ -49,6 +49,111 @@ export interface ScoringConfig {
     };
   };
 
+  /**
+   * The LIVE intelligence model.
+   *
+   * This product does not predict prices. It answers "is this a good rate right
+   * now, and are these good dates" from rates that exist today: the hotel
+   * against its live comp set, the selected dates against nearby bookable
+   * dates, and how much of the comparable market is still available.
+   *
+   * Every threshold the model uses is here. Nothing downstream may re-derive
+   * one — a band that exists in two places will disagree in two places.
+   */
+  readonly live: {
+    /**
+     * Comp-Set Index = subject nightly ÷ median competitor nightly × 100.
+     *
+     * Deliberately the RAW ratio, not each hotel's discount against its own
+     * norm (which is what the history-based market factor computes). The raw
+     * form needs no history, which is the point — but it does mean a genuine
+     * luxury flagship scores poorly against cheaper neighbours. That is the
+     * intended reading of "is this a good rate right now".
+     */
+    readonly csi: {
+      /** At or below this, the hotel is materially cheaper than its comp set. */
+      readonly strongValueMax: number;
+      /** Above this, the hotel is priced above its comp set. */
+      readonly fairMax: number;
+      /** Fewer valid competitors than this and the signal is not produced. */
+      readonly minComps: number;
+      /** Competitor rates older than this are not live-validated; excluded. */
+      readonly maxCompAgeHours: number;
+      /** CSI at which the sub-score hits 0 and 100 respectively. */
+      readonly scoreAtCsi: { readonly zero: number; readonly full: number };
+    };
+
+    /**
+     * Calendar Delta = (subject ADR − nearby ADR) ÷ nearby ADR × 100.
+     *
+     * Compares the chosen dates against other bookable dates for the SAME
+     * hotel, room, occupancy and length of stay. Negative means the chosen
+     * dates are cheaper than their neighbours.
+     */
+    readonly calendar: {
+      /** At or below this, the dates are a genuine dip. */
+      readonly dipMax: number;
+      /** Above this, the dates are compressed/expensive. */
+      readonly normalMax: number;
+      /** Days either side of the stay to draw neighbours from. */
+      readonly windowDays: number;
+      /** Below this many neighbours the signal is not produced. */
+      readonly minNeighbours: number;
+      /**
+       * Prefer neighbours on the same day-of-week pattern. A Thursday–Sunday
+       * stay compared against a Monday–Thursday one measures the weekend, not
+       * the dates. Same-DOW neighbours are used alone when there are enough.
+       */
+      readonly preferSameDow: boolean;
+      readonly delta: { readonly zero: number; readonly full: number };
+    };
+
+    /**
+     * Market compression: how much of the comparable set is still bookable.
+     *
+     * Real, not aspirational — the source answers status 204 for a sold-out
+     * stay, and `collection_attempt.last_outcome` records it per hotel and
+     * date. Absent that evidence the signal is omitted rather than guessed.
+     */
+    readonly compression: {
+      /** Sold-out share at or above this is a tight market. */
+      readonly tightMin: number;
+      /** Sold-out share at or below this is a soft market. */
+      readonly softMax: number;
+      /** Fewer comp-set hotels checked than this and the signal is dropped. */
+      readonly minChecked: number;
+    };
+
+    /**
+     * Starting weights. They are renormalized across whichever signals are
+     * actually available, so a missing signal redistributes rather than
+     * dragging the score toward zero.
+     */
+    readonly weight: {
+      readonly compSet: number;
+      readonly calendar: number;
+      readonly compression: number;
+    };
+
+    /** Below this share of total weight present, no score is produced at all. */
+    readonly minWeightCoverage: number;
+
+    /** Deal-score bands. Displayed to the customer as a 0–10 figure. */
+    readonly band: {
+      readonly exceptionalMin: number;
+      readonly strongMin: number;
+      readonly marketMin: number;
+    };
+
+    /** Confidence is reported HIGH / MEDIUM / LOW, not as a number. */
+    readonly confidence: {
+      readonly highMinComps: number;
+      readonly highMinNeighbours: number;
+      readonly maxRateAgeHours: number;
+      readonly mediumMinComps: number;
+    };
+  };
+
   readonly baseline: {
     readonly minObsAbs: number;
     readonly minObsTarget: number;
@@ -105,16 +210,8 @@ export interface ScoringConfig {
       readonly urgencyScoreMin: number;
       readonly urgencyRisePct: number;
       readonly urgencyDemand: number;
-    };
-    readonly wait: {
-      readonly confidenceMin: number;
-      readonly scoreMax: number;
-      readonly minLeadDays: number;
-      readonly riseBlockPct: number;
-      readonly demandBlock: number;
-      readonly scarcityBlock: number;
-      readonly minVolatilityConfidence: number;
-      readonly maxTrendPct: number;
+      /** Rooms remaining at or below which gate G3 treats inventory as scarce. */
+      readonly urgencyScarcityRooms: number;
     };
   };
 
@@ -129,7 +226,6 @@ export interface ScoringConfig {
     /** A drop smaller than this is noise, not a missed opportunity. */
     readonly materialDropPct: number;
     readonly bookNowRegretRateMax: number;
-    readonly waitSuccessRateMin: number;
     readonly scoreStabilityMaxDelta: number;
     /** Price moves under this count as "unchanged" for the stability check. */
     readonly stabilityPriceTolerancePct: number;
@@ -154,19 +250,18 @@ export interface ScoringConfig {
   };
 }
 
-/**
- * Hard floor on the never-WAIT confidence threshold.
- *
- * Configuration must not be able to disable the safety rule it exists to
- * enforce. `validateConfig` rejects any document setting it lower.
- */
-export const WAIT_CONFIDENCE_HARD_FLOOR = 60;
-
 export const DEFAULT_CONFIG: ScoringConfig = {
-  // v2 — F5 (Demand) removed from the Deal Score. Its 0.10 was redistributed
-  // proportionally across the remaining five, preserving their intended
-  // relative importance rather than folding it all into F1.
-  version: 2,
+  // v4 — retires WAIT.
+  //
+  // v3 added the `live` block: the comp-set / calendar / compression model that
+  // scores from rates existing today rather than from accrued history. v4
+  // finishes the job by removing the one output that was a forecast. The
+  // `rec.wait` block went with it; the two of its values that did non-predictive
+  // work are now `rec.shortLeadDays` and `rec.book.urgencyScarcityRooms`.
+  //
+  // The v2 factor weights are retained unchanged, and every analysis records the
+  // version that produced it, so older scores stay reproducible.
+  version: 4,
 
   score: {
     weight: {
@@ -184,6 +279,45 @@ export const DEFAULT_CONFIG: ScoringConfig = {
     lookbackDays: 90,
     outlierTrim: [0.01, 0.99],
     band: { excellentMin: 85, goodMin: 70, fairMin: 50, belowAverageMin: 30 },
+  },
+
+  live: {
+    csi: {
+      strongValueMax: 85,
+      fairMax: 115,
+      // Below three, a median is one or two hotels wearing a statistic's
+      // clothing. Confidence would also be LOW, but not producing the signal
+      // is stronger than producing it apologetically.
+      minComps: 3,
+      maxCompAgeHours: 24,
+      // CSI 130 → 0, CSI 70 → 100. Centred so parity (100) lands mid-scale.
+      scoreAtCsi: { zero: 130, full: 70 },
+    },
+    calendar: {
+      dipMax: -15,
+      normalMax: 15,
+      windowDays: 21,
+      minNeighbours: 3,
+      preferSameDow: true,
+      // +35% → 0, −35% → 100.
+      delta: { zero: 35, full: -35 },
+    },
+    compression: {
+      tightMin: 0.4,
+      softMax: 0.15,
+      minChecked: 3,
+    },
+    weight: { compSet: 0.45, calendar: 0.35, compression: 0.2 },
+    // Comp-set alone (0.45) is not enough to call something a deal; comp-set
+    // plus either other signal is.
+    minWeightCoverage: 0.6,
+    band: { exceptionalMin: 85, strongMin: 70, marketMin: 50 },
+    confidence: {
+      highMinComps: 4,
+      highMinNeighbours: 4,
+      maxRateAgeHours: 12,
+      mediumMinComps: 3,
+    },
   },
 
   baseline: {
@@ -237,16 +371,7 @@ export const DEFAULT_CONFIG: ScoringConfig = {
       urgencyScoreMin: 60,
       urgencyRisePct: 3.0,
       urgencyDemand: 0.6,
-    },
-    wait: {
-      confidenceMin: 70,
-      scoreMax: 42,
-      minLeadDays: 10,
-      riseBlockPct: 2.0,
-      demandBlock: 0.6,
-      scarcityBlock: 3,
-      minVolatilityConfidence: 0.4,
-      maxTrendPct: 0.0,
+      urgencyScarcityRooms: 3,
     },
   },
 
@@ -254,7 +379,6 @@ export const DEFAULT_CONFIG: ScoringConfig = {
     outcomeHorizonDays: 14,
     materialDropPct: 2.0,
     bookNowRegretRateMax: 0.1,
-    waitSuccessRateMin: 0.6,
     scoreStabilityMaxDelta: 10,
     stabilityPriceTolerancePct: 1.0,
     insufficientDataRateMax: 0.25,

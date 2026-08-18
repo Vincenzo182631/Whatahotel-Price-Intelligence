@@ -25,6 +25,9 @@ CREATE TYPE match_method_t   AS ENUM ('SOURCE_ID','ALIAS_EXACT','ALIAS_FUZZY','A
 CREATE TYPE season_band_t    AS ENUM ('LOW','SHOULDER','HIGH','PEAK','UNKNOWN');
 CREATE TYPE dow_bucket_t     AS ENUM ('WEEKDAY','WEEKEND');
 CREATE TYPE recommendation_t AS ENUM ('BOOK_NOW','WAIT','CONSIDER','INSUFFICIENT_DATA');
+-- 'WAIT' is retained in the enum but unusable: migration 0008 adds a CHECK that
+-- rejects it outright. Removing an enum value means recreating the type and
+-- rewriting every column that uses it, for no gain over the constraint.
 CREATE TYPE score_band_t     AS ENUM ('EXCELLENT','GOOD','FAIR','BELOW_AVERAGE','POOR');
 CREATE TYPE conf_band_t      AS ENUM ('HIGH','MODERATE','LOW','INSUFFICIENT');
 CREATE TYPE benefit_basis_t  AS ENUM ('PER_NIGHT','PER_STAY');
@@ -427,6 +430,8 @@ CREATE TABLE analysis (
 
     -- The invariant from doc 03, enforced by the database as the last line of defence.
     CONSTRAINT analysis_wait_confidence_ck
+        -- Replaced by analysis_no_wait_ck in migration 0008:
+        --   CHECK (recommendation <> 'WAIT')
         CHECK (recommendation <> 'WAIT' OR confidence >= 70),
     CONSTRAINT analysis_insufficient_ck
         CHECK (recommendation <> 'INSUFFICIENT_DATA' OR deal_score IS NULL)

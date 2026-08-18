@@ -1,13 +1,13 @@
 /**
  * Configuration validation.
  *
- * Runs on every config activation. Two rules here are not stylistic:
+ * Runs on every config activation. These rules are not stylistic:
  *  - Deal Score weights must sum to 1.0, or redistribution silently misweights.
- *  - The WAIT confidence threshold cannot be set below its hard floor, because
- *    configuration must not be able to disable a safety rule.
+ *  - Live-model weights must sum to 1.0, for the same reason.
+ *  - Bands must be strictly descending, or a score falls into two of them.
  */
 
-import { DEFAULT_CONFIG, WAIT_CONFIDENCE_HARD_FLOOR, type ScoringConfig } from './defaults.js';
+import { DEFAULT_CONFIG, type ScoringConfig } from './defaults.js';
 
 export class ConfigValidationError extends Error {
   readonly issues: readonly string[];
@@ -32,18 +32,55 @@ export function validateConfig(config: ScoringConfig): readonly string[] {
     if (value < 0 || value > 1) issues.push(`score.weight.${key} must be in [0,1] (got ${value})`);
   }
 
-  if (config.rec.wait.confidenceMin < WAIT_CONFIDENCE_HARD_FLOOR) {
+  // WAIT was retired in config v4, and with it the hard floor that stopped a
+  // configuration from lowering the confidence needed to emit it. A config
+  // still carrying the block is from before the retirement and would be read
+  // with fields the engine no longer honours.
+  if ((config.rec as Record<string, unknown>).wait !== undefined) {
     issues.push(
-      `rec.wait.confidenceMin must be at least ${WAIT_CONFIDENCE_HARD_FLOOR} — ` +
-        `configuration cannot disable the never-WAIT safety rule (got ${config.rec.wait.confidenceMin})`,
+      'rec.wait.* is no longer supported — WAIT was retired in config v4. ' +
+        'rec.book.urgencyScarcityRooms carries over the one value that did non-predictive work',
     );
   }
 
-  if (config.rec.book.confidenceMin > config.rec.wait.confidenceMin) {
-    issues.push(
-      'rec.book.confidenceMin should not exceed rec.wait.confidenceMin — ' +
-        'the asymmetry is deliberate and this inverts it',
-    );
+  // ── the live-market model ────────────────────────────────────────────────
+  // Same rule as the Deal Score weights, and for the same reason: these are
+  // renormalized when a signal is missing, and renormalizing a set that does
+  // not sum to 1 silently misweights every score it touches.
+  const live = config.live;
+  if (!live) {
+    issues.push('live.* block is missing — a config predating the live-market model');
+  } else {
+    const lw = live.weight;
+    const liveSum = lw.compSet + lw.calendar + lw.compression;
+    if (Math.abs(liveSum - 1) > WEIGHT_SUM_TOLERANCE) {
+      issues.push(`live.weight.* must sum to 1.0 (got ${liveSum})`);
+    }
+    for (const [key, value] of Object.entries(lw)) {
+      if (value < 0 || value > 1) issues.push(`live.weight.${key} must be in [0,1] (got ${value})`);
+    }
+
+    if (!(live.csi.strongValueMax < live.csi.fairMax)) {
+      issues.push('live.csi.strongValueMax must be below live.csi.fairMax');
+    }
+    if (live.csi.minComps < 1) issues.push('live.csi.minComps must be at least 1');
+
+    if (!(live.calendar.dipMax < live.calendar.normalMax)) {
+      issues.push('live.calendar.dipMax must be below live.calendar.normalMax');
+    }
+    if (live.calendar.windowDays < 1) issues.push('live.calendar.windowDays must be at least 1');
+
+    if (!(live.compression.softMax < live.compression.tightMin)) {
+      issues.push('live.compression.softMax must be below live.compression.tightMin');
+    }
+
+    const lb = live.band;
+    if (!(lb.exceptionalMin > lb.strongMin && lb.strongMin > lb.marketMin)) {
+      issues.push('live.band.* thresholds must be strictly descending');
+    }
+    if (live.minWeightCoverage < 0 || live.minWeightCoverage > 1) {
+      issues.push('live.minWeightCoverage must be in [0,1]');
+    }
   }
 
   if (config.baseline.minObsAbs < 1) issues.push('baseline.minObsAbs must be at least 1');

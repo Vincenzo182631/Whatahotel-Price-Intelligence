@@ -56,6 +56,7 @@ packages/ingest/   adapters, pipeline, rollups, comp sets, scheduler
 packages/calibration/  point-in-time replay, metrics, weight sweep
 apps/api/          Node http server (docs/mvp/06)
 apps/web/public/   framework-free embeddable widget (docs/mvp/08)
+                   mount() defaults to the LIVE model; model: 'history' for the other
 db/migrations/     schema (docs/mvp/05)
 db/checks/         schema behaviour checks
 tests/             scenarios S1–S9, invariants P1–P12, unit, integration
@@ -72,10 +73,13 @@ engine.
 1. **Money is integer minor units.** Never floats. `roundHalfAwayFromZero`
    exists because Postgres `round(numeric)` and JS `Math.round` disagree, and a
    recomputed score must match a stored one.
-2. **WAIT is never emitted below `rec.wait.confidenceMin`.** Enforced in three
-   places: the gate, a boundary assertion, and a database CHECK constraint.
-   Config cannot lower it past `WAIT_CONFIDENCE_HARD_FLOOR`. Invariant P1 is a
-   release blocker.
+2. **This is not a price predictor.** `WAIT` was retired in config v4 — gate G4,
+   the eight never-WAIT guards, the boundary assertion and the `SHORT_LEAD_TIME`
+   caveat are all gone, and migration 0008 makes the database reject the value
+   outright. Nothing the customer reads may say what a price will do: no "prices
+   will rise", no "book before it goes up", no "unlikely to soften". Invariants
+   P1 (the verdict is never emitted) and P11 (no rendered explanation contains
+   predictive language) are both release blockers.
 3. **An absent Deal Score is `null`, never `0`.** A zero renders to the customer
    as "terrible deal". Invariant P2.
 4. **The AI never computes.** It receives an `ExplanationBundle` of
@@ -176,8 +180,21 @@ more — the report says so in a banner, and the CLI exits 0 on a synthetic FAIL
 so it cannot redden a build with a meaningless failure.
 
 Config v2 removed **F5 (Demand)** from the Deal Score: it was an affine function
-of F1 and carried no independent signal. Demand still drives guard W4 and gate
-G3, where it acts on the recommendation rather than the score. A regression test
-asserts the factor list is exactly `[F1, F2, F3, F4, F6]`.
+of F1 and carried no independent signal. Demand still drives gate G3, where it
+acts on the recommendation rather than the score. A regression test asserts the
+factor list is exactly `[F1, F2, F3, F4, F6]`.
 
-The weights in config v2 remain uncalibrated priors.
+Config v3 added the **live-market model** — Comp-Set Index, Calendar Delta and
+Market Compression (`packages/core/src/scoring/liveSignals.ts` and
+`liveScore.ts`, fed by `packages/data/src/loadLiveIntelligence.ts`). It scores
+from rates that exist today rather than from accrued history, which is what
+makes it usable before a baseline has built up.
+
+Config v4 **retired WAIT** (see rule 2). Reading the eight never-WAIT guards as
+a list makes the case: each one meant "we cannot responsibly predict this", and
+eight of them means we cannot predict it at all. Two of their values survive
+because they describe the market now rather than later —
+`rec.book.urgencyScarcityRooms` and `rec.book.urgencyDemand`, both feeding gate
+G3.
+
+The weights in every version so far remain uncalibrated priors.

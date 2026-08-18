@@ -361,9 +361,7 @@ suite('integration · ingest → rollup → score', () => {
     const { analysis } = analyze(loaded.input, DEFAULT_CONFIG);
     expect(analysis.confidence).toBeGreaterThan(0);
     // The invariant, verified through the full stack rather than on fixtures.
-    if (analysis.recommendation === 'WAIT') {
-      expect(analysis.confidence).toBeGreaterThanOrEqual(DEFAULT_CONFIG.rec.wait.confidenceMin);
-    }
+    expect(analysis.recommendation as string).not.toBe('WAIT');
     if (analysis.recommendation === 'INSUFFICIENT_DATA') {
       expect(analysis.dealScore).toBeNull();
     }

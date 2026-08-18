@@ -10,11 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import { analyze } from '../../packages/core/src/analyze.js';
 import { DEFAULT_CONFIG } from '../../packages/core/src/config/defaults.js';
-import {
-  WaitConfidenceViolation,
-  assertWaitInvariant,
-  evaluateGuards,
-} from '../../packages/core/src/recommendation/engine.js';
+import { recommend } from '../../packages/core/src/recommendation/engine.js';
 import { composeDealScore } from '../../packages/core/src/scoring/dealScore.js';
 import {
   computeF2,
@@ -293,8 +289,12 @@ describe('deal score composition', () => {
   });
 });
 
-describe('never-WAIT guards', () => {
-  const guardInput = {
+describe('WAIT is retired', () => {
+  // These are exactly the inputs that used to route to gate G4: a poor score,
+  // high confidence, a long lead time, a falling price, no demand, no scarcity.
+  // Every one of the eight never-WAIT guards evaluated clear on this case —
+  // it was the engine's one legitimate path to telling a customer to hold off.
+  const formerWaitCase = {
     dealScore: 20,
     confidence: 90,
     current: makeCurrent(70000),
@@ -308,67 +308,39 @@ describe('never-WAIT guards', () => {
     now: NOW,
   };
 
-  it('reports every guard as clear on a clean WAIT case', () => {
-    const guards = evaluateGuards(guardInput, DEFAULT_CONFIG);
-    expect(guards).toHaveLength(8);
-    expect(guards.filter((g) => g.tripped)).toHaveLength(0);
+  it('lands on CONSIDER via G5 where it used to land on WAIT via G4', () => {
+    const result = recommend(formerWaitCase, DEFAULT_CONFIG);
+    expect(result.recommendation).toBe('CONSIDER');
+    expect(result.gateFired).toBe('G5');
   });
 
-  it('trips W5 on scarce inventory and W7 on non-refundable-only', () => {
-    const guards = evaluateGuards(
+  it('stays on CONSIDER no matter how confident or how far out the stay is', () => {
+    for (const confidence of [70, 85, 100]) {
+      for (const leadTimeDays of [10, 60, 180]) {
+        for (const trendPct of [-20, -5, 0]) {
+          const result = recommend(
+            { ...formerWaitCase, confidence, leadTimeDays, trendPct },
+            DEFAULT_CONFIG,
+          );
+          expect(result.recommendation as string).not.toBe('WAIT');
+        }
+      }
+    }
+  });
+
+  it('still reaches BOOK_NOW through the urgency gate on scarce inventory', () => {
+    // Scarcity used to do double duty: block WAIT (W5) and trigger urgency
+    // (G3). Only the second job remains, and it must still work.
+    const result = recommend(
       {
-        ...guardInput,
-        current: makeCurrent(70000, { roomsLeft: 2, onlyNonRefundableAvailable: true }),
+        ...formerWaitCase,
+        dealScore: 65,
+        current: makeCurrent(70000, { roomsLeft: 2 }),
       },
       DEFAULT_CONFIG,
     );
-    const tripped = guards.filter((g) => g.tripped).map((g) => g.code);
-    expect(tripped).toContain('W5');
-    expect(tripped).toContain('W7');
-  });
-
-  it('trips W6 when the price is too erratic to time', () => {
-    const guards = evaluateGuards({ ...guardInput, volatilityFactor: 0.1 }, DEFAULT_CONFIG);
-    expect(guards.find((g) => g.code === 'W6')?.tripped).toBe(true);
-  });
-
-  it('trips W8 on a widened baseline', () => {
-    const widened = makeBaseline({
-      n: 60,
-      level: 'L3',
-      ladder: [
-        [0, 60000],
-        [1, 90000],
-      ],
-    });
-    const guards = evaluateGuards({ ...guardInput, baseline: widened }, DEFAULT_CONFIG);
-    expect(guards.find((g) => g.code === 'W8')?.tripped).toBe(true);
-  });
-});
-
-describe('the WAIT boundary assertion', () => {
-  const waitResult: RecommendationResult = {
-    recommendation: 'WAIT',
-    gateFired: 'G4',
-    waitBlockedBy: [],
-    guards: [],
-    insufficientReasons: [],
-  };
-
-  it('throws if a WAIT ever escapes below the confidence floor', () => {
-    expect(() => assertWaitInvariant(waitResult, 65, DEFAULT_CONFIG)).toThrow(
-      WaitConfidenceViolation,
-    );
-  });
-
-  it('passes at or above the floor', () => {
-    expect(() => assertWaitInvariant(waitResult, 70, DEFAULT_CONFIG)).not.toThrow();
-  });
-
-  it('ignores non-WAIT recommendations', () => {
-    expect(() =>
-      assertWaitInvariant({ ...waitResult, recommendation: 'CONSIDER' }, 10, DEFAULT_CONFIG),
-    ).not.toThrow();
+    expect(result.recommendation).toBe('BOOK_NOW');
+    expect(result.gateFired).toBe('G3');
   });
 });
 

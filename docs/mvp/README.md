@@ -2,26 +2,26 @@
 
 **Status:** DRAFT — awaiting approval. No production code has been written.
 **Source proposal:** _WhataHotel Price Intelligence Proposal v2_ (Aug 2026), prepared for Greg Guiteras, Lorraine Travel.
-**Scope:** Phase 1 (MVP) only — search, current rate, historical metrics, Deal Score, price chart, BOOK NOW / WAIT recommendation.
+**Scope:** Phase 1 (MVP) only — search, current rate, historical metrics, Deal Score, price chart, BOOK NOW / CONSIDER recommendation. (`WAIT` was retired in config v4; see doc 03 §4.)
 
 ---
 
 ## Documents
 
-| #   | Document                                                                       | Covers                                                             |
-| --- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| 00  | This file                                                                      | Scope, principles, unverified inputs register, open decisions      |
-| 01  | [`01-data-architecture.md`](./01-data-architecture.md)                         | Entities, normalization, timestamping, baselines                   |
-| 02  | [`02-deal-score.md`](./02-deal-score.md)                                       | Deal Score v1 — six factors, math, weights, rationale              |
-| 03  | [`03-confidence-and-recommendation.md`](./03-confidence-and-recommendation.md) | Confidence Score + BOOK_NOW/WAIT/CONSIDER/INSUFFICIENT_DATA engine |
-| 04  | [`04-explanation-engine.md`](./04-explanation-engine.md)                       | Explanation bundle contract, AI guardrails                         |
-| 05  | [`05-database-schema.md`](./05-database-schema.md)                             | Proposed PostgreSQL 16 schema (DDL, not a migration)               |
-| 06  | [`06-api.md`](./06-api.md)                                                     | MVP REST endpoints and payloads                                    |
-| 07  | [`07-testing.md`](./07-testing.md)                                             | Nine required scenarios + invariants                               |
-| 08  | [`08-ui.md`](./08-ui.md)                                                       | Exact customer-facing information                                  |
-| 09  | [`09-implementation-plan.md`](./09-implementation-plan.md)                     | Milestones and module tree                                         |
-| 10  | [`10-configuration-registry.md`](./10-configuration-registry.md)               | Every tunable weight and threshold in one place                    |
-| 11  | [`11-calibration-tooling.md`](./11-calibration-tooling.md)                     | M7 — replay harness, metrics, weight sweep                         |
+| #   | Document                                                                       | Covers                                                        |
+| --- | ------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| 00  | This file                                                                      | Scope, principles, unverified inputs register, open decisions |
+| 01  | [`01-data-architecture.md`](./01-data-architecture.md)                         | Entities, normalization, timestamping, baselines              |
+| 02  | [`02-deal-score.md`](./02-deal-score.md)                                       | Deal Score v1 — six factors, math, weights, rationale         |
+| 03  | [`03-confidence-and-recommendation.md`](./03-confidence-and-recommendation.md) | Confidence Score + BOOK_NOW/CONSIDER/INSUFFICIENT_DATA engine |
+| 04  | [`04-explanation-engine.md`](./04-explanation-engine.md)                       | Explanation bundle contract, AI guardrails                    |
+| 05  | [`05-database-schema.md`](./05-database-schema.md)                             | Proposed PostgreSQL 16 schema (DDL, not a migration)          |
+| 06  | [`06-api.md`](./06-api.md)                                                     | MVP REST endpoints and payloads                               |
+| 07  | [`07-testing.md`](./07-testing.md)                                             | Nine required scenarios + invariants                          |
+| 08  | [`08-ui.md`](./08-ui.md)                                                       | Exact customer-facing information                             |
+| 09  | [`09-implementation-plan.md`](./09-implementation-plan.md)                     | Milestones and module tree                                    |
+| 10  | [`10-configuration-registry.md`](./10-configuration-registry.md)               | Every tunable weight and threshold in one place               |
+| 11  | [`11-calibration-tooling.md`](./11-calibration-tooling.md)                     | M7 — replay harness, metrics, weight sweep                    |
 
 ---
 
@@ -32,7 +32,7 @@ These are load-bearing. Every design decision downstream follows from them.
 1. **The engine is deterministic. The AI only narrates.** Deal Score, Confidence and the recommendation are produced by pure functions over stored data. The language model receives already-computed facts and turns them into a sentence. It never sees raw rates, never computes, never overrides. (Proposal §8.)
 2. **No number is arbitrary.** Every weight and threshold in this spec is a _starting prior_ with a stated rationale, lives in a versioned config record, and is calibratable without a code change. See doc 10.
 3. **Compare like with like.** A non-refundable room-only rate is not comparable to a flexible bed-and-breakfast rate, and a rate observed 90 days out is not comparable to one observed 3 days out. Comparability is enforced structurally, not by convention. See doc 01 §4.
-4. **Confidence gates action.** Low confidence must degrade the recommendation, not the score's appearance of precision. **WAIT is never emitted below the confidence floor** — this is enforced at the engine boundary _and_ asserted as a property test.
+4. **Confidence gates action.** Low confidence must degrade the recommendation, not the score's appearance of precision. **The system never predicts a future price** — `WAIT` was retired in config v4, and invariants P1 and P11 assert both that the verdict cannot be emitted and that no rendered explanation contains predictive language.
 5. **Every displayed number is traceable.** Each analysis persists its inputs, config version, and factor breakdown, so any score shown to a customer can be reconstructed and explained months later.
 6. **Money is integer minor units.** Never floating point. Currency is explicit on every monetary value.
 
@@ -100,7 +100,7 @@ Retained for the reasoning behind each item.
 | **U8**  | Rate plan identifiers are **stable across captures**.                                                           | Unstable codes break same-stay series and trend detection.                                                                             |
 | **U9**  | Room type names/codes are available as **structured fields**, not only display strings.                         | Determines whether normalization is deterministic (U9 true) or fuzzy-matched (U9 false → lower confidence, doc 01 §3).                 |
 | **U10** | **Benefits** (breakfast, hotel credit, upgrade, late checkout) are available in structured form per rate/hotel. | Factor F6 (Effective Value) — the proposal's stated differentiator. If unstructured, MVP uses a manually curated table for top hotels. |
-| **U11** | **Availability signal** (rooms remaining / sold-out) is exposed.                                                | Feeds scarcity guard on WAIT and the demand factor. Degrades gracefully if absent.                                                     |
+| **U11** | **Availability signal** (rooms remaining / sold-out) is exposed.                                                | Feeds the urgency gate G3, the demand factor and the live compression signal. Degrades gracefully if absent.                           |
 | **U12** | Comparable-hotel relationships can be derived (brand tier, destination, star rating, price band).               | Factor F2 (Market). Absent → F2 unavailable, weight redistributes, confidence drops.                                                   |
 | **U13** | Booking/transaction data is queryable and joinable to hotels.                                                   | Optional demand proxy for F5 when no event feed exists.                                                                                |
 | **U14** | An events/demand feed exists, or is acquirable.                                                                 | Factor F5. Proposal defers events to Phase 3; MVP treats F5 as optional.                                                               |
@@ -133,14 +133,14 @@ Per the proposal's phasing — specified here only so the schema does not have t
 
 ## Open decisions requiring your input
 
-| #   | Decision                                                                               | Recommendation                                                                     | Impact                                |
-| --- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------- |
-| D1  | MVP hotel set size and destinations                                                    | 50–100 hotels, 3–5 destinations                                                    | Collection cost, baseline density     |
-| D2  | Should benefits adjust the _baseline_ or only factor F6?                               | F6 only in v1 (doc 02 §F6)                                                         | Consistency of historical comparisons |
-| D3  | Launch posture if U3 shows no history                                                  | Hybrid: cross-sectional score at launch, auto-upgrade per hotel as history accrues | Launch date                           |
-| D4  | Show raw Deal Score number, or band only, at low confidence?                           | Band only below Moderate confidence (doc 08)                                       | Customer trust                        |
-| D5  | Currency scope at MVP                                                                  | USD only                                                                           | FX complexity                         |
-| D6  | Is a "WAIT" recommendation acceptable to the business at all, given it defers revenue? | Keep it — it is the product's credibility                                          | Product positioning                   |
+| #   | Decision                                                                               | Recommendation                                                                                                                                                                                                                              | Impact                                |
+| --- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| D1  | MVP hotel set size and destinations                                                    | 50–100 hotels, 3–5 destinations                                                                                                                                                                                                             | Collection cost, baseline density     |
+| D2  | Should benefits adjust the _baseline_ or only factor F6?                               | F6 only in v1 (doc 02 §F6)                                                                                                                                                                                                                  | Consistency of historical comparisons |
+| D3  | Launch posture if U3 shows no history                                                  | Hybrid: cross-sectional score at launch, auto-upgrade per hotel as history accrues                                                                                                                                                          | Launch date                           |
+| D4  | Show raw Deal Score number, or band only, at low confidence?                           | Band only below Moderate confidence (doc 08)                                                                                                                                                                                                | Customer trust                        |
+| D5  | Currency scope at MVP                                                                  | USD only                                                                                                                                                                                                                                    | FX complexity                         |
+| D6  | Is a "WAIT" recommendation acceptable to the business at all, given it defers revenue? | **Revisited and reversed in config v4.** The original answer was "keep it — it is the product's credibility". It was retired not for the revenue reason but for an evidential one: the system has no reliable rate history to forecast from | Product positioning                   |
 
 ---
 

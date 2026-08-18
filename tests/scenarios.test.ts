@@ -55,14 +55,6 @@ describe('scenario suite (docs/mvp/07-testing.md §2)', () => {
         });
       }
 
-      if (e.waitBlockedByIncludes !== undefined) {
-        it(`blocks WAIT via ${e.waitBlockedByIncludes.join(', ')}`, () => {
-          for (const guard of e.waitBlockedByIncludes ?? []) {
-            expect(analysis.waitBlockedBy).toContain(guard);
-          }
-        });
-      }
-
       if (e.reasonCodesInclude !== undefined) {
         it('surfaces the expected reasons', () => {
           for (const code of e.reasonCodesInclude ?? []) {
@@ -89,10 +81,10 @@ describe('scenario suite (docs/mvp/07-testing.md §2)', () => {
         }
       });
 
-      it('never emits WAIT below the confidence floor', () => {
-        if (analysis.recommendation === 'WAIT') {
-          expect(analysis.confidence).toBeGreaterThanOrEqual(DEFAULT_CONFIG.rec.wait.confidenceMin);
-        }
+      // WAIT was retired in config v4: no scenario, at any confidence, may
+      // produce a verdict about what the price will do next.
+      it('never emits WAIT', () => {
+        expect(analysis.recommendation as string).not.toBe('WAIT');
       });
     });
   }

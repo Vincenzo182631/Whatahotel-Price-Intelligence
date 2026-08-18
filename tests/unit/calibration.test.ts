@@ -8,7 +8,6 @@ import {
   pearson,
   scoreDistribution,
   scoreStability,
-  waitSuccess,
   type Trial,
 } from '../../packages/calibration/src/metrics.js';
 import { computeLoss, normalize, type WeightVector } from '../../packages/calibration/src/sweep.js';
@@ -101,12 +100,12 @@ describe('demand is no longer a scoring factor', () => {
     expect(codes).not.toContain('F5');
   });
 
-  it('still blocks WAIT through guard W4, which is genuinely independent of F1', () => {
+  it('still moves the recommendation through gate G3, independently of F1', () => {
     // Demand keeps doing real work — it just acts on the recommendation rather
     // than on the score, so it cannot double-count the percentile.
     const base = {
       query: makeQuery({ checkIn: checkInWithLeadDays(60) }),
-      // A rate well above typical: the score is poor, so WAIT is on the table.
+      // A rate well above typical, so the score is poor either way.
       current: makeCurrent(88000),
       baseline: makeBaseline({
         n: 80,
@@ -130,9 +129,10 @@ describe('demand is no longer a scoring factor', () => {
 
     // Identical score — demand no longer touches it.
     expect(pressured.analysis.dealScore).toBe(quiet.analysis.dealScore);
-    // But the guard fires and removes WAIT.
-    expect(pressured.analysis.waitBlockedBy).toContain('W4');
-    expect(pressured.analysis.recommendation).not.toBe('WAIT');
+    // And it reaches the decision trace, which is where G3 reads it.
+    expect(pressured.analysis.decisionTrace.demandPressure).toBeGreaterThan(
+      quiet.analysis.decisionTrace.demandPressure as number,
+    );
   });
 });
 
@@ -267,35 +267,9 @@ describe('BOOK_NOW regret', () => {
   });
 });
 
-describe('WAIT success', () => {
-  it('explains an empty sample rather than reporting a failure', () => {
-    const result = waitSuccess(
-      repeat(50, () => trial({ recommendation: 'CONSIDER' })),
-      DEFAULT_CONFIG,
-    );
-    expect(result.status).toBe('INSUFFICIENT_SAMPLE');
-    expect(result.detail).toContain('under-recommend WAIT');
-  });
-
-  it('fails when waiting rarely paid off', () => {
-    const waits = repeat(60, (i) =>
-      trial({
-        recommendation: 'WAIT',
-        currentNightlyMinor: 70000,
-        outcome: {
-          nObservations: 4,
-          minNightlyMinor: i < 12 ? 60000 : 71000,
-          maxNightlyMinor: 78000,
-          lastNightlyMinor: 74000,
-          horizonEnd: '2026-09-30T00:00:00Z',
-        },
-      }),
-    );
-    const result = waitSuccess(waits, DEFAULT_CONFIG);
-    expect(result.status).toBe('FAIL');
-    expect(result.detail).toContain('never got cheaper');
-  });
-});
+// The WAIT success metric went with WAIT itself in config v4: with no such
+// recommendation there are no trials to measure, and a metric that can only
+// ever report an empty sample is noise in a calibration report.
 
 describe('score stability', () => {
   const series = (deltas: readonly number[], priceMovePct = 0) =>
@@ -472,12 +446,12 @@ describe('loss', () => {
         metric('score_distribution', config.calibration.targetScoreMean, 'PASS'),
         metric('factor_correlation', 0.1, 'PASS'),
         metric('book_now_regret', 0.0, 'PASS'),
-        metric('wait_success', 1.0, 'PASS'),
         metric('coverage', 0.0, 'PASS'),
       ],
       config,
     );
     expect(loss.value).toBe(0);
-    expect(loss.terms).toBe(6);
+    // Four metrics, with book_now_regret counted twice.
+    expect(loss.terms).toBe(5);
   });
 });

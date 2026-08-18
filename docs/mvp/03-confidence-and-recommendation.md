@@ -1,4 +1,12 @@
-# 03 — Confidence Score and the BOOK NOW / WAIT Engine
+# 03 — Confidence Score and the Recommendation Engine
+
+> **WAIT was retired in config v4.** This document originally specified a fourth
+> output, `WAIT`, defended by eight guards, a boundary assertion and a database
+> CHECK. That machinery was sound; the output was not. "It may be worth waiting"
+> is a claim about tomorrow's price, and this system has neither the rate history
+> to support one nor the mandate to make one. §4 below records what the engine
+> does now and what the guards used to do, because the reasoning is still the
+> reasoning — it just argues for removing the verdict rather than fencing it.
 
 Covers proposal requests 3 and 4.
 
@@ -82,7 +90,7 @@ f_volatility = 1 − min( 1, cv_hist / VOLATILITY_CV_MAX )        -- default 0.3
 f_volatility = max( f_volatility, VOLATILITY_FLOOR )            -- default 0.25
 ```
 
-The floor exists because high volatility does not make the percentile _meaningless_ — a rate at the 5th percentile of a volatile distribution is still genuinely low. It makes it less durable, which is a confidence question, not a validity question. Note that `f_volatility` also directly blocks WAIT (§3) — the recommendation is where volatility does its real damage.
+The floor exists because high volatility does not make the percentile _meaningless_ — a rate at the 5th percentile of a volatile distribution is still genuinely low. It makes it less durable, which is a confidence question, not a validity question. `f_volatility` used to block WAIT outright as guard W6; with WAIT retired it acts on confidence alone.
 
 ### 2.6 `f_match` — room and rate matching quality
 
@@ -145,28 +153,28 @@ Confidence = 100 × baseline_level_multiplier × Π ( fᵢ ^ (wᵢ / Σw) )
 | `f_coverage`     | 0.10                    | Only when F2 ran                                      |
 | `f_completeness` | applied as a multiplier | Prevents thin scores presenting as thick ones         |
 
-**Weighted geometric mean, not arithmetic.** This is the key design choice. With an arithmetic mean, five strong factors mask one catastrophic one: data three weeks stale (`f_freshness` = 0.05) alongside five factors at 0.9 still averages ≈ 0.76 — which would let the system confidently recommend action on a price that no longer exists. Under a geometric mean the same inputs yield ≈ 0.45, and the recommendation engine correctly refuses to say WAIT.
+**Weighted geometric mean, not arithmetic.** This is the key design choice. With an arithmetic mean, five strong factors mask one catastrophic one: data three weeks stale (`f_freshness` = 0.05) alongside five factors at 0.9 still averages ≈ 0.76 — which would let the system confidently recommend action on a price that no longer exists. Under a geometric mean the same inputs yield ≈ 0.45, and gate G0 correctly reports INSUFFICIENT_DATA instead.
 
 The principle: **confidence should be limited by its weakest evidence, not rescued by its strongest.** Any single factor approaching zero should approach zero overall, and only the geometric mean has that property.
 
 ### Confidence bands
 
-| Band         | Range  | Meaning                                              |
-| ------------ | ------ | ---------------------------------------------------- |
-| High         | 75–100 | Full recommendation, full detail                     |
-| Moderate     | 55–74  | Recommendation shown with caveats                    |
-| Low          | 40–54  | Score band shown, BOOK_NOW/CONSIDER only, never WAIT |
-| Insufficient | 0–39   | No score shown → `INSUFFICIENT_DATA`                 |
+| Band         | Range  | Meaning                                |
+| ------------ | ------ | -------------------------------------- |
+| High         | 75–100 | Full recommendation, full detail       |
+| Moderate     | 55–74  | Recommendation shown with caveats      |
+| Low          | 40–54  | Score band shown, BOOK_NOW or CONSIDER |
+| Insufficient | 0–39   | No score shown → `INSUFFICIENT_DATA`   |
 
 ---
 
 ## 4. The recommendation engine
 
-Four outputs: `BOOK_NOW`, `WAIT`, `CONSIDER`, `INSUFFICIENT_DATA`.
+Three outputs: `BOOK_NOW`, `CONSIDER`, `INSUFFICIENT_DATA`.
 
-The engine is a **strictly ordered gate sequence. First match wins.** Ordering is the mechanism that makes the safety rules unconditional — the never-WAIT guards are evaluated before any path that could emit WAIT, so no combination of inputs can route around them.
+The engine is a **strictly ordered gate sequence. First match wins.**
 
-Every evaluation records which gate fired and every guard that tripped, in `analysis.decision_trace`.
+Every evaluation records which gate fired, in `analysis.decision_trace`.
 
 ### Gate G0 — data sufficiency → `INSUFFICIENT_DATA`
 
@@ -184,28 +192,24 @@ Fires if **any** of:
 
 Output carries reason codes explaining _which_ data is missing — the UI must say "we don't have enough history for this room yet", never fail silently or show a fabricated score.
 
-### Gate G1 — never-WAIT guards
+### Gate G1 — retired
 
-Evaluated next, **before** any recommendation is chosen. Each sets `wait_blocked = true` with a reason code. These do not by themselves produce an output; they remove WAIT from the set of possible outputs.
+G1 held eight never-WAIT guards. Each removed `WAIT` from the set of possible outputs before any recommendation was chosen:
 
-| #   | Guard                                                           | Default | Why                                                                               |
-| --- | --------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------- |
-| W1  | Confidence < `WAIT_MIN_CONFIDENCE`                              | **70**  | **The mandatory rule.** Telling someone to wait on weak evidence risks real money |
-| W2  | `lead_time_days` < `WAIT_MIN_LEAD_DAYS`                         | 10      | Too close to the stay for a decline to plausibly materialize                      |
-| W3  | 7-day trend rising ≥ `WAIT_RISE_BLOCK_PCT`                      | 2%      | Prices are moving against the customer                                            |
-| W4  | `demand_pressure` ≥ `WAIT_DEMAND_BLOCK`                         | 0.60    | Event or sellout pressure — rates will not soften                                 |
-| W5  | Scarcity: `rooms_left` ≤ `SCARCITY_BLOCK` (where U11 available) | 3       | The room may simply be gone                                                       |
-| W6  | `f_volatility` < `WAIT_MIN_VOL_CONFIDENCE`                      | 0.40    | Too erratic to time                                                               |
-| W7  | Only non-refundable inventory available                         | —       | No downside protection if wrong                                                   |
-| W8  | Baseline level ≥ L3                                             | —       | Baseline too loose to assert a rate is high                                       |
+| #   | Guard                                   | Default | Why                                                          |
+| --- | --------------------------------------- | ------- | ------------------------------------------------------------ |
+| W1  | Confidence < 70                         | **70**  | Telling someone to wait on weak evidence risks real money    |
+| W2  | `lead_time_days` < 10                   | 10      | Too close to the stay for a decline to plausibly materialize |
+| W3  | 7-day trend rising ≥ 2%                 | 2%      | Prices are moving against the customer                       |
+| W4  | `demand_pressure` ≥ 0.60                | 0.60    | Event or sellout pressure                                    |
+| W5  | Scarcity: `rooms_left` ≤ 3              | 3       | The room may simply be gone                                  |
+| W6  | `f_volatility` < 0.40                   | 0.40    | Too erratic to time                                          |
+| W7  | Only non-refundable inventory available | —       | No downside protection if wrong                              |
+| W8  | Baseline level ≥ L3                     | —       | Baseline too loose to assert a rate is high                  |
 
-**W1 is the hard requirement.** It is implemented in three independent places so it cannot regress:
+Read the list as a whole and it makes the case against the output it was defending: eight independent conditions each of which meant "we cannot responsibly predict this". The honest conclusion is that we cannot responsibly predict it at all.
 
-1. Gate G1 itself;
-2. an assertion at the engine's return boundary — `if (rec === WAIT && confidence < WAIT_MIN_CONFIDENCE) throw`;
-3. a property-based test over generated inputs asserting the invariant holds universally (doc 07 §3).
-
-Defence in depth is warranted because this is the rule with the clearest path to customer harm.
+Two of the values survive because they do non-predictive work. `rooms_left ≤ 3` is now `rec.book.urgency_scarcity_rooms`, feeding gate G3 — scarcity observed today is a fact about inventory, not a forecast. `demand_pressure ≥ 0.60` likewise reaches G3 as `rec.book.urgency_demand`. Everything else is gone, including the `SHORT_LEAD_TIME` caveat, whose text ("these dates are close enough that rates are unlikely to soften") was itself a forecast.
 
 ### Gate G2 — strong deal → `BOOK_NOW`
 
@@ -213,7 +217,7 @@ Defence in depth is warranted because this is the rule with the clearest path to
 deal_score ≥ BOOK_SCORE_MIN (72)  AND  confidence ≥ BOOK_MIN_CONFIDENCE (60)
 ```
 
-The confidence bar for BOOK_NOW (60) is deliberately lower than for WAIT (70). The asymmetry is intentional: booking a rate at the 15th percentile with moderate evidence has bounded downside — the customer gets a demonstrably below-average rate and, on a refundable plan, can rebook. Waiting has unbounded downside: the rate can rise, or the room can vanish. **Our error costs are asymmetric, so our thresholds are too.**
+The confidence bar of 60 sits below the score bar's implied strictness on purpose: booking a rate at the 15th percentile with moderate evidence has bounded downside — the customer gets a demonstrably below-average rate and, on a refundable plan, can rebook.
 
 ### Gate G3 — urgency → `BOOK_NOW`
 
@@ -222,22 +226,16 @@ deal_score ≥ BOOK_URGENCY_SCORE (60)
 AND confidence ≥ BOOK_MIN_CONFIDENCE (60)
 AND ( trend_7d ≥ URGENCY_RISE_PCT (3%)
       OR demand_pressure ≥ URGENCY_DEMAND (0.60)
-      OR rooms_left ≤ SCARCITY_BLOCK (3) )
+      OR rooms_left ≤ URGENCY_SCARCITY_ROOMS (3) )
 ```
 
 A merely decent rate that is actively climbing is worth acting on. Reason code distinguishes G2 from G3 so the explanation says "good rate _and_ rising" rather than "excellent rate".
 
-### Gate G4 — poor deal, safe to wait → `WAIT`
+### Gate G4 — retired
 
-```
-NOT wait_blocked
-AND deal_score ≤ WAIT_SCORE_MAX (42)
-AND confidence ≥ WAIT_MIN_CONFIDENCE (70)      -- redundant with W1, intentionally restated
-AND trend_7d ≤ WAIT_MAX_TREND_PCT (0%)          -- flat or falling
-AND lead_time_days ≥ WAIT_MIN_LEAD_DAYS (10)    -- redundant with W2, intentionally restated
-```
+G4 was the only path to `WAIT`: a poor score, high confidence, a flat-or-falling trend, a long lead time, and no guard tripped. Its number is not reused — stored analyses record the gate that produced them, and renumbering would silently reassign the history.
 
-The redundancy with G1 is deliberate belt-and-braces on the only genuinely risky output.
+Inputs that used to reach G4 now fall through to G5 and read as `CONSIDER`. The score and the reason codes are unchanged; only the sentence at the end differs. "This rate is 31% above typical for this room" is exactly as true as it was, and it is the part that was ever evidence.
 
 ### Gate G5 — default → `CONSIDER`
 
@@ -256,15 +254,15 @@ Illustrative outcomes at default thresholds:
 | 64         | 72          | +5%      | low    | 40d  | **BOOK_NOW**          | G3                             |
 | 64         | 72          | flat     | low    | 40d  | **CONSIDER**          | G5                             |
 | 88         | 45          | flat     | low    | 40d  | **CONSIDER**          | G5 — conf < 60 blocks BOOK_NOW |
-| 30         | 82          | −4%      | low    | 45d  | **WAIT**              | G4                             |
-| 30         | 62          | −4%      | low    | 45d  | **CONSIDER**          | G5 — **W1 blocks WAIT**        |
-| 30         | 82          | −4%      | low    | 5d   | **CONSIDER**          | G5 — W2 blocks WAIT            |
-| 25         | 85          | +3%      | low    | 50d  | **CONSIDER**          | G5 — W3 blocks WAIT            |
-| 28         | 80          | −5%      | 0.8    | 40d  | **CONSIDER**          | G5 — W4 blocks WAIT            |
+| 30         | 82          | −4%      | low    | 45d  | **CONSIDER**          | G5 — was WAIT via G4 before v4 |
+| 30         | 62          | −4%      | low    | 45d  | **CONSIDER**          | G5                             |
+| 30         | 82          | −4%      | low    | 5d   | **CONSIDER**          | G5                             |
+| 25         | 85          | +3%      | low    | 50d  | **CONSIDER**          | G5                             |
+| 28         | 80          | −5%      | 0.8    | 40d  | **CONSIDER**          | G5                             |
 | 95         | 35          | —        | —      | —    | **INSUFFICIENT_DATA** | G0                             |
 | any        | any (n = 7) | —        | —      | —    | **INSUFFICIENT_DATA** | G0                             |
 
-Note rows 7–10: a poor score with good confidence still does not yield WAIT whenever any guard trips. **The system is designed to under-recommend WAIT.** That is the correct bias — the cost of a wrong WAIT is a customer who loses a room or pays more and blames WhataHotel; the cost of an unnecessary CONSIDER is a customer who reads one more sentence.
+Rows 6–10 all land on `CONSIDER` regardless of confidence, lead time or trend. That is the retirement working: a poor rate is reported as a poor rate, and nothing is said about what it will do next.
 
 ---
 
@@ -273,13 +271,12 @@ Note rows 7–10: a poor score with good confidence still does not yield WAIT wh
 Every evaluation returns:
 
 ```
-recommendation      : BOOK_NOW | WAIT | CONSIDER | INSUFFICIENT_DATA
+recommendation      : BOOK_NOW | CONSIDER | INSUFFICIENT_DATA
 deal_score          : 0–100 | null        (null when INSUFFICIENT_DATA)
 deal_score_band     : EXCELLENT | GOOD | FAIR | BELOW_AVERAGE | POOR | null
 confidence          : 0–100
 confidence_band     : HIGH | MODERATE | LOW | INSUFFICIENT
-gate_fired          : G0 | G2 | G3 | G4 | G5
-wait_blocked_by     : [W1, W4, …]
+gate_fired          : G0 | G2 | G3 | G5
 reason_codes        : [ … ]                (ordered by contribution, doc 04)
 factors             : per-factor breakdown with availability, raw value, sub-score, weight
 data_as_of          : timestamptz          (observation time of the current rate)
@@ -287,4 +284,4 @@ baseline_level      : L0–L4
 config_version      : int
 ```
 
-`gate_fired`, `wait_blocked_by` and `factors` are persisted for every analysis. They are what makes a customer complaint answerable months later, and they are the raw material for the calibration runbook in doc 02 §4.
+`gate_fired` and `factors` are persisted for every analysis. They are what makes a customer complaint answerable months later, and they are the raw material for the calibration runbook in doc 02 §4.

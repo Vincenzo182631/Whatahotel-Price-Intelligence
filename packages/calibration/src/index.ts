@@ -9,7 +9,6 @@ export {
   pearson,
   scoreDistribution,
   scoreStability,
-  waitSuccess,
 } from './metrics.js';
 export type { MetricResult, MetricStatus, Trial } from './metrics.js';
 

@@ -2,7 +2,7 @@ export * from './types.js';
 export * from './money.js';
 export * from './stats.js';
 
-export { DEFAULT_CONFIG, ENGINE_VERSION, WAIT_CONFIDENCE_HARD_FLOOR } from './config/defaults.js';
+export { DEFAULT_CONFIG, ENGINE_VERSION } from './config/defaults.js';
 export type { ScoringConfig } from './config/defaults.js';
 export {
   ConfigValidationError,
@@ -62,6 +62,39 @@ export type {
 } from './baseline/ladder.js';
 
 export { bandForScore, composeDealScore } from './scoring/dealScore.js';
+
+// ── the live-market model (no history, no prediction) ──────────────────────
+export {
+  computeCalendarDelta,
+  computeCompSetIndex,
+  computeCompression,
+} from './scoring/liveSignals.js';
+export type {
+  CalendarBand,
+  CalendarResult,
+  CompSetResult,
+  CompetitorRate,
+  CompressionBand,
+  CompressionInput,
+  CompressionResult,
+  CsiBand,
+  LiveSignal,
+  LiveSignalCode,
+  LiveSignalUnavailableReason,
+  NearbyDateRate,
+} from './scoring/liveSignals.js';
+export {
+  assessLiveConfidence,
+  composeLiveScore,
+  liveBandLabel,
+  liveVerdictLabel,
+} from './scoring/liveScore.js';
+export type {
+  LiveBand,
+  LiveConfidence,
+  LiveScoreResult,
+  LiveVerdict,
+} from './scoring/liveScore.js';
 export {
   computeDemandPressure,
   computeF1,
@@ -84,12 +117,7 @@ export {
 } from './confidence/confidence.js';
 export type { ConfidenceInput } from './confidence/confidence.js';
 
-export {
-  WaitConfidenceViolation,
-  assertWaitInvariant,
-  evaluateGuards,
-  recommend,
-} from './recommendation/engine.js';
+export { recommend } from './recommendation/engine.js';
 export type { RecommendationInput } from './recommendation/engine.js';
 
 export { deriveCaveats, deriveReasons } from './explanation/reasonCodes.js';

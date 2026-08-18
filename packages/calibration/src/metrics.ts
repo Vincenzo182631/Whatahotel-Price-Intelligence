@@ -246,48 +246,13 @@ function beaten(t: Trial, dropFraction: number): boolean {
   return low < t.currentNightlyMinor * (1 - dropFraction);
 }
 
-// ── 4 · WAIT success ───────────────────────────────────────────────────────
-
-export function waitSuccess(trials: readonly Trial[], config: ScoringConfig): MetricResult {
-  const drop = config.calibration.materialDropPct / 100;
-  const candidates = measurable(trials).filter((t) => t.recommendation === 'WAIT');
-  const target = `≥ ${(config.calibration.waitSuccessRateMin * 100).toFixed(0)}%`;
-
-  if (candidates.length < config.calibration.minSampleSize) {
-    return {
-      key: 'wait_success',
-      title: 'WAIT success rate',
-      status: 'INSUFFICIENT_SAMPLE',
-      value: candidates.length === 0 ? null : rate(candidates, (t) => beaten(t, drop)),
-      target,
-      sampleSize: candidates.length,
-      detail:
-        candidates.length === 0
-          ? 'No measurable WAIT recommendations in this sample. The engine is designed to ' +
-            'under-recommend WAIT, so a small sample here is expected rather than alarming.'
-          : `Only ${candidates.length} measurable WAIT trials; need ${config.calibration.minSampleSize}.`,
-    };
-  }
-
-  const succeeded = candidates.filter((t) => beaten(t, drop));
-  const harmed = candidates.filter(
-    (t) => (t.outcome.minNightlyMinor as number) >= t.currentNightlyMinor,
-  );
-  const value = succeeded.length / candidates.length;
-
-  return {
-    key: 'wait_success',
-    title: 'WAIT success rate',
-    status: value < config.calibration.waitSuccessRateMin ? 'FAIL' : 'PASS',
-    value: Math.round(value * 1000) / 1000,
-    target,
-    sampleSize: candidates.length,
-    detail:
-      `${succeeded.length} of ${candidates.length} WAIT recommendations were followed by a ` +
-      `material drop. ${harmed.length} never got cheaper — those are the ones that cost a ` +
-      `customer money, and they matter more than the average.`,
-  };
-}
+// ── 4 · (retired) ──────────────────────────────────────────────────────────
+//
+// This slot held the WAIT success rate: of the trials where the engine said
+// WAIT, how many were followed by a material price drop. WAIT was retired in
+// config v4 — the engine no longer makes a claim about future price — so the
+// metric has nothing to measure. The numbering is left with a hole rather than
+// closed up, because past calibration reports cite metrics by number.
 
 // ── 5 · score stability ────────────────────────────────────────────────────
 
@@ -441,7 +406,6 @@ export function allMetrics(trials: readonly Trial[], config: ScoringConfig): Met
     scoreDistribution(trials, config),
     factorCorrelation(trials, config),
     bookNowRegret(trials, config),
-    waitSuccess(trials, config),
     scoreStability(trials, config),
     coverage(trials, config),
   ];

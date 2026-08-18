@@ -143,7 +143,6 @@ export const priceIntelligenceHandler: Handler = async (_req, res, ctx) => {
       // Which gate fired: the UI uses it to explain WHY, and "good rate and
       // rising" (G3) is a materially different message from "excellent rate" (G2).
       gate_fired: analysis.gateFired,
-      wait_blocked_by: analysis.waitBlockedBy,
     },
 
     baseline: {
@@ -240,7 +239,6 @@ export const priceIntelligenceHandler: Handler = async (_req, res, ctx) => {
 
 const LABELS: Record<string, string> = {
   BOOK_NOW: 'Book now',
-  WAIT: 'Consider waiting',
   CONSIDER: 'Worth considering',
   INSUFFICIENT_DATA: 'Not enough data yet',
 };

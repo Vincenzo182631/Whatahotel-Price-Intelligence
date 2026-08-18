@@ -181,7 +181,7 @@ At constant demand pressure the correlation with F1 is exactly 1.0; the calibrat
 
 **Demand did not go away — it moved to where it is genuinely independent.** It continues to drive:
 
-- **Guard W4**, which blocks WAIT when demand pressure ≥ 0.60. Rates do not soften into a sell-out, and recommending a wait there actively harms the customer.
+- **Gate G3**, where demand pressure ≥ 0.60 routes a merely decent rate to BOOK_NOW. (It also drove guard W4, which blocked WAIT; WAIT was retired in config v4.)
 - **Gate G3**, the urgency path to BOOK_NOW.
 - **A displayed reason** (`EVENT_DRIVEN_DEMAND`), so the customer is still told _why_ a rate is elevated.
 
@@ -264,7 +264,7 @@ The priors follow a single rule: **weight tracks a factor's reliability and its 
 1. **Distribution check** — scores across a representative query sample should be broadly centred near 50 with usable spread. A mean far off 50, or mass piled at the extremes, indicates a mis-set gain constant.
 2. **Factor correlation matrix** — any pair with |r| > 0.6 is double-counting; fold one into the other. **F1/F5 was found this way and F5 was removed in v2**; F1/F4 remains the outstanding suspect.
 3. **Retrospective accuracy** — for stays where later observations exist, did BOOK_NOW rates in fact prove cheaper than the subsequent 14-day minimum? Track the rate at which a BOOK_NOW was beaten (`book_now_regret_rate`); target below `REGRET_TARGET` (10%).
-4. **WAIT validation** — for WAIT recommendations, did the price actually fall within 14 days? Track `wait_success_rate`; below 60% means the WAIT thresholds are too loose and should tighten.
+4. _(retired in config v4)_ — this slot held WAIT validation: for WAIT recommendations, did the price actually fall within 14 days? With no such recommendation there is nothing to measure. The metric numbering keeps the hole so older calibration reports stay readable.
 5. **Score stability** — the same query re-run a day later should not swing more than `STABILITY_MAX_DELTA` (10 points) absent a real price change. Instability signals a starved baseline.
 
 Every one of these is measurable from data the system already persists (doc 05 `analysis` table), which is why the analysis record stores the full factor breakdown and config version.

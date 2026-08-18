@@ -135,6 +135,13 @@
           <label for="adults">Adults</label>
           <input type="number" id="adults" value="2" min="1" max="10" />
         </div>
+        <div>
+          <label for="model">Model</label>
+          <select id="model">
+            <option value="live">Live market (comp set + dates)</option>
+            <option value="history">Accrued history</option>
+          </select>
+        </div>
         <div class="full">
           <label for="room">Room type</label>
           <select id="room">
@@ -154,6 +161,7 @@
       const form = document.getElementById('controls');
       const hotelSelect = document.getElementById('hotel');
       const roomSelect = document.getElementById('room');
+      const modelSelect = document.getElementById('model');
       const checkIn = document.getElementById('checkIn');
       const checkOut = document.getElementById('checkOut');
       const adults = document.getElementById('adults');
@@ -286,6 +294,7 @@
           checkOut: checkOut.value,
           adults: Number(adults.value),
           roomTypeId: roomSelect.value || null,
+          model: modelSelect.value,
         });
       }
 
@@ -294,6 +303,7 @@
         analyze();
       });
       hotelSelect.addEventListener('change', loadRooms);
+      modelSelect.addEventListener('change', analyze);
       [checkIn, checkOut, adults].forEach((input) => input.addEventListener('change', loadRooms));
 
       loadProvenance();
