@@ -75,6 +75,24 @@ export function backoffHours(consecutiveFailures: number, spec: GridSpec): numbe
 }
 
 /**
+ * How far (in days) a tracked stay may sit from a wanted grid date and still
+ * count as covering it.
+ *
+ * The grid's lead times are relative to today, and no two of them differ by
+ * one day — so at every UTC-day rollover the wanted dates are DISJOINT from
+ * yesterday's, and an exact-date match declared the entire grid untracked.
+ * Measured on 2026-08-19, the first rollover after go-live: the run planned
+ * "690 new, 231 due" and truncated 421 stays at the --limit, starving the
+ * HOT-tier refreshes it exists to protect.
+ *
+ * ±1 is the smallest tolerance under which yesterday's grid covers today's
+ * (the grid moves one day per day), and it is safe because adjacent grid
+ * leads are at least 3 days apart: a single tracked stay can never satisfy
+ * two distinct wanted dates at once.
+ */
+export const GRID_COVERAGE_TOLERANCE_DAYS = 1;
+
+/**
  * Stays in the target grid that nothing is tracking yet, minus those currently
  * backed off.
  *
@@ -101,7 +119,9 @@ export async function findMissingGridStays(
        FROM rate_observation
       WHERE check_in >= CURRENT_DATE`,
   );
-  const seen = new Set(tracked.map((r) => `${r.hotel_id}|${r.check_in}|${r.nights}|${r.adults}`));
+  const seen = new Set<string>(
+    tracked.map((r) => `${r.hotel_id}|${r.check_in}|${r.nights}|${r.adults}`),
+  );
 
   const { rows: attempts } = await client.query(
     `SELECT hotel_id, to_char(check_in,'YYYY-MM-DD') AS check_in, nights, adults,
@@ -119,16 +139,55 @@ export async function findMissingGridStays(
     }
   }
 
+  return planGridTopUp(
+    hotels.map((h) => ({ id: h.id as number, wahHotelId: h.wah_hotel_id as string })),
+    seen,
+    backedOff,
+    spec,
+    now,
+  );
+}
+
+/**
+ * The pure planning core of `findMissingGridStays`, split out so the coverage
+ * rule is testable without a database.
+ *
+ * Coverage is tolerant (`GRID_COVERAGE_TOLERANCE_DAYS`): a wanted date counts
+ * as covered when a tracked stay of the same hotel/nights/adults sits within
+ * the tolerance. Backoff stays EXACT-date: it describes attempts on a specific
+ * stay, and a neighbour date having failed is not evidence about this one.
+ * (Known limit, accepted: because wanted dates shift daily, a stay that never
+ * prices re-enters as a fresh key each day and its failure count restarts —
+ * the per-day cost is bounded at one attempt per run and rule 16's counter
+ * still stops same-day retries, but backoff never compounds across days.)
+ */
+export function planGridTopUp(
+  hotels: readonly { readonly id: number; readonly wahHotelId: string }[],
+  seen: ReadonlySet<string>,
+  backedOff: ReadonlySet<string>,
+  spec: GridSpec = DEFAULT_GRID_SPEC,
+  now: Date = new Date(),
+): GridStay[] {
+  const dayMs = 86_400_000;
   const out: GridStay[] = [];
   for (const hotel of hotels) {
     for (const lead of gridLeadDays(spec)) {
-      const checkIn = new Date(now.getTime() + lead * 86_400_000).toISOString().slice(0, 10);
+      const checkInMs = now.getTime() + lead * dayMs;
+      const checkIn = new Date(checkInMs).toISOString().slice(0, 10);
       for (const nights of spec.nights) {
-        const key = `${hotel.id}|${checkIn}|${nights}|${spec.adults}`;
-        if (seen.has(key) || backedOff.has(key)) continue;
+        if (backedOff.has(`${hotel.id}|${checkIn}|${nights}|${spec.adults}`)) continue;
+        let covered = false;
+        for (let d = -GRID_COVERAGE_TOLERANCE_DAYS; d <= GRID_COVERAGE_TOLERANCE_DAYS; d++) {
+          const near = new Date(checkInMs + d * dayMs).toISOString().slice(0, 10);
+          if (seen.has(`${hotel.id}|${near}|${nights}|${spec.adults}`)) {
+            covered = true;
+            break;
+          }
+        }
+        if (covered) continue;
         out.push({
-          hotelId: hotel.id as number,
-          wahHotelId: hotel.wah_hotel_id as string,
+          hotelId: hotel.id,
+          wahHotelId: hotel.wahHotelId,
           checkIn,
           nights,
           adults: spec.adults,
