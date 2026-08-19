@@ -1,0 +1,90 @@
+# Deploy the API and widget to Vercel.
+#
+# Manual dispatch. The Vercel dashboard's git integration can do this on every
+# push once the repo is imported there — this workflow exists so a deploy can
+# also be driven from here, the same way everything else in this repo is: add
+# the named secrets, dispatch, read the summary.
+#
+# Required repository secrets (all three from the Vercel dashboard):
+#   VERCEL_TOKEN       Account Settings → Tokens
+#   VERCEL_ORG_ID      Project Settings → General (team/org id)
+#   VERCEL_PROJECT_ID  Project Settings → General
+#
+# The runtime environment (DATABASE_URL with the -pooler host, CORS_ORIGIN)
+# lives in the Vercel project's own env settings, not here — `vercel pull`
+# fetches it at build time. Secrets are checked by name, never enumerated:
+# enumerating the secret store is what tripped GitHub's malicious-workflow
+# detector on the database-setup workflow.
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      production:
+        description: 'Deploy to production (unchecked = preview deployment)'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Check the Vercel secrets are set
+        env:
+          HAS_TOKEN: ${{ secrets.VERCEL_TOKEN != '' }}
+          HAS_ORG: ${{ secrets.VERCEL_ORG_ID != '' }}
+          HAS_PROJECT: ${{ secrets.VERCEL_PROJECT_ID != '' }}
+        run: |
+          missing=""
+          [ "$HAS_TOKEN" = "true" ]   || missing="$missing VERCEL_TOKEN"
+          [ "$HAS_ORG" = "true" ]     || missing="$missing VERCEL_ORG_ID"
+          [ "$HAS_PROJECT" = "true" ] || missing="$missing VERCEL_PROJECT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing — see docs/runbooks/deploy.md."
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: Pull the Vercel project settings and environment
+        run: npx vercel pull --yes --environment=${{ inputs.production && 'production' || 'preview' }} --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build
+        run: npx vercel build ${{ inputs.production && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy
+        run: |
+          set -o pipefail
+          npx vercel deploy --prebuilt ${{ inputs.production && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }} | tee deploy-url.txt
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo '## Deploy'
+            echo
+            echo "Mode: ${{ inputs.production && 'production' || 'preview' }}"
+            echo
+            if [ -s deploy-url.txt ]; then
+              echo "Deployed to: $(tail -1 deploy-url.txt)"
+            else
+              echo '(no deployment URL captured)'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
