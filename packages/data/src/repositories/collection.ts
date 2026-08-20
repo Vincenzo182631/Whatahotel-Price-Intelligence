@@ -124,7 +124,7 @@ export async function findMissingGridStays(
   );
 
   const { rows: attempts } = await client.query(
-    `SELECT hotel_id, to_char(check_in,'YYYY-MM-DD') AS check_in, nights, adults,
+    `SELECT hotel_id, lead_days, nights, adults,
             consecutive_failures,
             EXTRACT(EPOCH FROM (now() - last_attempt_at)) / 3600 AS hours_since
        FROM collection_attempt
@@ -135,7 +135,7 @@ export async function findMissingGridStays(
     const failures = Number(row.consecutive_failures);
     const hoursSince = Number(row.hours_since);
     if (hoursSince < backoffHours(failures, spec)) {
-      backedOff.add(`${row.hotel_id}|${row.check_in}|${row.nights}|${row.adults}`);
+      backedOff.add(`${row.hotel_id}|${row.lead_days}|${row.nights}|${row.adults}`);
     }
   }
 
@@ -154,12 +154,11 @@ export async function findMissingGridStays(
  *
  * Coverage is tolerant (`GRID_COVERAGE_TOLERANCE_DAYS`): a wanted date counts
  * as covered when a tracked stay of the same hotel/nights/adults sits within
- * the tolerance. Backoff stays EXACT-date: it describes attempts on a specific
- * stay, and a neighbour date having failed is not evidence about this one.
- * (Known limit, accepted: because wanted dates shift daily, a stay that never
- * prices re-enters as a fresh key each day and its failure count restarts —
- * the per-day cost is bounded at one attempt per run and rule 16's counter
- * still stops same-day retries, but backoff never compounds across days.)
+ * the tolerance. Backoff is keyed by GRID SLOT — `hotel|lead|nights|adults` —
+ * because the slot is what gets re-requested daily; the date is just the
+ * slot's current position. Keyed by date, a never-pricing stay re-entered as
+ * a fresh key each day, its failure count restarted, and the backoff could
+ * never outlast the 6-hour cron (migration 0010 has the measured incident).
  */
 export function planGridTopUp(
   hotels: readonly { readonly id: number; readonly wahHotelId: string }[],
@@ -175,7 +174,7 @@ export function planGridTopUp(
       const checkInMs = now.getTime() + lead * dayMs;
       const checkIn = new Date(checkInMs).toISOString().slice(0, 10);
       for (const nights of spec.nights) {
-        if (backedOff.has(`${hotel.id}|${checkIn}|${nights}|${spec.adults}`)) continue;
+        if (backedOff.has(`${hotel.id}|${lead}|${nights}|${spec.adults}`)) continue;
         let covered = false;
         for (let d = -GRID_COVERAGE_TOLERANCE_DAYS; d <= GRID_COVERAGE_TOLERANCE_DAYS; d++) {
           const near = new Date(checkInMs + d * dayMs).toISOString().slice(0, 10);
@@ -229,6 +228,13 @@ export interface AttemptOutcome {
 /**
  * Record what each attempted stay did.
  *
+ * Keyed by grid slot (`lead_days` computed at write time), so a stay that
+ * never prices keeps ONE row whose failure count accumulates as the grid
+ * rolls, instead of a fresh row per date whose count restarts daily.
+ * `check_in` is carried as data — "the date last attempted" — for the
+ * runbook's diagnostics and for `findMarketCompression`, which reads
+ * sold-out evidence by exact stay date.
+ *
  * A success resets `consecutive_failures`, so a stay that starts pricing again
  * leaves backoff on its next run rather than serving out a stale penalty.
  */
@@ -243,13 +249,14 @@ export async function recordCollectionAttempts(
   for (const o of outcomes) {
     const { rowCount } = await client.query(
       `INSERT INTO collection_attempt
-         (hotel_id, check_in, nights, adults, attempts, consecutive_failures,
-          last_attempt_at, last_outcome)
-       VALUES ($1,$2::date,$3,$4,1,$5,now(),$6)
-       ON CONFLICT (hotel_id, check_in, nights, adults) DO UPDATE
+         (hotel_id, lead_days, check_in, nights, adults, attempts,
+          consecutive_failures, last_attempt_at, last_outcome)
+       VALUES ($1,($2::date - CURRENT_DATE)::smallint,$2::date,$3,$4,1,$5,now(),$6)
+       ON CONFLICT (hotel_id, lead_days, nights, adults) DO UPDATE
          SET attempts = collection_attempt.attempts + 1,
              consecutive_failures =
                CASE WHEN $5 = 0 THEN 0 ELSE collection_attempt.consecutive_failures + 1 END,
+             check_in = EXCLUDED.check_in,
              last_attempt_at = now(),
              last_outcome = EXCLUDED.last_outcome`,
       [o.hotelId, o.checkIn, o.nights, o.adults, o.succeeded ? 0 : 1, o.outcome],

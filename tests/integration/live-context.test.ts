@@ -199,11 +199,12 @@ suite('integration · live-market context queries', () => {
       planId: await compPlan(comp4),
     });
 
-    // COMP-4 was also asked and reported sold out.
+    // COMP-4 was also asked and reported sold out. lead_days mirrors what
+    // recordCollectionAttempts computes at write time.
     await pool.query(
       `INSERT INTO collection_attempt
-         (hotel_id,check_in,nights,adults,attempts,consecutive_failures,last_outcome)
-       VALUES ($1,$2::date,3,2,1,1,'NO_AVAILABILITY')`,
+         (hotel_id,lead_days,check_in,nights,adults,attempts,consecutive_failures,last_outcome)
+       VALUES ($1,($2::date - CURRENT_DATE)::smallint,$2::date,3,2,1,1,'NO_AVAILABILITY')`,
       [hotelIds.get('LC-COMP-4'), SUBJECT_CHECK_IN],
     );
   }, 60_000);
