@@ -4,8 +4,10 @@ export type { Pool, PoolClient, Queryable } from './client.js';
 export {
   findComparableIdentities,
   findHotelByWahId,
+  hasCuratedComparables,
   listRoomTypes,
   listSiblingRoomTypeIds,
+  promoteHotelForCollection,
   searchHotels,
 } from './repositories/hotels.js';
 export type { HotelRow, HotelSearchResult, RoomTypeRow } from './repositories/hotels.js';
@@ -13,6 +15,7 @@ export type { HotelRow, HotelSearchResult, RoomTypeRow } from './repositories/ho
 export {
   findAvailableRoomTypes,
   findCurrentRate,
+  findQuotedCurrency,
   findSameStaySeries,
   findSeriesGaps,
 } from './repositories/observations.js';
@@ -47,6 +50,7 @@ export {
 
 export { isLiveLoadFailure, loadLiveIntelligence } from './loadLiveIntelligence.js';
 export type {
+  CompBasis,
   LiveLoadFailure,
   LiveRequest,
   LoadedLiveIntelligence,

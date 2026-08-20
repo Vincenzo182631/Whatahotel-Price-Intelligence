@@ -180,6 +180,36 @@ export function findSeriesGaps(series: readonly SeriesPoint[], windowDays: numbe
 }
 
 /** Room types with a live rate for these dates, cheapest first. */
+/**
+ * The currency this hotel is actually quoted in.
+ *
+ * The source quotes in the HOTEL's local currency, not the caller's: Doha
+ * answers in QAR, Miami in USD. Everything downstream filters on currency
+ * (mixing them in one comp set would compare 900 QAR to 900 USD), so a
+ * request that does not pin a currency has to be answered in the hotel's own —
+ * defaulting to USD made every non-US hotel look like it had no rates at all,
+ * which is the honest empty state firing for a dishonest reason.
+ *
+ * Most-recent observation first, because it is evidence; `hotel.base_currency`
+ * is only a default someone wrote at catalogue time. Null when neither exists.
+ */
+export async function findQuotedCurrency(hotelId: number, q?: Queryable): Promise<string | null> {
+  const { rows } = await db(q).query(
+    `SELECT currency
+       FROM rate_observation
+      WHERE hotel_id = $1
+      ORDER BY observed_at DESC
+      LIMIT 1`,
+    [hotelId],
+  );
+  if (rows[0]?.currency) return rows[0].currency as string;
+
+  const { rows: fallback } = await db(q).query(`SELECT base_currency FROM hotel WHERE id = $1`, [
+    hotelId,
+  ]);
+  return (fallback[0]?.base_currency as string) ?? null;
+}
+
 export async function findAvailableRoomTypes(
   hotelId: number,
   checkIn: string,

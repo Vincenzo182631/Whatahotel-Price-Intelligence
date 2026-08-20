@@ -11,10 +11,22 @@
  *     is what determines collection throughput.
  *  3. The API key is a query parameter, which means it lands in any URL that
  *     gets logged. Every log line here redacts it.
+ *  4. **Success is not one code.** `hotel` answers `100`; `rates`, `search`
+ *     and `cityrates` answer `200`. Both carry message "Success" and
+ *     connection 1. Measured 2026-08-20 by calling all four — treating 200 as
+ *     the only success made every `hotel` lookup throw, which is what stopped
+ *     automatic catalogue enrollment from working at all.
  */
 
 import { parseLenientJson } from './json.js';
 import { WahApiError, type WahEnvelope, type WahMethod, type WahStatus } from './types.js';
+
+/**
+ * Status codes that mean the call worked. See note 4 above: the set is not a
+ * single value, and a method added later may bring another — prefer widening
+ * this deliberately over relaxing the check.
+ */
+const SUCCESS_CODES = new Set(['100', '200']);
 
 export interface WahClientOptions {
   readonly baseUrl?: string;
@@ -145,7 +157,7 @@ export class WahClient {
         }
 
         // THE status check. HTTP 200 means nothing here.
-        if (wahData.status.connection !== 1 || wahData.status.code !== '200') {
+        if (wahData.status.connection !== 1 || !SUCCESS_CODES.has(wahData.status.code)) {
           const apiError = new WahApiError(wahData.status);
           if (apiError.retryable && attempt < this.options.maxRetries) {
             lastError = apiError;

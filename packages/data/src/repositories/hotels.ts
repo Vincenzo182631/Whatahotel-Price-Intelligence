@@ -77,7 +77,74 @@ export async function findComparableIdentities(
       LIMIT $2`,
     [hotelId, limit],
   );
-  return rows.map((r) => ({ hotelId: r.id as number, wahHotelId: r.wah_hotel_id as string }));
+  if (rows.length > 0) {
+    return rows.map((r) => ({ hotelId: r.id as number, wahHotelId: r.wah_hotel_id as string }));
+  }
+
+  // No curated comp set yet. `rebuildComparables` ranks on accrued baselines,
+  // so a hotel enrolled minutes ago has none — and returning nothing here
+  // would mean a brand-new destination could never produce a Comp-Set Index,
+  // which is 45% of the live score. Same destination is the weaker but honest
+  // stand-in: it is the same filter the curated set starts from, minus the
+  // price and tier ranking it cannot compute yet. The curated set takes over
+  // automatically on the first rollup that has baselines to rank.
+  //
+  // Tier OFF is deliberately NOT excluded here, unlike the curated branch
+  // above. OFF means "not on the collection schedule", which is the normal
+  // state of a sweep-discovered hotel; the caller fetches these hotels' rates
+  // live for this exact stay, so being off the schedule says nothing about
+  // whether the source will answer for them.
+  const { rows: sameDestination } = await db(q).query(
+    `SELECT h.id, h.wah_hotel_id
+       FROM hotel h,
+            (SELECT destination_id, latitude, longitude FROM hotel WHERE id = $1) s
+      WHERE h.is_active
+        AND h.id <> $1
+        AND s.destination_id IS NOT NULL
+        AND h.destination_id = s.destination_id
+      ORDER BY (h.latitude IS NULL OR s.latitude IS NULL),
+               (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
+               h.id
+      LIMIT $2`,
+    [hotelId, limit],
+  );
+  return sameDestination.map((r) => ({
+    hotelId: r.id as number,
+    wahHotelId: r.wah_hotel_id as string,
+  }));
+}
+
+/**
+ * Move a catalogued-but-unscheduled hotel into scheduled collection.
+ *
+ * The full-inventory sweep enrolls every hotel the source has at tier OFF —
+ * catalogued and scoreable on demand, but not in the collection grid, because
+ * ~7k hotels at WARM is ~320k stays and a collection cycle measured in months.
+ * A guest actually looking at a hotel is the signal that its history is worth
+ * accruing, so the first live request promotes it and the scheduler picks it
+ * up on the next run. Idempotent, and it never touches HOT or an inactive row.
+ *
+ * Returns true only when this call performed the promotion.
+ */
+export async function promoteHotelForCollection(
+  wahHotelId: string,
+  q?: Queryable,
+): Promise<boolean> {
+  const { rowCount } = await db(q).query(
+    `UPDATE hotel SET collection_tier = 'WARM', updated_at = now()
+      WHERE wah_hotel_id = $1 AND is_active AND collection_tier = 'OFF'`,
+    [wahHotelId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/** Whether a curated comp set exists, or the destination fallback is in play. */
+export async function hasCuratedComparables(hotelId: number, q?: Queryable): Promise<boolean> {
+  const { rows } = await db(q).query(
+    `SELECT EXISTS (SELECT 1 FROM hotel_comparable WHERE hotel_id = $1) AS curated`,
+    [hotelId],
+  );
+  return rows[0]?.curated === true;
 }
 
 export interface HotelSearchResult extends HotelRow {

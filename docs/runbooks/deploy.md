@@ -88,12 +88,33 @@ the attribute selector `[data-wah-pi]`, so the host template needs no id and no
 class — that is the whole point of it. Its value is ignored, except as an
 optional shorthand for the hotel id (`data-wah-pi="1198"` works).
 
-**The stay can come from the page URL instead of attributes.** A booking page
-that already carries it — `showRates.cfm?hotelID=2008&checkIn=2026-09-08&checkOut=2026-09-11&guests=2`
-— needs only `<div data-wah-pi></div>`; the widget reads `hotelID`, `checkIn`,
-`checkOut`, `guests` and `children` from the query string (several spellings
-accepted) when the matching data-attribute is absent. Attributes always win.
-Dates may be `YYYY-MM-DD` or `MM/DD/YYYY`.
+**The stay can come from the page instead of attributes**, which is what lets
+ONE template edit cover every hotel page on the site. Each field is resolved
+independently, first hit wins:
+
+1. the element's own `data-*` attribute,
+2. the page's booking form — `#checkIn` / `#checkOut` / `#guests` and the usual
+   `name=` equivalents,
+3. the URL query string — `hotelID`, `checkIn`, `checkOut`, `guests`,
+   `children`, several spellings each,
+4. the URL path — `/hotels/<id>/…`, for the hotel id.
+
+So `showRates.cfm?hotelID=2008&checkIn=2026-09-08&checkOut=2026-09-11&guests=2`
+needs only `<div data-wah-pi></div>`, and so does a hotel page that keeps the
+id in its path and the dates in its picker. Dates may be `YYYY-MM-DD` or
+`MM/DD/YYYY`.
+
+**It recalculates when the guest changes something, with no reload.** The
+widget watches the data-attributes, the booking form's inputs, and
+`history.pushState`/`replaceState`/`popstate`, and remounts (debounced) when
+the resolved stay actually changes — a different hotel or different dates get
+a fresh score in place.
+
+**No hotel needs to be enrolled first.** A hotel id the catalogue has never
+seen is looked up against the source on that first request, and its city with
+it; a weekly sweep keeps the catalogue equal to the source's inventory ahead of
+time. An id the SOURCE does not recognise is still an honest 404 and a hidden
+panel — nothing is invented to fill the gap.
 
 The script mounts every `[data-wah-pi]` element it finds, derives the API base
 from its own `src`, validates the inputs (missing or invalid values — a past

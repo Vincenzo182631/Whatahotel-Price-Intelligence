@@ -29,6 +29,13 @@ export {
 export type { IngestOptions, IngestResult, RejectReason } from './pipeline/pipeline.js';
 
 export {
+  DEFAULT_ENROLL_OPTIONS,
+  enrollHotel,
+  ensureDestinationDepth,
+} from './pipeline/enrollHotel.js';
+export type { EnrollOptions, EnrollOutcome, EnrollResult } from './pipeline/enrollHotel.js';
+
+export {
   DEFAULT_ON_DEMAND_OPTIONS,
   collectStayOnDemand,
   leadDaysOf,

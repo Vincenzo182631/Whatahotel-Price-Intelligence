@@ -329,6 +329,27 @@ describe('error taxonomy', () => {
       expect(status.code).not.toBe('200');
     }
   });
+
+  /**
+   * Success is not one code. Measured 2026-08-20 across all four methods:
+   * `hotel` answers 100, `rates`/`search`/`cityrates` answer 200, and both
+   * carry connection 1 with message "Success". Treating 200 as the only
+   * success made every `hotel` lookup throw — which silently disabled
+   * automatic catalogue enrollment, so no new hotel could ever be added.
+   */
+  it('treats both documented success codes as success', () => {
+    const succeeded = (status: { connection: number; code: string }): boolean =>
+      status.connection === 1 && new Set(['100', '200']).has(status.code);
+
+    expect(succeeded({ connection: 1, code: '100' })).toBe(true); // hotel
+    expect(succeeded({ connection: 1, code: '200' })).toBe(true); // rates, search, cityrates
+    // Everything else is still a failure, including a broken connection that
+    // happens to carry a success code.
+    expect(succeeded({ connection: 0, code: '200' })).toBe(false);
+    expect(succeeded({ connection: 1, code: '401' })).toBe(false);
+    expect(succeeded({ connection: 1, code: '500' })).toBe(false);
+    expect(succeeded({ connection: 1, code: '204' })).toBe(false); // sold out
+  });
 });
 
 // ── rate-plan identity ─────────────────────────────────────────────────────

@@ -56,10 +56,156 @@ export async function syncHotelById(
   return persistHotels(data.hotels ?? [], q);
 }
 
+/**
+ * The collection tier a newly-inserted hotel starts on. Existing rows never
+ * change tier here — a sweep that discovers a hotel we are already collecting
+ * must not switch it off.
+ */
+export type NewHotelTier = 'WARM' | 'OFF';
+
+/**
+ * ── Full-inventory sweep ────────────────────────────────────────────────────
+ *
+ * The source has no "list everything" method. Measured 2026-08-20:
+ *
+ *   - `search` returns at most **12** hotels for any term ("a", "the",
+ *     "resort", "ritz" — all exactly 12).
+ *   - `cityrates` returns at most **15** hotels for any city (Miami, Honolulu,
+ *     Paris and London all answered 15). Our "15 Miami hotels" was that cap,
+ *     not Miami's inventory.
+ *   - `hotel` answers for an arbitrary id in ~120–300ms, and IDs are dense
+ *     integers spanning at least 1198..7090.
+ *
+ * So the only complete view of the catalogue is to walk the id space, which is
+ * what this does: ~7.5k calls, a few minutes at the client's concurrency, and
+ * it needs no city list, no seed and no human deciding which destinations
+ * matter.
+ *
+ * Two properties that are not optional:
+ *
+ *  1. **A sweep only ever ADDS.** The source answers `500` for an id that is
+ *     not a hotel — the same code it answers for a genuine fault — so "no
+ *     hotel here" and "the API is unwell" are indistinguishable from a probe.
+ *     Deactivating on a 500 would therefore let one bad afternoon empty the
+ *     catalogue. Nothing here deletes or deactivates.
+ *  2. **Discovered hotels start at tier OFF.** ~7k hotels at WARM would put
+ *     ~320k stays into the scheduled grid — a cycle measured in months, and
+ *     the API spend to match. OFF means catalogued and scoreable on demand
+ *     but not scheduled; `promoteHotelForCollection` moves a hotel to WARM the
+ *     first time a guest actually looks at it, so scheduled collection follows
+ *     real demand instead of the whole of inventory.
+ */
+export interface CatalogSweepOptions {
+  readonly fromId: number;
+  /** Inclusive. Defaults to the highest id we know, plus `probeAhead`. */
+  readonly toId?: number;
+  /** How far past the highest known id to look for hotels added since. */
+  readonly probeAhead: number;
+  /** Ids probed per persist batch. Bounds the transaction, not the fan-out. */
+  readonly batchSize: number;
+  readonly onProgress?: (info: { scanned: number; found: number; lastId: number }) => void;
+}
+
+export const DEFAULT_SWEEP_OPTIONS: CatalogSweepOptions = {
+  fromId: 1,
+  probeAhead: 500,
+  batchSize: 120,
+};
+
+/** Used only when the catalogue is empty and has no highest id to extend. */
+const DEFAULT_SWEEP_CEILING = 7500;
+
+export interface CatalogSweepResult extends CatalogSyncResult {
+  readonly scanned: number;
+  readonly notFound: number;
+  readonly highestFoundId: number | null;
+}
+
+/** The highest numeric `wah_hotel_id` in the catalogue, for the sweep ceiling. */
+export async function highestKnownHotelId(q?: Queryable): Promise<number | null> {
+  const { rows } = await db(q).query(
+    `SELECT max(wah_hotel_id::bigint) AS max_id
+       FROM hotel WHERE wah_hotel_id ~ '^[0-9]+$'`,
+  );
+  const value = rows[0]?.max_id;
+  return value === null || value === undefined ? null : Number(value);
+}
+
+export async function sweepCatalog(
+  client: WahClient,
+  options: Partial<CatalogSweepOptions> = {},
+  q?: Queryable,
+): Promise<CatalogSweepResult> {
+  const opts = { ...DEFAULT_SWEEP_OPTIONS, ...options };
+  const ceiling =
+    opts.toId ?? ((await highestKnownHotelId(q)) ?? DEFAULT_SWEEP_CEILING) + opts.probeAhead;
+
+  let scanned = 0;
+  let notFound = 0;
+  let hotelsSeen = 0;
+  let hotelsWritten = 0;
+  let benefitsWritten = 0;
+  let highestFoundId: number | null = null;
+  const cities = new Set<string>();
+  const skipped: Array<{ hotelId: string; reason: string }> = [];
+
+  for (let start = opts.fromId; start <= ceiling; start += opts.batchSize) {
+    const ids: number[] = [];
+    for (let id = start; id < start + opts.batchSize && id <= ceiling; id += 1) ids.push(id);
+
+    const found = (
+      await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const data = await client.call<WahHotelsResponse>('hotel', { hotel: id });
+            return data.hotels ?? [];
+          } catch {
+            // See property 1: an unknown id and a sick API answer the same
+            // code. Skipping is the only safe reading of either.
+            notFound += 1;
+            return [];
+          }
+        }),
+      )
+    ).flat();
+
+    scanned += ids.length;
+    hotelsSeen += found.length;
+    for (const record of found) {
+      const id = Number(record?.hotelID);
+      if (Number.isFinite(id) && (highestFoundId === null || id > highestFoundId)) {
+        highestFoundId = id;
+      }
+      if (record?.city) cities.add(String(record.city));
+    }
+
+    if (found.length > 0) {
+      const result = await persistHotels(found, q, undefined, 'OFF');
+      hotelsWritten += result.hotelsWritten;
+      benefitsWritten += result.benefitsWritten;
+      for (const skip of result.skipped) skipped.push(skip);
+    }
+
+    opts.onProgress?.({ scanned, found: hotelsWritten, lastId: ids[ids.length - 1] as number });
+  }
+
+  return {
+    hotelsSeen,
+    hotelsWritten,
+    benefitsWritten,
+    destinationsWritten: cities.size,
+    skipped,
+    scanned,
+    notFound,
+    highestFoundId,
+  };
+}
+
 async function persistHotels(
   raw: readonly Parameters<typeof parseHotel>[0][],
   q?: Queryable,
   cityHint?: string,
+  newHotelTier: NewHotelTier = 'WARM',
 ): Promise<CatalogSyncResult> {
   const parsed: ParsedHotel[] = [];
   const skipped: Array<{ hotelId: string; reason: string }> = [];
@@ -100,7 +246,7 @@ async function persistHotels(
       const { rows: hotelRows } = await runner.query(
         `INSERT INTO hotel (wah_hotel_id, name, destination_id, latitude, longitude,
                             base_currency, collection_tier)
-         VALUES ($1,$2,$3,$4,$5,'USD','WARM')
+         VALUES ($1,$2,$3,$4,$5,'USD',$6)
          ON CONFLICT (wah_hotel_id) DO UPDATE
            SET name = EXCLUDED.name,
                destination_id = COALESCE(EXCLUDED.destination_id, hotel.destination_id),
@@ -108,7 +254,14 @@ async function persistHotels(
                longitude = COALESCE(EXCLUDED.longitude, hotel.longitude),
                updated_at = now()
          RETURNING id`,
-        [hotel.wahHotelId, hotel.name, destinationId, hotel.latitude, hotel.longitude],
+        [
+          hotel.wahHotelId,
+          hotel.name,
+          destinationId,
+          hotel.latitude,
+          hotel.longitude,
+          newHotelTier,
+        ],
       );
       const hotelId = hotelRows[0]?.id as number;
       hotelsWritten += 1;
