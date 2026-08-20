@@ -50,7 +50,7 @@ on:
       limit:
         description: 'Max stays to collect in this run'
         required: false
-        default: '500'
+        default: '800'
       dry_run:
         description: 'Plan only — make no API calls and write nothing'
         type: boolean
@@ -130,11 +130,16 @@ jobs:
           fi
           npm run collect -- --catalog "${{ inputs.catalog }}" --concurrency 6 2>&1 | tee collect.log
 
+      # The limit was 500 until 2026-08-20. Measured steady-state demand is
+      # ~680 stays per run (~500 due + ~180 re-proposals of stays that yield
+      # nothing), so 500 truncated ~180 stays EVERY run — and truncated stays
+      # are permanently lost data (U3). 800 covers the measured demand with
+      # headroom; it is a cap, not a target, so runs with less due stay cheap.
       - name: Collect
         if: inputs.catalog == ''
         run: |
           npm run collect -- \
-            --limit "${{ inputs.limit || 500 }}" \
+            --limit "${{ inputs.limit || 800 }}" \
             --concurrency 6 \
             ${{ inputs.dry_run && '--dry-run' || '' }} \
             2>&1 | tee collect.log

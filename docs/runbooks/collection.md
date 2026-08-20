@@ -185,7 +185,7 @@ EOF
 ```cron
 # /etc/cron.d/wahpi-collect     (every 6 hours, matching the HOT tier)
 0 */6 * * *  wahpi  set -a; . /etc/wahpi.env; set +a; \
-  cd /srv/wahpi && /usr/bin/npm run collect -- --limit 500 --concurrency 6 \
+  cd /srv/wahpi && /usr/bin/npm run collect -- --limit 800 --concurrency 6 \
   >> /var/log/wahpi/collect.log 2>&1
 ```
 
@@ -212,7 +212,7 @@ Type=oneshot
 User=wahpi
 WorkingDirectory=/srv/wahpi
 EnvironmentFile=/etc/wahpi.env
-ExecStart=/usr/bin/npm run collect -- --limit 500 --concurrency 6
+ExecStart=/usr/bin/npm run collect -- --limit 800 --concurrency 6
 ```
 
 ```ini
@@ -355,7 +355,10 @@ raises. Look for `401` in the log.
 
 **`plan truncated`.** More stays were due than `--limit` allowed. Raise the limit
 or shorten the interval. Do not ignore it: with no history in the source, the
-skipped stays are gone.
+skipped stays are gone. The limit went 500 → 800 on 2026-08-20 after two days
+live measured steady-state demand at ~680 per run (~500 due + ~180 re-proposals
+of stays that yield nothing) — 500 was truncating ~180 stays on every firing,
+and the uncollected dues carried forward as a permanent backlog.
 
 **Nothing due and no gaps.** Expected if a run happened within the tier
 interval. If it persists for a day, confirm hotels exist and are active:
