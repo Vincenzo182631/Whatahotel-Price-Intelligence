@@ -119,6 +119,8 @@ export interface CatalogSweepResult extends CatalogSyncResult {
   readonly scanned: number;
   readonly notFound: number;
   readonly highestFoundId: number | null;
+  /** Batches the database refused. Never silent — see the catch below. */
+  readonly batchesFailed: number;
 }
 
 /** The highest numeric `wah_hotel_id` in the catalogue, for the sweep ceiling. */
@@ -146,6 +148,7 @@ export async function sweepCatalog(
   let hotelsWritten = 0;
   let benefitsWritten = 0;
   let highestFoundId: number | null = null;
+  let batchesFailed = 0;
   const cities = new Set<string>();
   const skipped: Array<{ hotelId: string; reason: string }> = [];
 
@@ -180,10 +183,27 @@ export async function sweepCatalog(
     }
 
     if (found.length > 0) {
-      const result = await persistHotels(found, q, undefined, 'OFF');
-      hotelsWritten += result.hotelsWritten;
-      benefitsWritten += result.benefitsWritten;
-      for (const skip of result.skipped) skipped.push(skip);
+      // One unwritable record must not cost the run. A sweep is a long walk
+      // over data we do not control, and its whole value is that it finishes:
+      // a single bad row aborted a real run at id ~4237 after 1,315 hotels,
+      // rolling back that batch and losing everything after it. The batch is
+      // still transactional — partial batches are never half-written — but a
+      // failed one is reported and skipped rather than fatal.
+      try {
+        const result = await persistHotels(found, q, undefined, 'OFF');
+        hotelsWritten += result.hotelsWritten;
+        benefitsWritten += result.benefitsWritten;
+        for (const skip of result.skipped) skipped.push(skip);
+      } catch (err) {
+        batchesFailed += 1;
+        skipped.push({
+          hotelId: `${start}..${ids[ids.length - 1]}`,
+          reason: `PERSIST_FAILED: ${(err as Error).message}`.slice(0, 120),
+        });
+        console.warn(
+          `  ! batch ${start}..${ids[ids.length - 1]} not written: ${(err as Error).message}`,
+        );
+      }
     }
 
     opts.onProgress?.({ scanned, found: hotelsWritten, lastId: ids[ids.length - 1] as number });
@@ -198,6 +218,7 @@ export async function sweepCatalog(
     scanned,
     notFound,
     highestFoundId,
+    batchesFailed,
   };
 }
 

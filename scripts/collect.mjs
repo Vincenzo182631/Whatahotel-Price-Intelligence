@@ -136,6 +136,7 @@ async function main() {
     console.log(
       `• Sweep: ${result.hotelsWritten} hotel(s) from ${result.scanned} id(s) probed, ` +
         `${result.notFound} not found, ${result.destinationsWritten} destination(s), ` +
+        `${result.batchesFailed} batch(es) unwritten, ` +
         `${result.benefitsWritten} benefits, highest id ${result.highestFoundId ?? 'none'} ` +
         `in ${((Date.now() - started) / 1000).toFixed(1)}s`,
     );

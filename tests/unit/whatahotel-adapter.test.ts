@@ -258,6 +258,31 @@ describe('hotel parsing', () => {
     expect(hotel.amadeusProperty).toBe('RZJHMKAP');
   });
 
+  it('drops a coordinate that cannot be one, rather than storing it', () => {
+    // Measured on hotel 4237 (Meliá Serengeti Lodge): the source states a
+    // longitude of 5464062. It overflowed NUMERIC(9,6) and aborted a whole
+    // catalogue sweep 1,315 hotels in. Latitude is bounded by ±90 and
+    // longitude by ±180, so anything outside is not a coordinate at all —
+    // null is the honest reading, and it costs nothing but the map pin.
+    const broken = parseHotel({
+      ...hotelDoc.hotels[0]!,
+      'loc-lat': '5464062',
+      'loc-long': '5464062',
+    })!;
+    expect(broken.latitude).toBeNull();
+    expect(broken.longitude).toBeNull();
+
+    // The bound is on the value, not on the format: a real coordinate that
+    // happens to be near the limit still survives.
+    const edge = parseHotel({
+      ...hotelDoc.hotels[0]!,
+      'loc-lat': '-89.9',
+      'loc-long': '179.999',
+    })!;
+    expect(edge.latitude).toBeCloseTo(-89.9, 3);
+    expect(edge.longitude).toBeCloseTo(179.999, 3);
+  });
+
   it('treats the literal string "NULL" as absent', () => {
     // primary-desc and secondary-desc arrive as the four characters N-U-L-L.
     const hotel = parseHotel({ ...hotelDoc.hotels[0]!, city: 'NULL', country: 'NULL' })!;
