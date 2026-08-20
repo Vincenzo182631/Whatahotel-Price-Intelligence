@@ -19,7 +19,7 @@ import {
   loadScoringInput,
   resolveBaseline,
 } from '../../packages/data/src/index.js';
-import { ingestRecords } from '../../packages/ingest/src/pipeline/pipeline.js';
+import { ingestRecords, ingestStayKey } from '../../packages/ingest/src/pipeline/pipeline.js';
 import { refreshBaselines } from '../../packages/ingest/src/rollup/baseline.js';
 import {
   DEFAULT_SCHEDULER_OPTIONS,
@@ -306,6 +306,9 @@ suite('integration · ingest → rollup → score', () => {
       'NON_POSITIVE_AMOUNT',
       'UNKNOWN_HOTEL',
     ]);
+    // Nothing survived, so nothing is tracked — the collector reads this to
+    // back off stays whose every rate was rejected.
+    expect(result.trackedStays.size).toBe(0);
 
     const { rows } = await db().query(
       `SELECT count(*)::int AS n FROM ingest_reject r
@@ -314,6 +317,35 @@ suite('integration · ingest → rollup → score', () => {
       [result.batchId],
     );
     expect(rows[0]?.n).toBe(5);
+  }, 60_000);
+
+  it('reports which stays survived ingest, so all-rejected stays can back off', async () => {
+    const mixedStay = isoDate(41);
+    const doomedStay = isoDate(42);
+    const now = new Date().toISOString();
+    const result = await ingestRecords(
+      [
+        // One usable rate and one rejected rate for the SAME stay — the stay
+        // is tracked: a single surviving observation is all the grid needs.
+        record({ checkIn: mixedStay, observedAt: now }),
+        record({ checkIn: mixedStay, observedAt: now, totalAmountMinor: 0 }),
+        // A stay whose every rate is rejected — hotel 3561's shape. It must
+        // NOT appear as tracked, or the collector re-fetches it forever.
+        record({ checkIn: doomedStay, observedAt: now, totalAmountMinor: 0 }),
+      ],
+      {
+        sourceCode: SOURCE_CODE,
+        captureSlotMinutes: 60,
+        maxNights: 30,
+        sanityBandMultiple: 8,
+        discoverRoomTypes: false,
+      },
+    );
+
+    const keyOf = (checkIn: string) =>
+      ingestStayKey({ wahHotelId: HOTEL_ID, checkIn, nights: 3, adults: 2 });
+    expect(result.trackedStays.has(keyOf(mixedStay))).toBe(true);
+    expect(result.trackedStays.has(keyOf(doomedStay))).toBe(false);
   }, 60_000);
 
   it('rollup percentiles match a direct computation over the raw facts', async () => {

@@ -40,6 +40,7 @@ import {
   createWhataHotelAdapter,
   ensureWhataHotelSource,
   ingestRecords,
+  ingestStayKey,
   planCollection,
   rebuildComparables,
   refreshBaselines,
@@ -206,44 +207,49 @@ async function main() {
   }
   if (failures.length > 10) console.warn(`  ! … and ${failures.length - 10} more failures`);
 
-  // Record what each stay did, so one that yields nothing is backed off rather
-  // than re-proposed on every run forever.
-  //
-  // "Succeeded" means it produced an observation — not that the HTTP call
-  // worked. A stay that is sold out, or that the API refuses with a 500, leaves
-  // no row behind, so the grid sees it as missing and asks again next run. Both
-  // therefore have to back off, or they cost calls indefinitely against an API
-  // whose rate limit we do not know (U15). The distinction is kept in
-  // `last_outcome` for diagnosis, and any later success resets the counter, so
-  // a stay that reopens is picked straight back up.
-  const producedData = new Set(
-    records.map((r) => `${r.wahHotelId}|${r.checkIn}|${r.nights}|${r.adults}`),
-  );
+  // Record what each stay did — AFTER ingest, because "succeeded" means the
+  // stay is TRACKED: at least one observation survived validation. That is
+  // the only thing the grid can see. A stay whose every rate is rejected
+  // (hotel 3561: offer-prose room names on all of them) fetched
+  // "successfully" and so never backed off — re-proposed and re-fetched four
+  // times a day forever. It fails like a sold-out stay now, with its own
+  // outcome (`REJECTED`) so the two are never confused in diagnosis. Any
+  // later success resets the counter, so a stay that starts yielding usable
+  // rates is picked straight back up.
+  const producedData = new Set(records.map((r) => ingestStayKey(r)));
   const failedKeys = new Set(failures.map((f) => stayKey(f.query)));
-  const attempts = tasks.map((task) => {
-    const key = `${task.wahHotelId}|${task.checkIn}|${task.nights}|${task.adults}`;
-    return {
-      hotelId: task.hotelId,
-      checkIn: task.checkIn,
-      nights: task.nights,
-      adults: task.adults,
-      succeeded: producedData.has(key),
-      outcome: failedKeys.has(key)
-        ? 'ERROR'
-        : soldOutKeys.has(key)
-          ? 'NO_AVAILABILITY'
-          : producedData.has(key)
-            ? 'OK'
-            : 'EMPTY',
-    };
-  });
-  const backedOff = attempts.filter((a) => !a.succeeded).length;
-  await recordCollectionAttempts(attempts);
-  if (backedOff > 0) {
-    console.log(`  ${backedOff} stay(s) yielded no rates and will be retried less often`);
-  }
+  const recordAttempts = async (trackedStays) => {
+    const attempts = tasks.map((task) => {
+      const key = ingestStayKey(task);
+      const tracked = trackedStays.has(key);
+      return {
+        hotelId: task.hotelId,
+        checkIn: task.checkIn,
+        nights: task.nights,
+        adults: task.adults,
+        succeeded: tracked,
+        outcome: failedKeys.has(key)
+          ? 'ERROR'
+          : soldOutKeys.has(key)
+            ? 'NO_AVAILABILITY'
+            : tracked
+              ? 'OK'
+              : producedData.has(key)
+                ? 'REJECTED'
+                : 'EMPTY',
+      };
+    });
+    const backingOff = attempts.filter((a) => !a.succeeded).length;
+    await recordCollectionAttempts(attempts);
+    if (backingOff > 0) {
+      console.log(
+        `  ${backingOff} stay(s) yielded no usable rates and will be retried less often`,
+      );
+    }
+  };
 
   if (records.length === 0) {
+    await recordAttempts(new Set());
     console.warn('  No rates returned. Nothing ingested.');
     return;
   }
@@ -262,6 +268,8 @@ async function main() {
   for (const [reason, count] of Object.entries(ingest.rejectReasons)) {
     console.warn(`  ! ${reason}: ${count}`);
   }
+
+  await recordAttempts(ingest.trackedStays);
 
   if (ingest.inserted === 0) {
     console.log('• No new observations; skipping rollup.');
