@@ -213,6 +213,19 @@ Market Compression (`packages/core/src/scoring/liveSignals.ts` and
 from rates that exist today rather than from accrued history, which is what
 makes it usable before a baseline has built up.
 
+**On-demand scoring is live** (2026-08-20): a live-intelligence request for a
+stay nothing has collected fetches that exact stay — plus its comparables —
+from the source right then, ingests it through the ordinary pipeline, and
+scores it (`packages/ingest/src/pipeline/onDemand.ts`). This deliberately
+relaxed the old "never call a rate source on a page view" rule; what did NOT
+relax is honesty — an unverifiable stay still renders no score. Guards: only
+catalogued active hotels, a lead window (≤300 days), a fruitless-attempt hold
+(shared `collection_attempt` ledger, so widget traffic cannot hammer a
+sold-out stay), and a comparables cap per request. Requires `WAH_API_KEY` in
+the API's environment; degrades silently to the honest 409 without it. The
+widget auto-mounts from `data-wah-pi` attributes and remounts when they
+change — see `docs/runbooks/deploy.md`.
+
 Config v4 **retired WAIT** (see rule 2). Reading the eight never-WAIT guards as
 a list makes the case: each one meant "we cannot responsibly predict this", and
 eight of them means we cannot predict it at all. Two of their values survive

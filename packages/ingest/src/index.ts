@@ -28,6 +28,19 @@ export {
 } from './pipeline/pipeline.js';
 export type { IngestOptions, IngestResult, RejectReason } from './pipeline/pipeline.js';
 
+export {
+  DEFAULT_ON_DEMAND_OPTIONS,
+  collectStayOnDemand,
+  leadDaysOf,
+  planOnDemandQueries,
+} from './pipeline/onDemand.js';
+export type {
+  OnDemandOptions,
+  OnDemandResult,
+  OnDemandSkipReason,
+  OnDemandStay,
+} from './pipeline/onDemand.js';
+
 export { ensureRollupFunctions, refreshBaselines } from './rollup/baseline.js';
 export type { RollupOptions, RollupResult } from './rollup/baseline.js';
 

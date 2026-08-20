@@ -56,6 +56,30 @@ export async function findHotelByWahId(
   return rows[0] ? toHotel(rows[0]) : null;
 }
 
+/**
+ * The comparables' identities, for fetching their rates from the source.
+ *
+ * Used by on-demand scoring: when a guest asks about a stay nothing has
+ * collected, the subject hotel's rate alone gives no Comp-Set Index — the
+ * comparables' rates for the SAME stay have to be fetched in the same pass.
+ */
+export async function findComparableIdentities(
+  hotelId: number,
+  limit: number,
+  q?: Queryable,
+): Promise<{ hotelId: number; wahHotelId: string }[]> {
+  const { rows } = await db(q).query(
+    `SELECT h.id, h.wah_hotel_id
+       FROM hotel_comparable c
+       JOIN hotel h ON h.id = c.comparable_id
+      WHERE c.hotel_id = $1 AND h.is_active AND h.collection_tier <> 'OFF'
+      ORDER BY c.rank
+      LIMIT $2`,
+    [hotelId, limit],
+  );
+  return rows.map((r) => ({ hotelId: r.id as number, wahHotelId: r.wah_hotel_id as string }));
+}
+
 export interface HotelSearchResult extends HotelRow {
   /** Whether this hotel has enough baseline coverage to be worth analysing. */
   readonly hasPriceIntelligence: boolean;

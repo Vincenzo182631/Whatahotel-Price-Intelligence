@@ -31,7 +31,18 @@
 (function (global) {
   'use strict';
 
+  // The API lives wherever this script was loaded from, so a host page that
+  // uses the <div data-wah-pi> form needs no configuration at all. An explicit
+  // apiBase (option or data-attribute) still wins.
   var DEFAULT_API_BASE = '';
+  try {
+    var currentScript = typeof document !== 'undefined' && document.currentScript;
+    if (currentScript && currentScript.src) {
+      DEFAULT_API_BASE = new URL(currentScript.src).origin;
+    }
+  } catch (e) {
+    /* older browsers: fall back to same-origin */
+  }
 
   // ── formatting ─────────────────────────────────────────────────────────
   function formatMoney(money) {
@@ -1158,8 +1169,27 @@
     );
   }
 
+  function hideRoot(root) {
+    root.textContent = '';
+    root.className = 'wahpi';
+    root.style.display = 'none';
+    root.setAttribute('aria-busy', 'false');
+  }
+
+  /**
+   * How long a request may run. Longer than a normal API budget on purpose:
+   * a stay nothing has collected triggers on-demand collection server-side
+   * (fetch live, validate, score), which takes seconds rather than
+   * milliseconds. The staged messages below are what keep that wait from
+   * reading as a broken page.
+   */
+  var REQUEST_TIMEOUT_MS = 25000;
+
   function mount(root, options) {
     if (!root) throw new Error('WahPriceIntelligence.mount: no element supplied');
+    options = options || {};
+    root.style.display = '';
+
     // Live is the default: it needs no accrued history, so it answers on a
     // hotel we started collecting last week instead of showing INSUFFICIENT_DATA
     // for a fortnight.
@@ -1174,16 +1204,58 @@
       uid: (mount.seq = (mount.seq || 0) + 1),
     };
 
+    // A remount (the host page changed dates or hotel) invalidates any fetch
+    // still in flight for this element: the older answer must never paint
+    // over the newer question.
+    var gen = (root.__wahpiGen = (root.__wahpiGen || 0) + 1);
+    function fresh() {
+      return root.__wahpiGen === gen;
+    }
+
     renderLoading(root);
     root.setAttribute('aria-busy', 'true');
+    var status = el('p', 'wahpi__loading-status', 'Checking this stay…');
+    root.appendChild(status);
+    var stage2 = setTimeout(function () {
+      if (fresh()) status.textContent = 'Comparing live rates at similar hotels…';
+    }, 2500);
+    var stage3 = setTimeout(function () {
+      if (fresh()) status.textContent = 'Validating the latest availability…';
+    }, 7000);
 
-    return fetch(buildUrl(options, live), { headers: { accept: 'application/json' } })
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var deadline = setTimeout(function () {
+      if (controller) controller.abort();
+    }, REQUEST_TIMEOUT_MS);
+
+    function settle() {
+      clearTimeout(stage2);
+      clearTimeout(stage3);
+      clearTimeout(deadline);
+    }
+
+    // "hide" is for placements that would rather show nothing than a notice —
+    // the auto-init default, so an uncatalogued hotel's page looks exactly as
+    // it did before the widget existed. The honest no-score notice for a
+    // catalogued hotel is kept visible in either mode: that message is the
+    // product being truthful, not the product failing.
+    function failQuietly(title, message) {
+      if (options.unavailable === 'hide') hideRoot(root);
+      else renderNotice(root, title, message);
+    }
+
+    return fetch(buildUrl(options, live), {
+      headers: { accept: 'application/json' },
+      signal: controller ? controller.signal : undefined,
+    })
       .then(function (response) {
         return response.json().then(function (body) {
           return { status: response.status, body: body };
         });
       })
       .then(function (result) {
+        settle();
+        if (!fresh()) return null;
         if (result.status === 200) {
           if (live) renderLive(root, result.body, state);
           else renderAnalysis(root, result.body, state);
@@ -1192,17 +1264,18 @@
 
         var code = result.body && result.body.error ? result.body.error.code : 'INTERNAL_ERROR';
         if (code === 'NO_CURRENT_RATE') {
+          // Honest, and deliberately never hidden behind unavailable:'hide':
+          // "we could not verify this" is information a customer can use.
           renderNotice(
             root,
             'Not available for these dates',
-            'We do not have a live rate for this room on these dates. Try nearby dates, or ask an advisor.',
+            'We could not verify enough live data to score this stay. Try nearby dates, or ask an advisor.',
           );
         } else if (code === 'HOTEL_NOT_FOUND' || code === 'ROOM_TYPE_NOT_FOUND') {
-          renderNotice(root, 'Not found', 'We could not find that hotel or room type.');
+          failQuietly('Not found', 'We could not find that hotel or room type.');
         } else {
           // Rule: never a fabricated or last-known score presented as current.
-          renderNotice(
-            root,
+          failQuietly(
             'Price analysis unavailable',
             'We could not load the price analysis just now. Please try again shortly.',
           );
@@ -1210,13 +1283,142 @@
         return null;
       })
       .catch(function () {
-        renderNotice(
-          root,
+        settle();
+        if (!fresh()) return null;
+        failQuietly(
           'Price analysis unavailable',
           'We could not reach the price intelligence service. Please try again shortly.',
         );
         return null;
       });
+  }
+
+  // ── auto-init ────────────────────────────────────────────────────────────
+  //
+  // The zero-JavaScript embed. A host template renders
+  //
+  //   <div data-wah-pi data-hotel-id="1198" data-check-in="2026-10-30"
+  //        data-check-out="2026-11-02" data-adults="2"></div>
+  //
+  // and this script does the rest: the API base defaults to wherever the
+  // script itself was loaded from, invalid or missing inputs mean NO request
+  // rather than a broken panel, and changing the data-attributes (a calendar
+  // page that swaps dates without a reload) remounts automatically.
+
+  var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+  function autoConfig(node) {
+    var ds = node.dataset || {};
+    var config = {
+      hotelId: ds.hotelId,
+      checkIn: ds.checkIn,
+      checkOut: ds.checkOut,
+      adults: parseInt(ds.adults || '2', 10) || 2,
+      children: parseInt(ds.children || '0', 10) || 0,
+      unavailable: ds.unavailable || 'hide',
+    };
+    if (ds.apiBase) config.apiBase = ds.apiBase;
+    if (ds.model) config.model = ds.model;
+    if (ds.currency) config.currency = ds.currency;
+    if (ds.roomTypeId) config.roomTypeId = ds.roomTypeId;
+    if (ds.expanded === 'true') config.expanded = true;
+    return config;
+  }
+
+  function configValid(config) {
+    if (!config.hotelId || !ISO_DATE.test(config.checkIn || '') || !ISO_DATE.test(config.checkOut || '')) {
+      return false;
+    }
+    if (config.checkOut <= config.checkIn) return false;
+    // A stay already begun cannot be scored honestly. ISO strings compare
+    // lexicographically, so no Date parsing (and no timezone bugs) needed.
+    var today = new Date().toISOString().slice(0, 10);
+    return config.checkIn >= today;
+  }
+
+  function autoMount(node) {
+    try {
+      var config = autoConfig(node);
+      if (!configValid(config)) {
+        hideRoot(node);
+        return;
+      }
+      mount(node, config);
+    } catch (e) {
+      // The host page must never break because the widget did.
+      try {
+        hideRoot(node);
+      } catch (e2) {
+        /* nothing left to do safely */
+      }
+    }
+  }
+
+  function initAuto() {
+    if (typeof document === 'undefined') return;
+    var nodes = document.querySelectorAll('[data-wah-pi]');
+    for (var i = 0; i < nodes.length; i++) {
+      watchNode(nodes[i]);
+      autoMount(nodes[i]);
+    }
+    // Panels inserted after load (client-side rendering) mount as they appear.
+    if (typeof MutationObserver !== 'undefined' && document.body) {
+      new MutationObserver(function (mutations) {
+        mutations.forEach(function (m) {
+          for (var j = 0; j < m.addedNodes.length; j++) {
+            var added = m.addedNodes[j];
+            if (added.nodeType !== 1) continue;
+            var found = added.matches && added.matches('[data-wah-pi]')
+              ? [added]
+              : added.querySelectorAll
+                ? added.querySelectorAll('[data-wah-pi]')
+                : [];
+            for (var k = 0; k < found.length; k++) {
+              if (!found[k].__wahpiWatched) {
+                watchNode(found[k]);
+                autoMount(found[k]);
+              }
+            }
+          }
+        });
+      }).observe(document.body, { childList: true, subtree: true });
+    }
+  }
+
+  /** Remount (debounced) when the host page rewrites the data-attributes. */
+  function watchNode(node) {
+    if (node.__wahpiWatched || typeof MutationObserver === 'undefined') {
+      node.__wahpiWatched = true;
+      return;
+    }
+    node.__wahpiWatched = true;
+    var pending = null;
+    new MutationObserver(function () {
+      clearTimeout(pending);
+      pending = setTimeout(function () {
+        autoMount(node);
+      }, 250);
+    }).observe(node, {
+      attributes: true,
+      attributeFilter: [
+        'data-hotel-id',
+        'data-check-in',
+        'data-check-out',
+        'data-adults',
+        'data-children',
+        'data-room-type-id',
+        'data-model',
+        'data-currency',
+      ],
+    });
+  }
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initAuto);
+    } else {
+      initAuto();
+    }
   }
 
   global.WahPriceIntelligence = {

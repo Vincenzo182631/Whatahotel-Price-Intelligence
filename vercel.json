@@ -3,15 +3,29 @@
   "buildCommand": "npm run build",
   "outputDirectory": "apps/web/public",
   "rewrites": [
-    { "source": "/api/v1/:path*", "destination": "/api/index" },
-    { "source": "/internal/v1/:path*", "destination": "/api/index" }
+    {
+      "source": "/api/v1/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/internal/v1/:path*",
+      "destination": "/api/index"
+    }
   ],
   "headers": [
     {
       "source": "/widget.js",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=300, stale-while-revalidate=3600" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=300, stale-while-revalidate=3600"
+        }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/index.mjs": {
+      "maxDuration": 30
+    }
+  }
 }

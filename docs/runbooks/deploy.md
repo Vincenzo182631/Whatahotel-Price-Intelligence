@@ -26,6 +26,7 @@ changes are needed to ship.
    | -------------- | ---------------------------------------------------------- |
    | `DATABASE_URL` | the Neon connection string **with the `-pooler` hostname** |
    | `CORS_ORIGIN`  | `https://www.whatahotel.com,https://whatahotel.com`        |
+   | `WAH_API_KEY`  | the WhataHotel data API key — enables on-demand scoring    |
 
    **Pooler, not direct.** Serverless instances each open their own database
    connection; the direct endpoint's connection limit is sized for migrations
@@ -66,9 +67,32 @@ production.
 
 ## Embedding on whatahotel.com
 
+The zero-JavaScript form — one edit to the hotel-page template:
+
 ```html
-<script src="https://<deployment>/widget.js"></script>
-<div id="wah-pi"></div>
+<script src="https://<deployment>/widget.js" defer></script>
+<div
+  data-wah-pi
+  data-hotel-id="#hotelID#"
+  data-check-in="#checkIn#"
+  data-check-out="#checkOut#"
+  data-adults="#guests#"
+></div>
+```
+
+The script mounts every `[data-wah-pi]` element it finds, derives the API base
+from its own `src`, validates the inputs (missing or invalid values — a past
+check-in, an inverted range — mean NO request rather than a broken panel), and
+**remounts automatically when the data-attributes change**, so a calendar that
+swaps dates without a page reload just works. An uncatalogued hotel or a
+service failure hides the panel entirely (`data-unavailable="notice"` opts
+into a message instead); the honest "could not verify enough live data" state
+for a catalogued hotel always shows — that message is the product being
+truthful, not failing.
+
+The programmatic form is unchanged for pages that want control:
+
+```html
 <script>
   WahPriceIntelligence.mount(document.getElementById('wah-pi'), {
     apiBase: 'https://<deployment>',
@@ -81,9 +105,19 @@ production.
 ```
 
 `mount()` defaults to the live-market model. Pass `model: 'history'` for the
-accrued-history analysis once baselines have matured. The widget renders an
-honest "not enough data yet" state rather than a fabricated score — decide
-per placement whether that state should show or the container should hide.
+accrued-history analysis once baselines have matured.
+
+**On-demand scoring.** A stay nothing has collected triggers a live fetch
+server-side — the guest's exact stay plus its comparables, ingested through
+the same pipeline as scheduled collection, then scored — so any valid dates on
+a catalogued hotel get an answer, in seconds on the first ask and from cache
+after. The widget shows staged progress ("Checking this stay…", "Comparing
+live rates at similar hotels…") while that runs. It requires `WAH_API_KEY` in
+the function's environment (the Deploy workflow pushes it from the repo
+secret); without the key the path silently degrades to the honest no-score
+state. Every on-demand fetch is recorded in the same attempt ledger as
+scheduled collection, so a sold-out stay backs off rather than being re-fetched
+per page view, and every successful fetch permanently widens the dataset.
 
 ## The two things most likely to bite
 
