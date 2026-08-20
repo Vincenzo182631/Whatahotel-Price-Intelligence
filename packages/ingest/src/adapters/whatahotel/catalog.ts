@@ -30,6 +30,22 @@ export async function syncHotelsFromSearch(
   return persistHotels(data.hotels ?? [], q);
 }
 
+/**
+ * `newHotelTier` decides whether what comes back joins the SCHEDULED grid.
+ *
+ * `WARM` is right when a human asked for the city (`--catalog miami`): they
+ * chose to spend collection on it. It is wrong for the automatic paths, which
+ * run on a page view — a city sync writes up to 15 hotels, and at WARM each
+ * one adds ~46 stays to the grid, so one guest looking at one hotel in a new
+ * destination costs ~690 scheduled stays forever. Measured: the plan went from
+ * ~690 stays to 2,519 pending after a handful of automatic city syncs.
+ *
+ * `OFF` is the same bargain rule 17 strikes for the sweep: catalogued and
+ * scoreable on demand, out of the schedule until a guest actually looks.
+ * Comparables do not need to be scheduled — `findComparableIdentities`
+ * deliberately includes OFF hotels, and their rates are fetched live for the
+ * exact stay being scored.
+ */
 export async function syncHotelsFromCity(
   client: WahClient,
   city: string,
@@ -37,6 +53,7 @@ export async function syncHotelsFromCity(
   checkOut: string,
   guests = 2,
   q?: Queryable,
+  newHotelTier: NewHotelTier = 'WARM',
 ): Promise<CatalogSyncResult> {
   const data = await client.call<WahHotelsResponse>('cityrates', {
     city,
@@ -44,7 +61,7 @@ export async function syncHotelsFromCity(
     checkIn,
     checkOut,
   });
-  return persistHotels(data.hotels ?? [], q, data.city?.name ?? city);
+  return persistHotels(data.hotels ?? [], q, data.city?.name ?? city, newHotelTier);
 }
 
 export async function syncHotelById(

@@ -183,6 +183,9 @@ export async function discoverCityComparables(
       checkOut,
       guests,
       q,
+      // Catalogued, not scheduled — see syncHotelsFromCity. These are
+      // comparables; their rates are fetched live for the stay being scored.
+      'OFF',
     );
     remember(cacheKey, 'ENROLLED', options.positiveTtlMs);
     return { outcome: 'ENROLLED', hotelsWritten: result.hotelsWritten, citySynced: city };
@@ -219,7 +222,7 @@ async function destinationDepth(
 function syncCity(client: WahClient, city: string, q?: Queryable) {
   const from = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
   const to = new Date(Date.now() + 33 * 86_400_000).toISOString().slice(0, 10);
-  return syncHotelsFromCity(client, city, from, to, 2, q);
+  return syncHotelsFromCity(client, city, from, to, 2, q, 'OFF');
 }
 
 export async function enrollHotel(
