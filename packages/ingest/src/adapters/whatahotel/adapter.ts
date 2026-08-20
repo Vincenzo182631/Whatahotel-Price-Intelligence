@@ -14,6 +14,9 @@
  *   U5  cancellation terms .......... **NO** — see comparabilityClassFor
  *   U6  occupancy ................... PARTIAL — total `guests`, not adults/children
  *   U7  total + nightly, tax basis .. YES — rateDaily NET/night, rateTotal GROSS/stay
+ *                                     Both are kept: rateTotal is the stay
+ *                                     total, rateDaily is the ADR the site
+ *                                     quotes (reconstructed by migration 0011).
  *   U8  stable rate plan codes ...... YES — `rateCode`
  *   U9  structured room codes ....... YES — `bookCode`, the SOURCE_ID path
  *   U10 benefits .................... YES — hotel `perks`
@@ -196,6 +199,10 @@ export function toRecords(query: RateQuery, data: WahRatesResponse): RawRateReco
       // price by the tax factor (~25% at the hotel this was verified against).
       totalAmountMinor: parsed.totalGrossMinor,
       totalGrossAmountMinor: parsed.totalGrossMinor,
+      // Load-bearing, not diagnostic: ADR is derived as
+      // (total - taxes) / nights (migration 0011), so this field is what keeps
+      // the widget's nightly rate on the same basis as whatahotel.com's own
+      // quote. Getting it wrong misprices every night by the tax factor.
       taxesFeesMinor: Math.max(0, parsed.totalGrossMinor - parsed.nightlyNetMinor * nights),
       taxBasis: 'GROSS',
 

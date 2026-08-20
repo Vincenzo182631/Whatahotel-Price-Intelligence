@@ -192,8 +192,17 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     },
 
     price: {
+      // ADR: the BASE room rate per night, before taxes and fees — the same
+      // basis whatahotel.com quotes, so the widget and the page around it
+      // never disagree about what a night costs. NOT total / nights.
       nightly: money(loaded.nightlyMinor, currency),
+      nightly_basis: 'NET',
+      // The whole-stay cost the customer commits to, taxes and fees included.
       total: money(loaded.totalMinor, currency),
+      total_basis: loaded.taxBasis,
+      taxes_fees: money(loaded.taxesFeesMinor, currency),
+      // Retained for consumers written before the two bases diverged. It has
+      // always described the TOTAL, which is what it still describes.
       tax_basis: loaded.taxBasis,
       observed_at: loaded.observedAt,
       age_hours: Math.round(loaded.rateAgeHours * 10) / 10,

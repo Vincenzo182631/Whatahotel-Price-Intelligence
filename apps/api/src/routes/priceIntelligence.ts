@@ -125,10 +125,16 @@ export const priceIntelligenceHandler: Handler = async (_req, res, ctx) => {
     },
 
     price: {
+      // ADR: base room rate per night, before taxes and fees (migration 0011)
+      // — the basis whatahotel.com quotes. The total below is what the stay
+      // costs in full, so the two carry separate basis fields.
       nightly: money(analysis.currentNightlyMinor, cur),
+      nightly_basis: 'NET',
       total: money(analysis.currentTotalMinor, cur),
+      total_basis: loaded.input.current.taxBasis,
       effective_nightly: money(analysis.effectiveNightlyMinor, cur),
       benefit_value_per_night: money(analysis.benefitValuePerNightMinor, cur),
+      /** Retained for older consumers; it has always described the total. */
       tax_basis: loaded.input.current.taxBasis,
       observed_at: analysis.dataAsOf,
     },

@@ -14,9 +14,14 @@ export interface StayKey {
 }
 
 export interface CurrentRateRow {
+  /** ADR: the base room rate per night, before taxes and fees. */
   readonly nightlyMinor: number;
+  /** The whole-stay total the customer pays, taxes and fees included. */
   readonly totalMinor: number;
+  /** The tax and fee portion of `totalMinor`, when the source states one. */
+  readonly taxesFeesMinor: number | null;
   readonly observedAt: string;
+  /** The basis of `totalMinor`. `nightlyMinor` is always base-rate. */
   readonly taxBasis: 'NET' | 'GROSS' | 'UNKNOWN';
   readonly matchMethod: string;
   readonly matchConfidence: number;
@@ -73,6 +78,7 @@ export async function findCurrentRate(key: StayKey, q?: Queryable): Promise<Curr
   return {
     nightlyMinor: row.nightly_amount_minor as number,
     totalMinor: row.total_amount_minor as number,
+    taxesFeesMinor: (row.taxes_fees_minor as number | null) ?? null,
     observedAt: (row.observed_at as Date).toISOString(),
     taxBasis: row.tax_basis as 'NET' | 'GROSS' | 'UNKNOWN',
     matchMethod: row.match_method as string,
