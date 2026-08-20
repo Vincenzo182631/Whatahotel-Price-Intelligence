@@ -22,11 +22,11 @@ changes are needed to ship.
    — pick the "Other" framework preset and change nothing.
 2. Set the project's **Environment Variables** (Production):
 
-   | Variable       | Value                                                      |
-   | -------------- | ---------------------------------------------------------- |
-   | `DATABASE_URL` | the Neon connection string **with the `-pooler` hostname** |
-   | `CORS_ORIGIN`  | `https://www.whatahotel.com,https://whatahotel.com`        |
-   | `WAH_API_KEY`  | the WhataHotel data API key — enables on-demand scoring    |
+   | Variable       | Value                                                                       |
+   | -------------- | --------------------------------------------------------------------------- |
+   | `DATABASE_URL` | the Neon connection string **with the `-pooler` hostname**                  |
+   | `CORS_ORIGIN`  | `https://www.whatahotel.com,https://whatahotel.com,https://wah.rpx-dev.com` |
+   | `WAH_API_KEY`  | the WhataHotel data API key — enables on-demand scoring                     |
 
    **Pooler, not direct.** Serverless instances each open their own database
    connection; the direct endpoint's connection limit is sized for migrations
@@ -35,8 +35,11 @@ changes are needed to ship.
    two workloads genuinely want different endpoints, and each doc says which.
 
    **CORS is an allowlist**, comma-separated, matched against the request's
-   Origin. An origin off the list gets no header at all. Unset means `*`,
-   which is for development only — do not ship it.
+   Origin. An origin off the list gets no header at all, and every call from
+   that page fails in the browser while looking exactly like a broken embed —
+   so a new host (a staging domain, say) must be added here BEFORE anyone
+   tests the widget on it. `https://wah.rpx-dev.com` is included for that
+   reason. Unset means `*`, which is for development only — do not ship it.
 
 3. Deploy. Vercel builds on every push to `main` from then on.
 
@@ -80,15 +83,35 @@ The zero-JavaScript form — one edit to the hotel-page template:
 ></div>
 ```
 
+**`data-wah-pi` is a marker attribute, not a value.** The element is found by
+the attribute selector `[data-wah-pi]`, so the host template needs no id and no
+class — that is the whole point of it. Its value is ignored, except as an
+optional shorthand for the hotel id (`data-wah-pi="1198"` works).
+
+**The stay can come from the page URL instead of attributes.** A booking page
+that already carries it — `showRates.cfm?hotelID=2008&checkIn=2026-09-08&checkOut=2026-09-11&guests=2`
+— needs only `<div data-wah-pi></div>`; the widget reads `hotelID`, `checkIn`,
+`checkOut`, `guests` and `children` from the query string (several spellings
+accepted) when the matching data-attribute is absent. Attributes always win.
+Dates may be `YYYY-MM-DD` or `MM/DD/YYYY`.
+
 The script mounts every `[data-wah-pi]` element it finds, derives the API base
 from its own `src`, validates the inputs (missing or invalid values — a past
 check-in, an inverted range — mean NO request rather than a broken panel), and
 **remounts automatically when the data-attributes change**, so a calendar that
-swaps dates without a page reload just works. An uncatalogued hotel or a
-service failure hides the panel entirely (`data-unavailable="notice"` opts
-into a message instead); the honest "could not verify enough live data" state
-for a catalogued hotel always shows — that message is the product being
-truthful, not failing.
+swaps dates without a page reload just works.
+
+**A hidden panel says why, in the console.** Hiding is correct for a guest, but
+it makes a working embed and a broken one look identical to whoever is
+integrating it, so the widget logs one `[wah-pi]` line: a `warn` when the
+configuration is unusable (no hotel id, unparseable dates), and an `info` when
+the embed is fine and the hotel simply is not collected yet. Check that console
+line first when "nothing happens".
+
+An uncatalogued hotel or a service failure hides the panel entirely
+(`data-unavailable="notice"` opts into a message instead); the honest "could
+not verify enough live data" state for a catalogued hotel always shows — that
+message is the product being truthful, not failing.
 
 The programmatic form is unchanged for pages that want control:
 
