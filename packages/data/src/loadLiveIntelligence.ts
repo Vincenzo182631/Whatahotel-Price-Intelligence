@@ -30,8 +30,12 @@ import {
 } from '@wahpi/core';
 
 import type { Queryable } from './client.js';
-import { findHotelByWahId, type HotelRow } from './repositories/hotels.js';
-import { findAvailableRoomTypes, findCurrentRate } from './repositories/observations.js';
+import { findHotelByWahId, hasCuratedComparables, type HotelRow } from './repositories/hotels.js';
+import {
+  findAvailableRoomTypes,
+  findCurrentRate,
+  findQuotedCurrency,
+} from './repositories/observations.js';
 import {
   findCompetitorRates,
   findMarketCompression,
@@ -44,7 +48,13 @@ export interface LiveRequest {
   readonly nights: number;
   readonly adults: number;
   readonly children: number;
-  readonly currency: string;
+  /**
+   * Null means "whatever this hotel is quoted in", which is the right default
+   * for a widget that runs on every hotel page in the world. Pin it only when
+   * the caller genuinely requires one currency and would rather see nothing
+   * than a rate in another.
+   */
+  readonly currency: string | null;
   readonly roomTypeId?: number | null;
   readonly now?: Date;
 }
@@ -52,8 +62,19 @@ export interface LiveRequest {
 export type LiveLoadFailure =
   { kind: 'HOTEL_NOT_FOUND' } | { kind: 'ROOM_TYPE_NOT_FOUND' } | { kind: 'NO_CURRENT_RATE' };
 
+/**
+ * Where the comp set came from. `CURATED` is the ranked peer set built from
+ * accrued baselines; `DESTINATION` is the nearest same-destination hotels, used
+ * before a destination has enough history to rank. Published rather than
+ * hidden: a city-wide comparison must never be presented as a peer one.
+ */
+export type CompBasis = 'CURATED' | 'DESTINATION';
+
 export interface LoadedLiveIntelligence {
   readonly hotel: HotelRow;
+  /** The currency everything in this result is denominated in. */
+  readonly currency: string;
+  readonly compBasis: CompBasis;
   readonly roomTypeId: number;
   readonly roomName: string;
   readonly roomSelectedBy: 'USER' | 'ENGINE';
@@ -100,13 +121,17 @@ export async function loadLiveIntelligence(
   const hotel = await findHotelByWahId(request.wahHotelId, q);
   if (!hotel) return { kind: 'HOTEL_NOT_FOUND' };
 
+  // See findQuotedCurrency: the source prices in the hotel's local currency,
+  // so an unpinned request is answered in it rather than in an assumed USD.
+  const currency = request.currency ?? (await findQuotedCurrency(hotel.id, q)) ?? 'USD';
+
   const available = await findAvailableRoomTypes(
     hotel.id,
     request.checkIn,
     request.nights,
     request.adults,
     request.children,
-    request.currency,
+    currency,
     q,
   );
   if (available.length === 0) return { kind: 'NO_CURRENT_RATE' };
@@ -129,7 +154,7 @@ export async function loadLiveIntelligence(
     nights: request.nights,
     adults: request.adults,
     children: request.children,
-    currency: request.currency,
+    currency,
   };
 
   const current = await findCurrentRate(stayKey, q);
@@ -163,7 +188,7 @@ export async function loadLiveIntelligence(
       request.nights,
       request.adults,
       request.children,
-      request.currency,
+      currency,
       // Terms, not the class: the class is hotel-specific and can never match
       // a competitor. See findCompetitorRates and normalize/compMatch.ts.
       subjectTerms,
@@ -181,7 +206,7 @@ export async function loadLiveIntelligence(
       request.nights,
       request.adults,
       request.children,
-      request.currency,
+      currency,
       live.calendar.windowDays,
       live.csi.maxCompAgeHours,
       q,
@@ -208,6 +233,8 @@ export async function loadLiveIntelligence(
 
   return {
     hotel,
+    currency,
+    compBasis: (await hasCuratedComparables(hotel.id, q)) ? 'CURATED' : 'DESTINATION',
     roomTypeId: chosen.roomTypeId,
     roomName: chosen.canonicalName,
     roomSelectedBy: request.roomTypeId != null ? 'USER' : 'ENGINE',

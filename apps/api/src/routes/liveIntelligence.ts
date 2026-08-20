@@ -25,8 +25,14 @@ import {
   isLiveLoadFailure,
   loadActiveConfig,
   loadLiveIntelligence,
+  promoteHotelForCollection,
 } from '@wahpi/data';
-import { collectStayOnDemand, type OnDemandResult } from '@wahpi/ingest';
+import {
+  collectStayOnDemand,
+  enrollHotel,
+  ensureDestinationDepth,
+  type OnDemandResult,
+} from '@wahpi/ingest';
 
 import {
   ApiError,
@@ -69,7 +75,13 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   const nights = nightsBetween(checkIn, checkOut);
   const adults = optionalInt(url, 'adults', 2, 1, 10);
   const children = optionalInt(url, 'children', 0, 0, 10);
-  const currency = (url.searchParams.get('currency') ?? 'USD').toUpperCase();
+  // No default. The source prices in the HOTEL's currency — Doha answers in
+  // QAR, Miami in USD — so assuming USD made every non-US hotel report "no
+  // rate for these dates" when what we actually had was a rate we refused to
+  // look at. Null means "answer in whatever this hotel is quoted in"; a caller
+  // that pins a currency still gets exactly that one or nothing.
+  const currencyParam = url.searchParams.get('currency');
+  const requestedCurrency = currencyParam === null ? null : currencyParam.toUpperCase();
   const roomTypeParam = url.searchParams.get('room_type_id');
 
   const roomTypeId = roomTypeParam === null ? null : Number(roomTypeParam);
@@ -82,10 +94,33 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   const { config } = await loadActiveConfig();
   const now = new Date();
 
-  const request = { wahHotelId, checkIn, nights, adults, children, currency, roomTypeId, now };
+  const request = {
+    wahHotelId,
+    checkIn,
+    nights,
+    adults,
+    children,
+    currency: requestedCurrency,
+    roomTypeId,
+    now,
+  };
   let loaded = await loadLiveIntelligence(request, config);
   let onDemand: OnDemandResult | null = null;
   let onDemandError: string | null = null;
+
+  // Automatic catalogue enrollment. A hotel nobody has synced is not a hotel
+  // that does not exist — the source knows its whole inventory, so ask. This
+  // is what makes the widget work on every whatahotel.com page rather than
+  // only the destinations someone remembered to sync. A source that does not
+  // recognise the id still ends in the honest 404 below.
+  let enrolled: string | null = null;
+  if (isLiveLoadFailure(loaded) && loaded.kind === 'HOTEL_NOT_FOUND') {
+    const result = await enrollHotel(wahHotelId);
+    enrolled = result.outcome;
+    if (result.outcome === 'ENROLLED') {
+      loaded = await loadLiveIntelligence(request, config);
+    }
+  }
 
   // On-demand collection: a stay nothing has collected is fetched live, right
   // now, and scored from what comes back — the same pipeline, validation and
@@ -95,6 +130,17 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   if (isLiveLoadFailure(loaded) && loaded.kind === 'NO_CURRENT_RATE') {
     const hotel = await findHotelByWahId(wahHotelId);
     if (hotel) {
+      // Before spending on rates, make sure we know who this hotel's
+      // neighbours are. The sweep catalogues hotels one id at a time and has
+      // no notion of a city, so a destination can be populated unevenly, and
+      // an on-demand fetch with no comparables produces a rate we cannot put
+      // in context. One indexed query when the destination is already deep
+      // enough; one API call when it is not.
+      try {
+        await ensureDestinationDepth(wahHotelId);
+      } catch (err) {
+        console.error('destination depth check failed:', (err as Error).message);
+      }
       try {
         onDemand = await collectStayOnDemand({
           hotelId: hotel.id,
@@ -120,10 +166,28 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     }
   }
 
+  // A guest looking at a hotel is the signal that its history is worth
+  // accruing. The full-inventory sweep catalogues every hotel the source has
+  // at tier OFF — scoreable on demand, but off the collection schedule, because
+  // scheduling all of inventory would take months per cycle. This promotes on
+  // first real interest, so scheduled collection follows demand. Never allowed
+  // to break the read: a failed promotion costs a day of baseline, not a score.
+  if (!isLiveLoadFailure(loaded) || loaded.kind !== 'HOTEL_NOT_FOUND') {
+    try {
+      await promoteHotelForCollection(wahHotelId);
+    } catch (err) {
+      console.error('collection promotion failed:', (err as Error).message);
+    }
+  }
+
   if (isLiveLoadFailure(loaded)) {
     switch (loaded.kind) {
       case 'HOTEL_NOT_FOUND':
-        throw new ApiError('HOTEL_NOT_FOUND', 'No such hotel.', { hotel_id: wahHotelId });
+        throw new ApiError('HOTEL_NOT_FOUND', 'No such hotel.', {
+          hotel_id: wahHotelId,
+          // Whether we tried to learn about it, and what the source said.
+          enrollment: enrolled,
+        });
       case 'ROOM_TYPE_NOT_FOUND':
         throw new ApiError('ROOM_TYPE_NOT_FOUND', 'No such room type for this hotel.', {
           room_type_id: roomTypeParam,
@@ -148,6 +212,8 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   }
 
   const { result, compSet, calendar, compression } = loaded;
+  // Whatever the hotel is actually quoted in, resolved by the loader.
+  const currency = loaded.currency;
 
   /**
    * The renormalized weight for a signal.
@@ -228,6 +294,11 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     signals: {
       comp_set: {
         available: compSet.signal.available,
+        // CURATED = the ranked peer set built from accrued baselines.
+        // DESTINATION = the nearest hotels in the same destination, which is
+        // what a city we have not collected long enough to rank falls back to.
+        // Published so nothing renders a city-wide comparison as a peer one.
+        basis: loaded.compBasis,
         unavailable_reason: compSet.signal.unavailableReason,
         sub_score: compSet.signal.subScore,
         weight: compSet.signal.weight,

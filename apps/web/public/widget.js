@@ -1369,6 +1369,66 @@
   }
 
   /**
+   * The hotel id from the page's own path.
+   *
+   * whatahotel.com hotel pages are /hotels/<id>/<Slug>.html — the rates page
+   * carries hotelID in the query string, but the detail page carries it only
+   * here. Reading it means the marker div works on both without the template
+   * having to interpolate anything.
+   */
+  function urlPathHotelId() {
+    try {
+      if (typeof window === 'undefined' || !window.location) return null;
+      var m = window.location.pathname.match(/\/hotels?\/(\d{2,10})(?:[/.]|$)/i);
+      return m ? m[1] : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * A value from the page's own booking form.
+   *
+   * The hotel pages drive their date fields through a jQuery `pickadate`
+   * picker on inputs named/id'd checkIn and checkOut, and the guest selects
+   * dates there BEFORE any navigation happens. Reading the live field means
+   * the widget answers for what the guest has actually chosen rather than for
+   * whatever the URL last said.
+   */
+  function formValue(selectors) {
+    try {
+      if (typeof document === 'undefined') return null;
+      for (var i = 0; i < selectors.length; i++) {
+        var node = document.querySelector(selectors[i]);
+        if (node && typeof node.value === 'string' && node.value.trim() !== '') {
+          return node.value.trim();
+        }
+      }
+    } catch (e) {
+      /* an exotic selector must not break the host page */
+    }
+    return null;
+  }
+
+  var CHECK_IN_SELECTORS = [
+    '#checkIn',
+    '#checkin',
+    '[name="checkIn"]',
+    '[name="checkin"]',
+    '[name="check_in"]',
+    '[data-wah-check-in]',
+  ];
+  var CHECK_OUT_SELECTORS = [
+    '#checkOut',
+    '#checkout',
+    '[name="checkOut"]',
+    '[name="checkout"]',
+    '[name="check_out"]',
+    '[data-wah-check-out]',
+  ];
+  var GUEST_SELECTORS = ['#guests', '[name="guests"]', '[name="adults"]', '#adults'];
+
+  /**
    * Normalise a host page's date to YYYY-MM-DD.
    *
    * ISO passes through. MM/DD/YYYY and YYYY/MM/DD are accepted because a
@@ -1393,13 +1453,22 @@
     var ds = node.dataset || {};
     // Data attributes win; the URL is the fallback so a booking page that
     // already carries the stay in its query string needs only the marker div.
+    // Precedence: explicit attributes, then the page's live booking form
+    // (what the guest has actually picked), then the URL, then the path.
     var hotelId =
       ds.hotelId ||
       (ds.wahPi && ds.wahPi !== '' ? ds.wahPi : null) ||
-      urlParam(['hotelID', 'hotelId', 'hotel_id', 'hotel']);
-    var checkIn = ds.checkIn || urlParam(['checkIn', 'checkin', 'check_in', 'arrive']);
-    var checkOut = ds.checkOut || urlParam(['checkOut', 'checkout', 'check_out', 'depart']);
-    var adults = ds.adults || urlParam(['adults', 'guests', 'numAdults']);
+      urlParam(['hotelID', 'hotelId', 'hotel_id', 'hotel']) ||
+      urlPathHotelId();
+    var checkIn =
+      ds.checkIn ||
+      formValue(CHECK_IN_SELECTORS) ||
+      urlParam(['checkIn', 'checkin', 'check_in', 'arrive']);
+    var checkOut =
+      ds.checkOut ||
+      formValue(CHECK_OUT_SELECTORS) ||
+      urlParam(['checkOut', 'checkout', 'check_out', 'depart']);
+    var adults = ds.adults || formValue(GUEST_SELECTORS) || urlParam(['adults', 'guests', 'numAdults']);
     var children = ds.children || urlParam(['children', 'numChildren', 'kids']);
 
     var config = {
@@ -1460,8 +1529,93 @@
     }
   }
 
+  /**
+   * Remount every panel when the stay could have changed underneath it.
+   *
+   * The guest picks dates in the host page's own form, or the page swaps the
+   * URL without a reload. Neither touches our data-attributes, so without this
+   * the panel would keep showing the score for the stay the page opened with —
+   * a stale score presented as current, which is the one thing this product
+   * must never do. Debounced, because a date picker fires per keystroke.
+   */
+  var remountTimer = null;
+  var lastSignature = null;
+
+  function stateSignature() {
+    return [
+      typeof window !== 'undefined' && window.location ? window.location.href : '',
+      formValue(CHECK_IN_SELECTORS) || '',
+      formValue(CHECK_OUT_SELECTORS) || '',
+      formValue(GUEST_SELECTORS) || '',
+    ].join('|');
+  }
+
+  function remountAll(force) {
+    var signature = stateSignature();
+    if (!force && signature === lastSignature) return;
+    lastSignature = signature;
+    var nodes = document.querySelectorAll('[data-wah-pi]');
+    for (var i = 0; i < nodes.length; i++) autoMount(nodes[i]);
+  }
+
+  function scheduleRemount() {
+    clearTimeout(remountTimer);
+    remountTimer = setTimeout(function () {
+      try {
+        remountAll(false);
+      } catch (e) {
+        /* never break the host page */
+      }
+    }, 400);
+  }
+
+  function watchPageState() {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+
+    // The guest editing the booking form. Capture phase and delegated from the
+    // document, so fields the page renders later are covered too.
+    ['change', 'input'].forEach(function (evt) {
+      document.addEventListener(
+        evt,
+        function (e) {
+          var t = e && e.target;
+          if (!t || !t.matches) return;
+          var watched = CHECK_IN_SELECTORS.concat(CHECK_OUT_SELECTORS, GUEST_SELECTORS).join(',');
+          try {
+            if (t.matches(watched)) scheduleRemount();
+          } catch (err) {
+            /* selector unsupported in this browser: ignore */
+          }
+        },
+        true,
+      );
+    });
+
+    // The page changing its own URL: back/forward, and pushState/replaceState
+    // for a booking flow that swaps dates without a reload.
+    window.addEventListener('popstate', scheduleRemount);
+    window.addEventListener('hashchange', scheduleRemount);
+    ['pushState', 'replaceState'].forEach(function (fn) {
+      try {
+        var original = window.history && window.history[fn];
+        if (typeof original !== 'function' || original.__wahpiWrapped) return;
+        var wrapped = function () {
+          var out = original.apply(window.history, arguments);
+          scheduleRemount();
+          return out;
+        };
+        wrapped.__wahpiWrapped = true;
+        window.history[fn] = wrapped;
+      } catch (e) {
+        /* a locked-down history object is fine; popstate still covers back */
+      }
+    });
+  }
+
   function initAuto() {
     if (typeof document === 'undefined') return;
+    lastSignature = stateSignature();
+    watchPageState();
     var nodes = document.querySelectorAll('[data-wah-pi]');
     for (var i = 0; i < nodes.length; i++) {
       watchNode(nodes[i]);

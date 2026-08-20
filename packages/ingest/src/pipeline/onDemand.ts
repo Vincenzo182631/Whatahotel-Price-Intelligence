@@ -66,9 +66,13 @@ export const DEFAULT_ON_DEMAND_OPTIONS: OnDemandOptions = {
   // The source is verified ~7 months out (U2). 300 keeps a safety margin, and
   // the smoke suite's deliberately-unfetchable stays sit far beyond it.
   maxLeadDays: 300,
-  // Subject + 6 ≈ 7 calls ≈ 3–5s at the client's concurrency — inside a
-  // serverless budget, and enough comps for the CSI minimum with slack.
-  maxComparables: 6,
+  // Subject + 8 ≈ 9 calls ≈ 5–7s at the client's concurrency, inside the
+  // function's budget. Eight rather than six because the comp set matches on
+  // rate TERMS, and the source states them inconsistently: on a cold Honolulu
+  // request only 2 of 6 fetched comps shared the subject's terms, which is
+  // below the CSI minimum of 3. Widening the candidate pool is the fix that
+  // costs latency; relaxing the terms match would cost honesty (rule 5).
+  maxComparables: 8,
   retryHoldMinutes: 15,
 };
 

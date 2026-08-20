@@ -1,0 +1,272 @@
+/**
+ * The three database behaviours that make the widget work on hotels outside
+ * the destinations someone has already collected. All SQL, so nothing but an
+ * integration test executes them.
+ *
+ * Namespaced US- and cleaned up, so it can run against a seeded development
+ * database. Skips when DATABASE_URL is unset.
+ */
+
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { DEFAULT_CONFIG } from '../../packages/core/src/index.js';
+import { closePool, getPool } from '../../packages/data/src/index.js';
+import {
+  isLiveLoadFailure,
+  loadLiveIntelligence,
+} from '../../packages/data/src/loadLiveIntelligence.js';
+import {
+  hasCuratedComparables,
+  promoteHotelForCollection,
+} from '../../packages/data/src/repositories/hotels.js';
+import { findQuotedCurrency } from '../../packages/data/src/repositories/observations.js';
+import { findCompetitorRates } from '../../packages/data/src/repositories/liveContext.js';
+
+const HAS_DB = Boolean(process.env.DATABASE_URL);
+const suite = HAS_DB ? describe : describe.skip;
+
+const SOURCE = 'US_SRC';
+const SUBJECT = 'US-SUBJECT';
+/** Ordered by distance from the subject: NEAR is closest, FAR is furthest. */
+const NEIGHBOURS = ['US-NEAR', 'US-MID', 'US-FAR'];
+/** Another destination entirely — it must never enter the comparison. */
+const OUTSIDER = 'US-OUTSIDER';
+const CLASS = 'WAH:US|OFFER';
+const TERMS = { mealPlan: 'ROOM_ONLY', refundPolicy: 'REFUNDABLE', audience: 'CONSORTIA' };
+/** Not USD, deliberately: the point is that nothing assumes dollars. */
+const CURRENCY = 'QAR';
+const CHECK_IN = '2027-04-08';
+
+suite('integration · universal hotel support', () => {
+  const hotelIds = new Map<string, number>();
+  let sourceId = 0;
+
+  beforeAll(async () => {
+    const pool = getPool();
+    await cleanup();
+
+    const { rows: src } = await pool.query(
+      `INSERT INTO source (code, display_name, is_authoritative)
+       VALUES ($1,'Universal support test source',true) RETURNING id`,
+      [SOURCE],
+    );
+    sourceId = src[0].id;
+
+    const { rows: dest } = await pool.query(
+      `INSERT INTO destination (slug,name,country_code) VALUES ('us-city','US City','QA')
+       ON CONFLICT (slug) DO UPDATE SET name=EXCLUDED.name RETURNING id`,
+    );
+    const { rows: other } = await pool.query(
+      `INSERT INTO destination (slug,name,country_code) VALUES ('us-elsewhere','US Elsewhere','QA')
+       ON CONFLICT (slug) DO UPDATE SET name=EXCLUDED.name RETURNING id`,
+    );
+
+    // Coordinates set the fallback's ordering. The subject sits at the origin.
+    const places: Array<[string, number, number, number]> = [
+      [SUBJECT, dest[0].id, 0, 0],
+      ['US-NEAR', dest[0].id, 0.01, 0.01],
+      ['US-MID', dest[0].id, 0.5, 0.5],
+      ['US-FAR', dest[0].id, 2, 2],
+      [OUTSIDER, other[0].id, 0.001, 0.001],
+    ];
+    for (const [code, destinationId, lat, lon] of places) {
+      const { rows } = await pool.query(
+        `INSERT INTO hotel (wah_hotel_id,name,destination_id,luxury_tier,base_currency,
+                            latitude,longitude,collection_tier)
+         VALUES ($1,$1,$2,5,$5,$3,$4,'OFF') RETURNING id`,
+        [code, destinationId, lat, lon, CURRENCY],
+      );
+      hotelIds.set(code, rows[0].id);
+    }
+
+    const { rows: batch } = await pool.query(
+      `INSERT INTO ingest_batch (source_id) VALUES ($1) RETURNING id`,
+      [sourceId],
+    );
+
+    const plan = async (hotelId: number) => {
+      const { rows } = await pool.query(
+        `INSERT INTO rate_plan (hotel_id, source_id, source_plan_code, meal_plan,
+                                refund_policy, audience, comparability_class)
+         VALUES ($1,$2,'US-PLAN','ROOM_ONLY','REFUNDABLE','CONSORTIA',$3) RETURNING id`,
+        [hotelId, sourceId, `WAH:U${hotelId}|OFFER`],
+      );
+      return rows[0].id as number;
+    };
+
+    const insert = async (hotelId: number, rtId: number | null, nightlyMajor: number) => {
+      const observedAt = new Date(Date.now() - 3_600_000);
+      await pool.query(
+        `INSERT INTO rate_observation (
+           observed_at, source_id, hotel_id, room_type_id, rate_plan_id, check_in, nights,
+           check_out, adults, children, currency, total_amount_minor, tax_basis,
+           observed_date, observation_slot, stay_dow_bucket, stay_season_band,
+           match_method, match_confidence, comparability_class, is_available, ingest_batch_id)
+         VALUES ($1::timestamptz,$2,$3,$4,$11,$5::date,2,$5::date + 2,2,0,$6,$7,'GROSS',
+                 $8::date,date_trunc('hour',$1::timestamptz),'WEEKDAY','SHOULDER',
+                 'SOURCE_ID',1.00,$9,true,$10)`,
+        [
+          observedAt.toISOString(),
+          sourceId,
+          hotelId,
+          rtId,
+          CHECK_IN,
+          CURRENCY,
+          nightlyMajor * 100 * 2,
+          observedAt.toISOString().slice(0, 10),
+          CLASS,
+          batch[0].id,
+          await plan(hotelId),
+        ],
+      );
+    };
+
+    const { rows: rt } = await pool.query(
+      `INSERT INTO room_type (hotel_id,canonical_name,normalized_name,room_class)
+       VALUES ($1,'US King','us king','ROOM') RETURNING id`,
+      [hotelIds.get(SUBJECT)],
+    );
+
+    await insert(hotelIds.get(SUBJECT)!, rt[0].id, 1600);
+    await insert(hotelIds.get('US-NEAR')!, null, 1800);
+    await insert(hotelIds.get('US-MID')!, null, 2000);
+    await insert(hotelIds.get('US-FAR')!, null, 2200);
+    // Same price as the nearest neighbour, different destination. If it ever
+    // appears in the comp set the destination filter has stopped working.
+    await insert(hotelIds.get(OUTSIDER)!, null, 1800);
+  }, 60_000);
+
+  afterAll(async () => {
+    await cleanup();
+    await closePool();
+  });
+
+  it('answers in the currency the hotel is quoted in, not an assumed USD', async () => {
+    expect(await findQuotedCurrency(hotelIds.get(SUBJECT)!)).toBe(CURRENCY);
+
+    const loaded = await loadLiveIntelligence(
+      {
+        wahHotelId: SUBJECT,
+        checkIn: CHECK_IN,
+        nights: 2,
+        adults: 2,
+        children: 0,
+        currency: null,
+        now: new Date(),
+      },
+      DEFAULT_CONFIG,
+    );
+    if (isLiveLoadFailure(loaded)) throw new Error(`expected a rate, got ${loaded.kind}`);
+    expect(loaded.currency).toBe(CURRENCY);
+    expect(loaded.nightlyMinor).toBe(160_000);
+  });
+
+  it('still honours a currency the caller pins, even when nothing matches', async () => {
+    // Pinning is a promise, not a preference: a caller that requires USD gets
+    // USD or nothing. Silently answering in QAR would be worse than empty.
+    const loaded = await loadLiveIntelligence(
+      {
+        wahHotelId: SUBJECT,
+        checkIn: CHECK_IN,
+        nights: 2,
+        adults: 2,
+        children: 0,
+        currency: 'USD',
+        now: new Date(),
+      },
+      DEFAULT_CONFIG,
+    );
+    expect(isLiveLoadFailure(loaded) && loaded.kind).toBe('NO_CURRENT_RATE');
+  });
+
+  it('falls back to the nearest hotels in the destination when nothing is curated', async () => {
+    const subjectId = hotelIds.get(SUBJECT)!;
+    expect(await hasCuratedComparables(subjectId)).toBe(false);
+
+    const comps = await findCompetitorRates(
+      subjectId,
+      CHECK_IN,
+      2,
+      2,
+      0,
+      CURRENCY,
+      TERMS,
+      2, // deliberately fewer than the destination holds
+      48,
+    );
+
+    // Nearest two, and never the hotel in the other destination.
+    expect(comps.map((c) => c.hotelId).sort()).toEqual(['US-MID', 'US-NEAR']);
+    expect(comps.some((c) => c.hotelId === OUTSIDER)).toBe(false);
+  });
+
+  it('reports the comp basis, and prefers the curated set once one exists', async () => {
+    const subjectId = hotelIds.get(SUBJECT)!;
+    const request = {
+      wahHotelId: SUBJECT,
+      checkIn: CHECK_IN,
+      nights: 2,
+      adults: 2,
+      children: 0,
+      currency: null,
+      now: new Date(),
+    };
+
+    const before = await loadLiveIntelligence(request, DEFAULT_CONFIG);
+    if (isLiveLoadFailure(before)) throw new Error(`expected a rate, got ${before.kind}`);
+    expect(before.compBasis).toBe('DESTINATION');
+
+    // Curate exactly one comp — the FURTHEST hotel, so the two bases cannot be
+    // confused for each other.
+    await getPool().query(
+      `INSERT INTO hotel_comparable (hotel_id,comparable_id,rank,similarity,basis)
+       VALUES ($1,$2,1,0.9,'DESTINATION_TIER_PRICEBAND')`,
+      [subjectId, hotelIds.get('US-FAR')],
+    );
+
+    const after = await loadLiveIntelligence(request, DEFAULT_CONFIG);
+    if (isLiveLoadFailure(after)) throw new Error(`expected a rate, got ${after.kind}`);
+    expect(after.compBasis).toBe('CURATED');
+
+    const comps = await findCompetitorRates(subjectId, CHECK_IN, 2, 2, 0, CURRENCY, TERMS, 5, 48);
+    expect(comps.map((c) => c.hotelId)).toEqual(['US-FAR']);
+  });
+
+  it('promotes a catalogued hotel into collection on first interest, once', async () => {
+    expect(await promoteHotelForCollection(OUTSIDER)).toBe(true);
+    expect(await promoteHotelForCollection(OUTSIDER)).toBe(false);
+
+    const { rows } = await getPool().query(
+      `SELECT collection_tier FROM hotel WHERE wah_hotel_id = $1`,
+      [OUTSIDER],
+    );
+    expect(rows[0].collection_tier).toBe('WARM');
+  });
+});
+
+async function cleanup(): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `DELETE FROM rate_observation WHERE hotel_id IN
+       (SELECT id FROM hotel WHERE wah_hotel_id LIKE 'US-%')`,
+  );
+  await pool.query(
+    `DELETE FROM hotel_comparable WHERE hotel_id IN
+       (SELECT id FROM hotel WHERE wah_hotel_id LIKE 'US-%')`,
+  );
+  await pool.query(
+    `DELETE FROM rate_plan WHERE hotel_id IN
+       (SELECT id FROM hotel WHERE wah_hotel_id LIKE 'US-%')`,
+  );
+  await pool.query(
+    `DELETE FROM room_type WHERE hotel_id IN
+       (SELECT id FROM hotel WHERE wah_hotel_id LIKE 'US-%')`,
+  );
+  await pool.query(`DELETE FROM hotel WHERE wah_hotel_id LIKE 'US-%'`);
+  await pool.query(
+    `DELETE FROM ingest_batch WHERE source_id IN (SELECT id FROM source WHERE code = $1)`,
+    [SOURCE],
+  );
+  await pool.query(`DELETE FROM source WHERE code = $1`, [SOURCE]);
+  await pool.query(`DELETE FROM destination WHERE slug IN ('us-city','us-elsewhere')`);
+}

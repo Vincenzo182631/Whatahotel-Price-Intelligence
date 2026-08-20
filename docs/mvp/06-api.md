@@ -43,22 +43,24 @@ Neither predicts a future price. The widget defaults to the live model because i
 
 `/live-intelligence` deliberately does **not** return named competitor rates. The comp count and the median are the evidence a customer needs; the individual prices are another hotel's commercial data.
 
+`signals.comp_set.basis` says where the comp set came from. `CURATED` is the ranked peer set built from accrued baselines. `DESTINATION` is the nearest hotels in the same destination, which is what a hotel catalogued too recently to rank falls back to — weaker evidence, published rather than hidden so nothing renders a city-wide comparison as a peer one. It flips to `CURATED` automatically on the first rollup with baselines to rank.
+
 ---
 
 ## 2. `GET /api/v1/price-intelligence` — the core endpoint
 
 ### Request
 
-| Param          | Type   | Req | Notes                                                                                     |
-| -------------- | ------ | --- | ----------------------------------------------------------------------------------------- |
-| `hotel_id`     | string | ✔   | WhataHotel hotel ID (U1)                                                                  |
-| `check_in`     | date   | ✔   |                                                                                           |
-| `check_out`    | date   | ✔   | Must be after `check_in`, ≤ 30 nights                                                     |
-| `adults`       | int    |     | Default 2, 1–10                                                                           |
-| `children`     | int    |     | Default 0, 0–10                                                                           |
-| `room_type_id` | string |     | Omit → the engine selects the hotel's lowest-priced available room type and reports which |
-| `currency`     | string |     | Default `USD` (decision D5)                                                               |
-| `include`      | csv    |     | `history`, `comparables`, `explanation`. Default `explanation`                            |
+| Param          | Type   | Req | Notes                                                                                                                                                                                                                                                 |
+| -------------- | ------ | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hotel_id`     | string | ✔   | WhataHotel hotel ID (U1)                                                                                                                                                                                                                              |
+| `check_in`     | date   | ✔   |                                                                                                                                                                                                                                                       |
+| `check_out`    | date   | ✔   | Must be after `check_in`, ≤ 30 nights                                                                                                                                                                                                                 |
+| `adults`       | int    |     | Default 2, 1–10                                                                                                                                                                                                                                       |
+| `children`     | int    |     | Default 0, 0–10                                                                                                                                                                                                                                       |
+| `room_type_id` | string |     | Omit → the engine selects the hotel's lowest-priced available room type and reports which                                                                                                                                                             |
+| `currency`     | string |     | Omit → the currency the HOTEL is quoted in (Doha answers in QAR, Miami in USD). Pinning it means what it says: that currency or no answer, never a converted one. Supersedes decision D5's `USD` default, which made every non-US hotel look rateless |
+| `include`      | csv    |     | `history`, `comparables`, `explanation`. Default `explanation`                                                                                                                                                                                        |
 
 `GET /api/v1/price-intelligence?hotel_id=2962&check_in=2026-09-18&check_out=2026-09-21&adults=2&room_type_id=rt_8814&include=history,explanation`
 

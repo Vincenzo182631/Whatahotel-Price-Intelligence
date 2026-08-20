@@ -29,6 +29,7 @@ npm run calibrate -- --sweep --report out.md   # calibration runbook (doc 11)
 # the scripts below load it via --env-file-if-exists. An exported variable wins
 # over .env, so CI secrets are never shadowed.
 WAH_API_KEY=... npm run collect -- --catalog miami   # sync hotels + their perks
+WAH_API_KEY=... npm run collect -- --catalog-sweep   # sync the WHOLE catalogue
 WAH_API_KEY=... npm run collect                      # top up the grid + refresh what is due
 WAH_API_KEY=... npm run collect -- --bootstrap       # grid only, skip the due-refresh
 WAH_API_KEY=... npm run collect -- --dry-run         # show the plan, call nothing
@@ -161,6 +162,44 @@ engine.
     date: wanted dates shift daily, so date keys reset the counter every UTC
     day and the backoff can never outlast the 6-hour cron (migration 0010).
 
+17. **The catalogue is the source's whole inventory, not a curated list.** The
+    widget has to answer on every hotel page on whatahotel.com, so nothing may
+    require a human to enrol a hotel or a city. Two mechanisms, both automatic:
+    `enrollHotel` on the first request for an unknown id, and the weekly
+    `--catalog-sweep`. The sweep walks the hotel-id space because **the source
+    cannot list itself** — measured 2026-08-20, `search` returns at most 12
+    hotels for any term and `cityrates` at most 15 for any city, so "Miami has
+    15 hotels" was the cap, never the inventory. Two things about the sweep are
+    not negotiable: it **only ever adds** (an unknown id and a server fault
+    both answer `500`, so a probe cannot tell them apart and deactivating on
+    one would let a bad afternoon empty the catalogue), and what it finds
+    starts at collection tier **`OFF`** — catalogued and scoreable on demand,
+    but out of the scheduled grid, because ~5k hotels at `WARM` is ~230k stays
+    and a cycle measured in months. `promoteHotelForCollection` moves a hotel
+    to `WARM` the first time a guest actually looks at it, so scheduled API
+    spend follows real demand instead of the whole of inventory.
+
+18. **The source prices in the hotel's currency, not the caller's.** Doha
+    answers in QAR, Miami in USD. Every stored-rate query filters on currency —
+    correctly, because mixing them would compare 1,600 QAR to 1,600 USD — so a
+    hard-coded `USD` default made every non-US hotel report "no rate for these
+    dates" when what we actually had was a rate we refused to look at. A
+    request that does not pin a currency is answered in whatever the hotel is
+    quoted in (`findQuotedCurrency`: the most recent observation, then
+    `hotel.base_currency`). Pinning still means what it says — a caller that
+    asks for USD gets USD or nothing, never a silent substitution. **Never
+    convert.** We have no FX rates, and inventing one would put a fabricated
+    number in front of a customer.
+
+19. **A comp set built from the destination says so.** `rebuildComparables`
+    ranks on accrued baselines, so a hotel catalogued this week has no curated
+    peers, and the Comp-Set Index is 45% of the live score. The fallback is the
+    same filter the curated set starts from — same destination, nearest first
+    by coordinates — and the result carries `compBasis: 'DESTINATION'`, which
+    the API publishes. It is weaker evidence and must never be rendered as a
+    curated peer comparison. The curated set takes over automatically on the
+    first rollup that has baselines to rank.
+
 ## Adding or changing a factor
 
 1. Update `docs/mvp/02-deal-score.md` with the rationale first.
@@ -233,6 +272,17 @@ sold-out stay), and a comparables cap per request. Requires `WAH_API_KEY` in
 the API's environment; degrades silently to the honest 409 without it. The
 widget auto-mounts from `data-wah-pi` attributes and remounts when they
 change — see `docs/runbooks/deploy.md`.
+
+**Universal hotel support is live** (2026-08-20). The widget detects the stay
+from the page — explicit `data-wah-pi-*` attributes first, then the booking
+form, then the URL query string, then the URL path (`/hotels/<id>/`) — and
+remounts when any of that changes, so a guest editing the date picker gets a
+recalculated score with no reload. Nothing in it is destination-specific. The
+catalogue side is rule 17. Two source facts made this work at all: the `hotel`
+method answers for an arbitrary id (so no hotel has to be pre-registered), and
+its success code is **`100`, not `200`** — a client accepting only `200` throws
+on every hotel lookup, which is what stopped automatic enrolment working the
+first time.
 
 Config v4 **retired WAIT** (see rule 2). Reading the eight never-WAIT guards as
 a list makes the case: each one meant "we cannot responsibly predict this", and

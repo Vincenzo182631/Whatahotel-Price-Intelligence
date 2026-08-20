@@ -20,6 +20,51 @@ import type { CompetitorRate, CompressionInput, NearbyDateRate } from '@wahpi/co
 import { db, type Queryable } from '../client.js';
 
 /**
+ * The comp set, as SQL: the curated set when one exists, otherwise the
+ * subject's own destination, nearest first.
+ *
+ * `rebuildComparables` ranks on accrued baselines, so a hotel catalogued this
+ * week has no curated set — and a destination the collector has never visited
+ * would therefore have no Comp-Set Index at all, which is 45% of the live
+ * score. That is not an acceptable answer for a widget that has to work on
+ * every hotel page on the site, and the honest stand-in is the same filter the
+ * curated set itself starts from: the same destination, minus the price and
+ * tier ranking it cannot compute yet. Ordered by straight-line distance from
+ * the subject, so the nearest hotels are the ones that get compared.
+ *
+ * The fallback is weaker evidence and is reported as such — see `compBasis` on
+ * the loaded result, which the API publishes so nothing downstream can present
+ * a city-wide comparison as a curated peer set.
+ *
+ * $1 is the subject hotel id; `limitParam` is the caller's own placeholder.
+ */
+function compSetCte(limitParam: string): string {
+  return `curated AS (
+       SELECT c.comparable_id AS hotel_id, c.rank
+         FROM hotel_comparable c
+        WHERE c.hotel_id = $1
+        ORDER BY c.rank
+        LIMIT ${limitParam}
+     ),
+     comps AS (
+       SELECT hotel_id, rank FROM curated
+       UNION ALL
+       (SELECT h.id, 9999
+          FROM hotel h,
+               (SELECT destination_id, latitude, longitude FROM hotel WHERE id = $1) s
+         WHERE NOT EXISTS (SELECT 1 FROM curated)
+           AND h.is_active
+           AND h.id <> $1
+           AND s.destination_id IS NOT NULL
+           AND h.destination_id = s.destination_id
+         ORDER BY (h.latitude IS NULL OR s.latitude IS NULL),
+                  (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
+                  h.id
+         LIMIT ${limitParam})
+     )`;
+}
+
+/**
  * Live competitor rates for the SAME stay.
  *
  * Distinct from `findComparableRates`, which returns each comp's rate beside
@@ -58,13 +103,7 @@ export async function findCompetitorRates(
   q?: Queryable,
 ): Promise<CompetitorRate[]> {
   const { rows } = await db(q).query(
-    `WITH comps AS (
-       SELECT c.comparable_id AS hotel_id, c.rank
-         FROM hotel_comparable c
-        WHERE c.hotel_id = $1
-        ORDER BY c.rank
-        LIMIT $8
-     ),
+    `WITH ${compSetCte('$8')},
      latest AS (
        SELECT DISTINCT ON (o.hotel_id, o.room_type_id)
               o.hotel_id, o.nightly_amount_minor, o.observed_at, o.is_available
@@ -218,13 +257,7 @@ export async function findMarketCompression(
   q?: Queryable,
 ): Promise<CompressionInput | null> {
   const { rows } = await db(q).query(
-    `WITH comps AS (
-       SELECT c.comparable_id AS hotel_id
-         FROM hotel_comparable c
-        WHERE c.hotel_id = $1
-        ORDER BY c.rank
-        LIMIT $5
-     ),
+    `WITH ${compSetCte('$5')},
      priced AS (
        SELECT DISTINCT o.hotel_id
          FROM rate_observation o

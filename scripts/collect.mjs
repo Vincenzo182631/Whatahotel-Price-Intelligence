@@ -4,6 +4,7 @@
  *
  *   node scripts/collect.mjs --catalog miami            # sync hotels for a city
  *   node scripts/collect.mjs --search "Troon North"     # sync hotels by name
+ *   node scripts/collect.mjs --catalog-sweep            # sync the WHOLE catalogue
  *   node scripts/collect.mjs --bootstrap                # seed the stay grid
  *   node scripts/collect.mjs                            # collect what is due
  *   node scripts/collect.mjs --dry-run                  # show the plan only
@@ -44,6 +45,7 @@ import {
   planCollection,
   rebuildComparables,
   refreshBaselines,
+  sweepCatalog,
   syncHotelsFromCity,
   syncHotelsFromSearch,
 } from '../packages/ingest/dist/index.js';
@@ -59,6 +61,9 @@ function arg(name, fallback) {
 const DRY_RUN = arg('dry-run', false) !== false;
 const CATALOG_CITY = arg('catalog', null);
 const SEARCH_TERM = arg('search', null);
+const CATALOG_SWEEP = arg('catalog-sweep', false) !== false;
+const SWEEP_FROM = Number(arg('from', 1));
+const SWEEP_TO = arg('to', null);
 const BOOTSTRAP = arg('bootstrap', false) !== false;
 const MAX_TASKS = Number(arg('limit', DEFAULT_SCHEDULER_OPTIONS.maxTasks));
 const CONCURRENCY = Number(arg('concurrency', 4));
@@ -97,6 +102,48 @@ function mergeTasks(gridTasks, dueTasks, limit) {
 
 async function main() {
   const started = Date.now();
+
+  // Full-inventory sweep ----------------------------------------------------
+  //
+  // The source has no method that lists its catalogue: `search` caps at 12
+  // results and `cityrates` at 15, for every term and every city. Walking the
+  // hotel-id space is the only complete view, and at ~150ms a call it is a few
+  // minutes for the whole inventory. See sweepCatalog for why a probe that
+  // fails is skipped rather than deactivated, and why what it finds starts at
+  // tier OFF.
+  if (CATALOG_SWEEP) {
+    // maxRetries 0 deliberately: most ids are not hotels, the source answers
+    // 500 for those, and 500 is retryable — retrying every gap would turn a
+    // 4-minute sweep into an hour of backoff.
+    const adapter = createWhataHotelAdapter({ concurrency: 8, maxRetries: 0 });
+    await ensureWhataHotelSource(WHATAHOTEL_SOURCE_CODE);
+
+    if (DRY_RUN) {
+      console.log('• Dry run — sweep would walk the hotel-id space; nothing called.');
+      return;
+    }
+
+    const result = await sweepCatalog(adapter.client, {
+      fromId: SWEEP_FROM,
+      ...(SWEEP_TO === null ? {} : { toId: Number(SWEEP_TO) }),
+      onProgress: ({ scanned, found, lastId }) => {
+        if (lastId % 1200 === 0 || scanned % 1200 === 0) {
+          console.log(`  … ${scanned} id(s) probed, ${found} hotel(s) written (at id ${lastId})`);
+        }
+      },
+    });
+
+    console.log(
+      `• Sweep: ${result.hotelsWritten} hotel(s) from ${result.scanned} id(s) probed, ` +
+        `${result.notFound} not found, ${result.destinationsWritten} destination(s), ` +
+        `${result.benefitsWritten} benefits, highest id ${result.highestFoundId ?? 'none'} ` +
+        `in ${((Date.now() - started) / 1000).toFixed(1)}s`,
+    );
+    for (const skip of result.skipped) {
+      console.warn(`  ! skipped hotel ${skip.hotelId}: ${skip.reason}`);
+    }
+    return;
+  }
 
   // Catalog sync ------------------------------------------------------------
   if (CATALOG_CITY || SEARCH_TERM) {

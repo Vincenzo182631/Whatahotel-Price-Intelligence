@@ -1,0 +1,116 @@
+# Full-inventory catalogue sync.
+#
+# The widget has to work on EVERY hotel page on whatahotel.com, not on the
+# destinations somebody remembered to sync. Two mechanisms keep the catalogue
+# equal to the source's inventory, and this workflow is the second one:
+#
+#   1. Reactive — the API enrolls a hotel the first time anyone asks about it
+#      (packages/ingest/src/pipeline/enrollHotel.ts). Covers the guest who
+#      lands on a page we have never seen, at the cost of a few seconds on
+#      that one request.
+#   2. Proactive — this sweep, so the common case is already catalogued and
+#      that first guest gets a fast answer instead of a cold enrollment.
+#
+# Why a sweep of the id space rather than "list all hotels": the source has no
+# such method. Measured 2026-08-20 — `search` returns at most 12 results for
+# any term, `cityrates` at most 15 for any city. Walking ids is the only
+# complete view. It costs ~150ms per id, so the whole inventory is minutes.
+#
+# What it will NOT do: deactivate anything. The source answers 500 both for
+# "no hotel with that id" and for a genuine fault, so a probe cannot tell them
+# apart, and one bad afternoon must never be able to empty the catalogue.
+#
+# Discovered hotels land on collection tier OFF — catalogued and scoreable on
+# demand, but not in the scheduled grid. ~5k hotels at WARM would be ~230k
+# stays and a collection cycle measured in months. A hotel is promoted to WARM
+# the first time a guest actually looks at it, so scheduled spend follows real
+# demand. See promoteHotelForCollection.
+#
+# Required repository secrets: WAH_API_KEY, DATABASE_URL.
+
+name: Sync hotel catalogue
+
+on:
+  # Weekly. The inventory changes on the timescale of hotels joining a
+  # preferred-partner programme, not hours, and the reactive path already
+  # covers anything added between runs. Deliberately off the 6-hourly
+  # collection cadence so the two never contend for the API.
+  schedule:
+    - cron: '20 3 * * 0'
+
+  workflow_dispatch:
+    inputs:
+      from_id:
+        description: 'First hotel id to probe'
+        required: false
+        default: '1'
+      to_id:
+        description: 'Last hotel id to probe. Blank = highest known id + 500.'
+        required: false
+        default: ''
+
+concurrency:
+  group: catalog-sync
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      WAH_API_KEY: ${{ secrets.WAH_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Fail early if the credentials are missing
+        run: |
+          # Checked by name, one boolean each. Never enumerate the secret store.
+          missing=
+          [ -z "$WAH_API_KEY" ] && missing="$missing WAH_API_KEY"
+          [ -z "$DATABASE_URL" ] && missing="$missing DATABASE_URL"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing"
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Apply any pending migrations
+        run: node scripts/migrate.mjs
+
+      - name: Sweep the hotel-id space
+        run: |
+          set -euo pipefail
+          npm run collect -- \
+            --catalog-sweep \
+            --from "${{ inputs.from_id || 1 }}" \
+            ${{ inputs.to_id && format('--to {0}', inputs.to_id) || '' }} \
+            2>&1 | tee sweep.log
+
+      - name: Summarise the sweep
+        if: always()
+        run: |
+          {
+            echo '### Catalogue sweep'
+            echo
+            echo '```'
+            grep -E '^(•|  !|  …)' sweep.log || echo 'no output captured'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-log-${{ github.run_id }}
+          path: sweep.log
+          retention-days: 30
