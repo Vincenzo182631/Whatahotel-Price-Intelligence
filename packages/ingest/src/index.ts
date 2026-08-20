@@ -30,6 +30,7 @@ export type { IngestOptions, IngestResult, RejectReason } from './pipeline/pipel
 
 export {
   DEFAULT_ENROLL_OPTIONS,
+  discoverCityComparables,
   enrollHotel,
   ensureDestinationDepth,
 } from './pipeline/enrollHotel.js';

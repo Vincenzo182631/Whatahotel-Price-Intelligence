@@ -183,6 +183,34 @@ suite('integration · universal hotel support', () => {
     expect(isLiveLoadFailure(loaded) && loaded.kind).toBe('NO_CURRENT_RATE');
   });
 
+  it("prefers the source's own city ranking, and falls back to distance", async () => {
+    const subjectId = hotelIds.get(SUBJECT)!;
+    // US-FAR is the furthest hotel, so distance alone would pick it last. Give
+    // it the source's top rank and it must come FIRST — the ranking is the
+    // source's answer to "which hotels in this city matter", and it outranks
+    // an accident of geography.
+    await getPool().query(`UPDATE hotel SET city_rank = 99 WHERE wah_hotel_id = $1`, ['US-FAR']);
+
+    const ranked = await findCompetitorRates(subjectId, CHECK_IN, 2, 2, 0, CURRENCY, TERMS, 2, 48);
+    expect(ranked.map((c) => c.hotelId)).toContain('US-FAR');
+
+    // Unranked hotels are not ranked LAST by accident of NULL ordering — they
+    // are ordered among themselves by distance, which is the old behaviour.
+    await getPool().query(`UPDATE hotel SET city_rank = NULL WHERE wah_hotel_id = $1`, ['US-FAR']);
+    const byDistance = await findCompetitorRates(
+      subjectId,
+      CHECK_IN,
+      2,
+      2,
+      0,
+      CURRENCY,
+      TERMS,
+      2,
+      48,
+    );
+    expect(byDistance.map((c) => c.hotelId).sort()).toEqual(['US-MID', 'US-NEAR']);
+  });
+
   it('falls back to the nearest hotels in the destination when nothing is curated', async () => {
     const subjectId = hotelIds.get(SUBJECT)!;
     expect(await hasCuratedComparables(subjectId)).toBe(false);

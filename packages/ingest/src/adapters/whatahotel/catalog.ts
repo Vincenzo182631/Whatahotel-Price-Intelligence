@@ -268,13 +268,16 @@ async function persistHotels(
 
       const { rows: hotelRows } = await runner.query(
         `INSERT INTO hotel (wah_hotel_id, name, destination_id, latitude, longitude,
-                            base_currency, collection_tier)
-         VALUES ($1,$2,$3,$4,$5,'USD',$6)
+                            base_currency, collection_tier, city_rank)
+         VALUES ($1,$2,$3,$4,$5,'USD',$6,$7)
          ON CONFLICT (wah_hotel_id) DO UPDATE
            SET name = EXCLUDED.name,
                destination_id = COALESCE(EXCLUDED.destination_id, hotel.destination_id),
                latitude = COALESCE(EXCLUDED.latitude, hotel.latitude),
                longitude = COALESCE(EXCLUDED.longitude, hotel.longitude),
+               -- Only cityrates carries a rank, so COALESCE: a later sweep or
+               -- hotel lookup must not erase what cityrates already told us.
+               city_rank = COALESCE(EXCLUDED.city_rank, hotel.city_rank),
                updated_at = now()
          RETURNING id`,
         [
@@ -284,6 +287,7 @@ async function persistHotels(
           hotel.latitude,
           hotel.longitude,
           newHotelTier,
+          hotel.cityRank,
         ],
       );
       const hotelId = hotelRows[0]?.id as number;

@@ -102,7 +102,12 @@ export async function findComparableIdentities(
         AND h.id <> $1
         AND s.destination_id IS NOT NULL
         AND h.destination_id = s.destination_id
-      ORDER BY (h.latitude IS NULL OR s.latitude IS NULL),
+      -- Source ranking first, distance for whatever it has not ranked. Same
+      -- order the scoring-time comp set uses, so the hotels we FETCH are the
+      -- hotels we will compare against.
+      ORDER BY (h.city_rank IS NULL),
+               h.city_rank DESC,
+               (h.latitude IS NULL OR s.latitude IS NULL),
                (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
                h.id
       LIMIT $2`,

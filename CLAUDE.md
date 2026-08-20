@@ -195,11 +195,26 @@ engine.
 19. **A comp set built from the destination says so.** `rebuildComparables`
     ranks on accrued baselines, so a hotel catalogued this week has no curated
     peers, and the Comp-Set Index is 45% of the live score. The fallback is the
-    same filter the curated set starts from — same destination, nearest first
-    by coordinates — and the result carries `compBasis: 'DESTINATION'`, which
-    the API publishes. It is weaker evidence and must never be rendered as a
-    curated peer comparison. The curated set takes over automatically on the
-    first rollup that has baselines to rank.
+    same filter the curated set starts from — same destination — and the result
+    carries `compBasis: 'DESTINATION'`, which the API publishes. It is weaker
+    evidence and must never be rendered as a curated peer comparison. The
+    curated set takes over automatically on the first rollup that has baselines
+    to rank.
+
+    **Within the destination, the SOURCE's ranking chooses who to compare
+    against.** `cityrates` answers "the best hotels in this city" — up to 15,
+    in descending `rank` order — and `discoverCityComparables` calls it with
+    the guest's own dates before the comp set is built, so the shortlist is the
+    source's opinion rather than an accident of which ids the sweep reached
+    first. The rank is stored on `hotel.city_rank` (migration 0012) and orders
+    the fallback; distance breaks ties for anything the source has not ranked.
+    **`city_rank` orders, it never scores.** What it counts is undocumented and
+    reads like volume or prominence, not quality, so weighting the score on it
+    or rendering it as a rating would assert something we cannot support.
+    Discovery only finds and ranks hotels — their rates still come from the
+    ordinary on-demand fetch, through the ordinary pipeline, with the ordinary
+    term classification. `cityrates`' own `rateDaily` is unreliable and is
+    never used as a price.
 
 ## Adding or changing a factor
 

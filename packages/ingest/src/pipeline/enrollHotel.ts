@@ -129,6 +129,70 @@ export async function ensureDestinationDepth(
   }
 }
 
+/**
+ * Pull the source's ranked hotels for this city, for the guest's EXACT dates.
+ *
+ * `cityrates` is the API's "best hotels in this city" answer: up to 15 hotels,
+ * returned in descending `rank` order, each with a dated `rateTotal` and its
+ * perks. It is the only cross-hotel prominence signal the API offers, and it is
+ * a better comp-set shortlist than "whichever ids the sweep reached first"
+ * — the source's own opinion of which hotels in a destination matter.
+ *
+ * Called with the guest's dates rather than arbitrary ones, so the rank and the
+ * rates describe the stay being scored. What comes back is persisted through
+ * the ordinary catalogue path: unknown hotels are added at tier OFF, and
+ * `city_rank` lands on every one of them (see migration 0012).
+ *
+ * This only DISCOVERS and RANKS. It fetches no rates itself — the comparables'
+ * rates come from the ordinary on-demand fetch, through the ordinary pipeline,
+ * with the ordinary validation. One method's cheap list is not a substitute for
+ * a priced, term-classified observation.
+ */
+export async function discoverCityComparables(
+  wahHotelId: string,
+  checkIn: string,
+  checkOut: string,
+  guests = 2,
+  options: EnrollOptions = DEFAULT_ENROLL_OPTIONS,
+  q?: Queryable,
+): Promise<EnrollResult> {
+  const none = (outcome: EnrollOutcome): EnrollResult => ({
+    outcome,
+    hotelsWritten: 0,
+    citySynced: null,
+  });
+
+  if (!process.env.WAH_API_KEY) return none('NO_API_KEY');
+  if (process.env.AUTO_ENROLL_HOTELS === '0') return none('SUPPRESSED');
+
+  // Keyed on the STAY as well as the hotel: the ranking and the rates are
+  // date-specific, so a different stay is a different question. Without the
+  // dates in the key one guest's search would suppress every other guest's.
+  const cacheKey = `city:${wahHotelId}|${checkIn}|${checkOut}|${guests}`;
+  const cached = seen.get(cacheKey);
+  if (cached && cached.until > Date.now()) return none('SUPPRESSED');
+
+  const { city } = await destinationDepth(wahHotelId, q);
+  if (!city) return none('UNKNOWN_TO_SOURCE');
+
+  try {
+    const result = await syncHotelsFromCity(
+      WahClient.fromEnv({ concurrency: 2 }),
+      city,
+      checkIn,
+      checkOut,
+      guests,
+      q,
+    );
+    remember(cacheKey, 'ENROLLED', options.positiveTtlMs);
+    return { outcome: 'ENROLLED', hotelsWritten: result.hotelsWritten, citySynced: city };
+  } catch (err) {
+    console.error('city comparable discovery failed:', (err as Error).message);
+    remember(cacheKey, 'FAILED', options.negativeTtlMs);
+    return none('FAILED');
+  }
+}
+
 /** The hotel's city and how many active hotels share its destination. */
 async function destinationDepth(
   wahHotelId: string,
