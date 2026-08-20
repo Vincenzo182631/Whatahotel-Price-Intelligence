@@ -29,6 +29,7 @@
  */
 
 import {
+  countRecentAttempts,
   findComparableIdentities,
   recordCollectionAttempts,
   wasStayRecentlyFruitless,
@@ -77,7 +78,12 @@ export const DEFAULT_ON_DEMAND_OPTIONS: OnDemandOptions = {
 };
 
 export type OnDemandSkipReason =
-  'NO_API_KEY' | 'DISABLED' | 'LEAD_OUT_OF_RANGE' | 'RECENTLY_FRUITLESS';
+  | 'NO_API_KEY'
+  | 'DISABLED'
+  | 'LEAD_OUT_OF_RANGE'
+  | 'RECENTLY_FRUITLESS'
+  /** Nothing to top up: this hotel has no comparables to ask about. */
+  | 'NO_COMPARABLES';
 
 export interface OnDemandResult {
   readonly performed: boolean;
@@ -170,10 +176,81 @@ export async function collectStayOnDemand(
     options.maxComparables,
   );
   const subjectQuery = queries[0] as RateQuery;
+  return fetchIngestRecord(queries, hotelIdByWahId, queryKeyOf(subjectQuery));
+}
 
+/**
+ * Fetch the comparables' rates for a stay whose SUBJECT we already have.
+ *
+ * The subject having a rate is not the same as the stay being answerable: the
+ * Comp-Set Index is 45% of the live score and needs `minComps` rates that share
+ * the subject's terms. Measured after the first full catalogue sweep — hotel
+ * 2008 held a stored rate and one usable comp, so it rendered nothing, and
+ * nothing would ever have fixed it on this path: `collectStayOnDemand` runs
+ * only when the subject is MISSING, which it was not.
+ *
+ * Same pipeline, same ledger, same honesty as every other path. What differs is
+ * the hold: see countRecentAttempts for why the subject's own guard cannot
+ * bound this one.
+ */
+export async function topUpComparablesOnDemand(
+  stay: OnDemandStay,
+  options: OnDemandOptions = DEFAULT_ON_DEMAND_OPTIONS,
+): Promise<OnDemandResult> {
+  if (!process.env.WAH_API_KEY) return NOT_PERFORMED('NO_API_KEY');
+  if (process.env.ON_DEMAND_SCORING === '0') return NOT_PERFORMED('DISABLED');
+
+  const now = options.now ?? new Date();
+  const lead = leadDaysOf(stay.checkIn, now);
+  if (lead < 0 || lead > options.maxLeadDays) return NOT_PERFORMED('LEAD_OUT_OF_RANGE');
+
+  const comparables = await findComparableIdentities(stay.hotelId, options.maxComparables);
+  if (comparables.length === 0) return NOT_PERFORMED('NO_COMPARABLES');
+
+  // One fresh attempt row is enough to know the pass already happened: a
+  // top-up asks every comparable in a single pass, so it never leaves a
+  // partially-fresh set behind. Scheduled collection writes here too, which is
+  // the point — if the collector asked these hotels minutes ago and the comp
+  // set is still thin, asking again buys nothing.
+  const askedRecently = await countRecentAttempts(
+    comparables.map((c) => c.hotelId),
+    stay.checkIn,
+    stay.nights,
+    stay.adults,
+    options.retryHoldMinutes,
+  );
+  if (askedRecently > 0) return NOT_PERFORMED('RECENTLY_FRUITLESS');
+
+  // The subject is deliberately absent from the plan: it already has a rate,
+  // and re-fetching it would spend a call to learn what we know.
+  const { queries, hotelIdByWahId } = planOnDemandQueries(
+    stay,
+    comparables,
+    options.maxComparables,
+  );
+  const compQueries = queries.slice(1);
+  if (compQueries.length === 0) return NOT_PERFORMED('NO_COMPARABLES');
+
+  return fetchIngestRecord(compQueries, hotelIdByWahId, null);
+}
+
+const queryKeyOf = (q: RateQuery): string => `${q.wahHotelId}|${q.checkIn}|${q.nights}|${q.adults}`;
+
+/**
+ * The shared body of both on-demand paths: fetch, ingest, record attempts.
+ *
+ * `subjectKey` is the stay whose tracking decides `subjectTracked`, or null
+ * when the caller is only topping up comparables and the subject is not part
+ * of the plan.
+ */
+async function fetchIngestRecord(
+  queries: readonly RateQuery[],
+  hotelIdByWahId: Map<string, number>,
+  subjectKey: string | null,
+): Promise<OnDemandResult> {
   const failures = new Set<string>();
   const soldOut = new Set<string>();
-  const queryKey = (q: RateQuery) => `${q.wahHotelId}|${q.checkIn}|${q.nights}|${q.adults}`;
+  const queryKey = queryKeyOf;
   const adapter = createWhataHotelAdapter({
     concurrency: 6,
     continueOnError: true,
@@ -183,7 +260,7 @@ export async function collectStayOnDemand(
 
   let records: RawRateRecord[] = [];
   try {
-    records = await adapter.fetchRates(queries);
+    records = await adapter.fetchRates([...queries]);
   } catch (err) {
     // continueOnError already contains per-stay faults; this is a total one
     // (network down, key revoked). Degrade — the honest empty state is the
@@ -239,6 +316,6 @@ export async function collectStayOnDemand(
     ratesFetched: records.length,
     inserted: ingest?.inserted ?? 0,
     rejected: ingest?.rejected ?? 0,
-    subjectTracked: tracked.has(queryKey(subjectQuery)),
+    subjectTracked: subjectKey !== null && tracked.has(subjectKey),
   };
 }

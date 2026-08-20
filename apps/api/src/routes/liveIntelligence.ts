@@ -31,6 +31,7 @@ import {
   collectStayOnDemand,
   enrollHotel,
   ensureDestinationDepth,
+  topUpComparablesOnDemand,
   type OnDemandResult,
 } from '@wahpi/ingest';
 
@@ -211,6 +212,42 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     }
   }
 
+  // A stored subject rate is not the same as an answerable stay. The Comp-Set
+  // Index is 45% of the live score, and it needs `minComps` competitor rates on
+  // the subject's terms — so a hotel we have collected, sitting in a
+  // destination we have not, scores nothing and would have gone on scoring
+  // nothing: the on-demand path above fires only when the SUBJECT is missing.
+  // Measured on hotel 2008 after the catalogue sweep widened its destination —
+  // stored rate, one usable comp, no score.
+  //
+  // Topping up is the same fetch, the same pipeline and the same ledger; it
+  // carries its own hold because the subject's guard cannot bound it. If the
+  // comp set is still thin afterwards, the answer stays the honest empty one.
+  let compTopUp: OnDemandResult | null = null;
+  if (
+    !isLiveLoadFailure(loaded) &&
+    loaded.compSet.signal.unavailableReason === 'INSUFFICIENT_COMPARABLES'
+  ) {
+    try {
+      compTopUp = await topUpComparablesOnDemand({
+        hotelId: loaded.hotel.id,
+        wahHotelId,
+        checkIn,
+        nights,
+        adults,
+        children,
+      });
+      if ((compTopUp?.inserted ?? 0) > 0) {
+        const reloaded = await loadLiveIntelligence(request, config);
+        if (!isLiveLoadFailure(reloaded)) loaded = reloaded;
+      }
+    } catch (err) {
+      // Never break the read for it: the honest empty comp set is a valid
+      // answer, a 500 is not.
+      console.error('comp-set top-up failed:', (err as Error).message);
+    }
+  }
+
   const { result, compSet, calendar, compression } = loaded;
   // Whatever the hotel is actually quoted in, resolved by the loader.
   const currency = loaded.currency;
@@ -318,6 +355,17 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         // like-for-like. See packages/core/src/normalize/compMatch.ts.
         match_strength: compSet.matchStrength,
         unknown_dimensions: compSet.unknownDimensions,
+        // Whether this request fetched competitor rates live to build the
+        // comparison, and what came back. Null when the stored comp set was
+        // already sufficient, which is the common case.
+        topped_up: compTopUp
+          ? {
+              performed: compTopUp.performed,
+              skipped: compTopUp.skipped ?? null,
+              rates_fetched: compTopUp.ratesFetched,
+              inserted: compTopUp.inserted,
+            }
+          : null,
       },
       calendar: {
         available: calendar.signal.available,

@@ -16,6 +16,10 @@ import {
   loadLiveIntelligence,
 } from '../../packages/data/src/loadLiveIntelligence.js';
 import {
+  countRecentAttempts,
+  recordCollectionAttempts,
+} from '../../packages/data/src/repositories/collection.js';
+import {
   hasCuratedComparables,
   promoteHotelForCollection,
 } from '../../packages/data/src/repositories/hotels.js';
@@ -232,6 +236,36 @@ suite('integration · universal hotel support', () => {
     expect(comps.map((c) => c.hotelId)).toEqual(['US-FAR']);
   });
 
+  it('counts recent attempts per stay, which is what bounds the comp-set top-up', async () => {
+    // The top-up cannot borrow the subject's fruitless guard: in the case it
+    // exists for, the subject succeeded, so that guard is false forever and
+    // every page view would re-fetch the whole comp set.
+    const ids = [hotelIds.get('US-NEAR')!, hotelIds.get('US-MID')!];
+    await recordCollectionAttempts(
+      ids.map((hotelId) => ({
+        hotelId,
+        checkIn: CHECK_IN,
+        nights: 2,
+        adults: 2,
+        succeeded: true,
+        outcome: 'OK',
+      })),
+    );
+
+    expect(await countRecentAttempts(ids, CHECK_IN, 2, 2, 15)).toBe(2);
+
+    // Counted whatever the outcome was: a comp that answered nothing and a comp
+    // that answered a rate we could not use both mean "we already asked".
+    expect(await countRecentAttempts([hotelIds.get('US-FAR')!], CHECK_IN, 2, 2, 15)).toBe(0);
+
+    // A different stay is a different question.
+    expect(await countRecentAttempts(ids, '2027-05-01', 2, 2, 15)).toBe(0);
+    expect(await countRecentAttempts(ids, CHECK_IN, 3, 2, 15)).toBe(0);
+
+    // And an empty list never touches the database.
+    expect(await countRecentAttempts([], CHECK_IN, 2, 2, 15)).toBe(0);
+  });
+
   it('promotes a catalogued hotel into collection on first interest, once', async () => {
     expect(await promoteHotelForCollection(OUTSIDER)).toBe(true);
     expect(await promoteHotelForCollection(OUTSIDER)).toBe(false);
@@ -246,6 +280,10 @@ suite('integration · universal hotel support', () => {
 
 async function cleanup(): Promise<void> {
   const pool = getPool();
+  await pool.query(
+    `DELETE FROM collection_attempt WHERE hotel_id IN
+       (SELECT id FROM hotel WHERE wah_hotel_id LIKE 'US-%')`,
+  );
   await pool.query(
     `DELETE FROM rate_observation WHERE hotel_id IN
        (SELECT id FROM hotel WHERE wah_hotel_id LIKE 'US-%')`,
