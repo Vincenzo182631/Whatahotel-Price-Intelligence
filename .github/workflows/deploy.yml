@@ -66,6 +66,7 @@ jobs:
       - name: Push the runtime environment into the project
         env:
           DB_URL: ${{ secrets.DATABASE_URL }}
+          WAH_KEY: ${{ secrets.WAH_API_KEY }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           # Serverless instances each open their own database connection, so
@@ -80,6 +81,14 @@ jobs:
             printf '%s' "$POOLED" | npx vercel env add DATABASE_URL "$envname" --token="$VERCEL_TOKEN"
             npx vercel env rm CORS_ORIGIN "$envname" --yes --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
             printf '%s' 'https://www.whatahotel.com,https://whatahotel.com' | npx vercel env add CORS_ORIGIN "$envname" --token="$VERCEL_TOKEN"
+            # On-demand scoring fetches a guest's stay live when nothing has
+            # collected it. Without the key that path silently degrades to the
+            # honest no-score state, so the function gets the key when the
+            # repo has it and simply skips on-demand when it does not.
+            if [ -n "$WAH_KEY" ]; then
+              npx vercel env rm WAH_API_KEY "$envname" --yes --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
+              printf '%s' "$WAH_KEY" | npx vercel env add WAH_API_KEY "$envname" --token="$VERCEL_TOKEN"
+            fi
           done
 
       - name: Pull the Vercel project settings and environment

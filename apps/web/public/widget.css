@@ -461,3 +461,13 @@
   color: var(--wahpi-muted);
   margin-top: 3px;
 }
+
+/* The staged loading line under the skeleton. Present only while a request is
+   in flight; on-demand collection can take several seconds, and a wait with a
+   changing sentence reads as work where a static skeleton reads as a hang. */
+.wahpi__loading-status {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #6b6b6b;
+  font-style: italic;
+}

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@wahpi/core": "*",
-    "@wahpi/data": "*"
+    "@wahpi/data": "*",
+    "@wahpi/ingest": "*"
   }
 }

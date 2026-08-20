@@ -2,6 +2,7 @@ export { closePool, db, getPool, withTransaction } from './client.js';
 export type { Pool, PoolClient, Queryable } from './client.js';
 
 export {
+  findComparableIdentities,
   findHotelByWahId,
   listRoomTypes,
   listSiblingRoomTypeIds,
@@ -34,6 +35,7 @@ export {
   gridLeadDays,
   planGridTopUp,
   recordCollectionAttempts,
+  wasStayRecentlyFruitless,
 } from './repositories/collection.js';
 export type { AttemptOutcome, GridSpec, GridStay } from './repositories/collection.js';
 

@@ -216,6 +216,34 @@ export function gridLeadDays(spec: GridSpec = DEFAULT_GRID_SPEC): number[] {
   return [...leads].sort((a, b) => a - b);
 }
 
+/**
+ * Whether this exact stay was attempted recently and yielded nothing.
+ *
+ * The on-demand scoring path consults this before fetching live: a stay that
+ * failed minutes ago (sold out, API 500, every rate rejected) will fail again,
+ * and widget traffic must not turn one dead stay into a request per page view.
+ * Success rows do not block — a fresh success means observations exist and the
+ * caller would not be here.
+ */
+export async function wasStayRecentlyFruitless(
+  hotelId: number,
+  checkIn: string,
+  nights: number,
+  adults: number,
+  withinMinutes: number,
+  q?: Queryable,
+): Promise<boolean> {
+  const { rows } = await db(q).query(
+    `SELECT 1 FROM collection_attempt
+      WHERE hotel_id = $1 AND check_in = $2::date AND nights = $3 AND adults = $4
+        AND consecutive_failures > 0
+        AND last_attempt_at > now() - ($5 || ' minutes')::interval
+      LIMIT 1`,
+    [hotelId, checkIn, nights, adults, withinMinutes],
+  );
+  return rows.length > 0;
+}
+
 export interface AttemptOutcome {
   readonly hotelId: number;
   readonly checkIn: string;

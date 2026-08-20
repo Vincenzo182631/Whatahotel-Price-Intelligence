@@ -20,7 +20,13 @@
  */
 
 import { liveBandLabel, liveVerdictLabel } from '@wahpi/core';
-import { isLiveLoadFailure, loadActiveConfig, loadLiveIntelligence } from '@wahpi/data';
+import {
+  findHotelByWahId,
+  isLiveLoadFailure,
+  loadActiveConfig,
+  loadLiveIntelligence,
+} from '@wahpi/data';
+import { collectStayOnDemand, type OnDemandResult } from '@wahpi/ingest';
 
 import {
   ApiError,
@@ -76,10 +82,37 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   const { config } = await loadActiveConfig();
   const now = new Date();
 
-  const loaded = await loadLiveIntelligence(
-    { wahHotelId, checkIn, nights, adults, children, currency, roomTypeId, now },
-    config,
-  );
+  const request = { wahHotelId, checkIn, nights, adults, children, currency, roomTypeId, now };
+  let loaded = await loadLiveIntelligence(request, config);
+  let onDemand: OnDemandResult | null = null;
+
+  // On-demand collection: a stay nothing has collected is fetched live, right
+  // now, and scored from what comes back — the same pipeline, validation and
+  // honesty rules as scheduled collection. If the fetch yields nothing that
+  // can be verified, the answer stays the honest 409 below; a fabricated
+  // score is never the fallback.
+  if (isLiveLoadFailure(loaded) && loaded.kind === 'NO_CURRENT_RATE') {
+    const hotel = await findHotelByWahId(wahHotelId);
+    if (hotel) {
+      try {
+        onDemand = await collectStayOnDemand({
+          hotelId: hotel.id,
+          wahHotelId,
+          checkIn,
+          nights,
+          adults,
+          children,
+        });
+      } catch (err) {
+        // Never let a collection fault break the read path. err.message only:
+        // driver errors can carry connection strings.
+        console.error('on-demand collection error:', (err as Error).message);
+      }
+      if (onDemand?.subjectTracked) {
+        loaded = await loadLiveIntelligence(request, config);
+      }
+    }
+  }
 
   if (isLiveLoadFailure(loaded)) {
     switch (loaded.kind) {
@@ -93,6 +126,15 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         throw new ApiError('NO_CURRENT_RATE', 'No available rate for these dates.', {
           hotel_id: wahHotelId,
           check_in: checkIn,
+          // Why the live attempt (if any) could not help — "sold out right
+          // now" and "we did not try" are different answers for the UI.
+          on_demand: onDemand
+            ? {
+                performed: onDemand.performed,
+                skipped: onDemand.skipped ?? null,
+                rates_fetched: onDemand.ratesFetched,
+              }
+            : null,
         });
     }
   }
@@ -117,6 +159,10 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     generated_at: now.toISOString(),
     model: 'LIVE_MARKET',
     config_version: config.version,
+    // Whether this answer required fetching the stay live just now. STORED is
+    // the common case and the fast one; LIVE_FETCH means the guest's search
+    // itself widened the dataset.
+    data_source: onDemand?.subjectTracked ? 'LIVE_FETCH' : 'STORED',
 
     subject: {
       hotel: {

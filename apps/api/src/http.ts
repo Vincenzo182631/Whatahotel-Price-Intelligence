@@ -199,7 +199,11 @@ export class Router {
 
 export function cacheHeaders(ttlSeconds: number, staleSeconds: number): Record<string, string> {
   return {
-    'cache-control': `public, max-age=${ttlSeconds}, stale-while-revalidate=${staleSeconds}`,
+    // s-maxage is what lets the CDN in front of the serverless function cache
+    // the response: two guests asking about the same hotel and dates within
+    // the TTL cost one function invocation and zero database reads for the
+    // second. The URL is the cache key, so distinct stays never collide.
+    'cache-control': `public, max-age=${ttlSeconds}, s-maxage=${ttlSeconds}, stale-while-revalidate=${staleSeconds}`,
   };
 }
 
