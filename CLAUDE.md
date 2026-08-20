@@ -261,6 +261,16 @@ Market Compression (`packages/core/src/scoring/liveSignals.ts` and
 from rates that exist today rather than from accrued history, which is what
 makes it usable before a baseline has built up.
 
+**A stored subject rate is not an answerable stay.** The Comp-Set Index is 45%
+of the live score and needs `minComps` competitor rates on the subject's terms,
+so a hotel we have collected in a destination we have not scores nothing —
+and the on-demand path could not fix it, because it fires only when the
+SUBJECT is missing. `topUpComparablesOnDemand` fetches just the comparables in
+that case. It carries its OWN hold (`countRecentAttempts`) and cannot borrow
+the subject's: `wasStayRecentlyFruitless` keys on the stay that succeeded, so
+for this case it is false forever and every page view would refetch the comp
+set. One fresh attempt row on any comparable means the pass already happened.
+
 **On-demand scoring is live** (2026-08-20): a live-intelligence request for a
 stay nothing has collected fetches that exact stay — plus its comparables —
 from the source right then, ingests it through the ordinary pipeline, and

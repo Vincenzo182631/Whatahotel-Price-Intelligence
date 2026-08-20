@@ -40,6 +40,7 @@ export {
   collectStayOnDemand,
   leadDaysOf,
   planOnDemandQueries,
+  topUpComparablesOnDemand,
 } from './pipeline/onDemand.js';
 export type {
   OnDemandOptions,

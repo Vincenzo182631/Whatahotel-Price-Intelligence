@@ -34,6 +34,7 @@ export {
   DEFAULT_GRID_SPEC,
   GRID_COVERAGE_TOLERANCE_DAYS,
   backoffHours,
+  countRecentAttempts,
   findMissingGridStays,
   gridLeadDays,
   planGridTopUp,

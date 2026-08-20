@@ -244,6 +244,40 @@ export async function wasStayRecentlyFruitless(
   return rows.length > 0;
 }
 
+/**
+ * How many of these hotels were asked about THIS stay recently.
+ *
+ * The comp-set top-up needs its own hold, and it cannot borrow the subject's.
+ * `wasStayRecentlyFruitless` keys on the stay that succeeded — and in the case
+ * the top-up exists for, the subject DID succeed, so its guard returns false
+ * forever and every page view would re-fetch the whole comp set. This asks the
+ * question that actually bounds the spend: have we already asked these hotels
+ * about this stay, whatever the answer was?
+ *
+ * Deliberately not filtered on `consecutive_failures`. A comp that answered a
+ * rate we could not use, and a comp that answered nothing, both mean the same
+ * thing here — we asked, and the comp set is still thin. Asking again minutes
+ * later is spend with no new information either way.
+ */
+export async function countRecentAttempts(
+  hotelIds: readonly number[],
+  checkIn: string,
+  nights: number,
+  adults: number,
+  withinMinutes: number,
+  q?: Queryable,
+): Promise<number> {
+  if (hotelIds.length === 0) return 0;
+  const { rows } = await db(q).query(
+    `SELECT count(*)::int AS n FROM collection_attempt
+      WHERE hotel_id = ANY($1::bigint[])
+        AND check_in = $2::date AND nights = $3 AND adults = $4
+        AND last_attempt_at > now() - ($5 || ' minutes')::interval`,
+    [[...hotelIds], checkIn, nights, adults, withinMinutes],
+  );
+  return (rows[0]?.n as number) ?? 0;
+}
+
 export interface AttemptOutcome {
   readonly hotelId: number;
   readonly checkIn: string;
