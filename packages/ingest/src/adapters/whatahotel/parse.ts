@@ -371,6 +371,20 @@ export function parseHotel(hotel: WahHotel): ParsedHotel | null {
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   };
+  /**
+   * A coordinate, or null — never a number that cannot be one.
+   *
+   * Latitude is bounded by ±90 and longitude by ±180 by definition, so a value
+   * outside them is not an imprecise coordinate, it is not a coordinate.
+   * Measured 2026-08-20: hotel 4237 (Meliá Serengeti Lodge) states a longitude
+   * of 5464062, which overflowed the NUMERIC(9,6) column and aborted a whole
+   * catalogue sweep. Storing null is the honest reading — we do not know where
+   * this hotel is — and it keeps one bad record from costing the run.
+   */
+  const coord = (v: string | undefined, limit: number): number | null => {
+    const n = num(v);
+    return n === null || Math.abs(n) > limit ? null : n;
+  };
   // The API writes the string "NULL" for absent text fields.
   const str = (v: string | undefined): string | null =>
     v === undefined || v === '' || v === 'NULL' ? null : v;
@@ -381,8 +395,8 @@ export function parseHotel(hotel: WahHotel): ParsedHotel | null {
     city: str(hotel.city),
     region: str(hotel.region),
     country: str(hotel.country),
-    latitude: num(hotel['loc-lat']),
-    longitude: num(hotel['loc-long']),
+    latitude: coord(hotel['loc-lat'], 90),
+    longitude: coord(hotel['loc-long'], 180),
     amadeusProperty: str(hotel['ama-property']),
     perks: parsePerks(hotel.perks),
     url: str(hotel.url),
