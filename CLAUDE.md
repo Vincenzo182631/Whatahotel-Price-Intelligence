@@ -180,6 +180,15 @@ engine.
     to `WARM` the first time a guest actually looks at it, so scheduled API
     spend follows real demand instead of the whole of inventory.
 
+    **The same applies to automatic city syncs.** `syncHotelsFromCity` takes
+    the tier explicitly: `WARM` when a human asked (`--catalog miami`), `OFF`
+    for anything a page view triggered. A city sync writes up to 15 hotels, so
+    at `WARM` one guest opening one hotel in a new destination adds ~690 stays
+    to the scheduled grid — measured, the plan went from ~690 to 2,519 pending
+    before this was fixed. Comparables never need scheduling:
+    `findComparableIdentities` includes `OFF` hotels deliberately, and their
+    rates are fetched live for the exact stay being scored.
+
 18. **The source prices in the hotel's currency, not the caller's.** Doha
     answers in QAR, Miami in USD. Every stored-rate query filters on currency —
     correctly, because mixing them would compare 1,600 QAR to 1,600 USD — so a
