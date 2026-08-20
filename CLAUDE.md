@@ -205,7 +205,20 @@ engine.
     ranks on accrued baselines, so a hotel catalogued this week has no curated
     peers, and the Comp-Set Index is 45% of the live score. The fallback is the
     same filter the curated set starts from — same destination — and the result
-    carries `compBasis: 'DESTINATION'`, which the API publishes. It is weaker
+    carries `compBasis: 'DESTINATION'`, which the API publishes.
+
+    **The trigger is too few USABLE comps, not an empty table.** A curated set
+    that exists and yields nothing is the worse case, and it was the one left
+    unhandled: hotel 1198 held a ranked comp set that produced 0 usable rates
+    on three separate stays, so the index was permanently unavailable in our
+    best-collected destination — and the on-demand top-up could not rescue it,
+    fetching 128 competitor rates and inserting none, because every one was
+    already stored and none matched the subject's terms. The pool was wrong,
+    not stale. `loadLiveIntelligence` re-asks with `widen` once it can count
+    the usable comps, and keeps the curated answer when widening finds no more
+    — reporting a fallback that changed nothing would be a false admission of
+    weaker evidence. Market Compression follows the same choice, or the two
+    signals describe different markets. It is weaker
     evidence and must never be rendered as a curated peer comparison. The
     curated set takes over automatically on the first rollup that has baselines
     to rank.

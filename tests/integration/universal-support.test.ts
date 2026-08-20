@@ -232,6 +232,41 @@ suite('integration · universal hotel support', () => {
     expect(comps.some((c) => c.hotelId === OUTSIDER)).toBe(false);
   });
 
+  it('widens past a curated set that yields too few USABLE comps', async () => {
+    const subjectId = hotelIds.get(SUBJECT)!;
+    const request = {
+      wahHotelId: SUBJECT,
+      checkIn: CHECK_IN,
+      nights: 2,
+      adults: 2,
+      children: 0,
+      currency: null,
+      now: new Date(),
+    };
+
+    // Curate ONE comp, and make it useless: a hotel with no rate for this stay
+    // at all. "A curated set exists" is then true and worthless — the exact
+    // shape hotel 1198 was stuck in, where the index stayed unavailable in our
+    // best-collected destination while three usable hotels sat beside it.
+    const useless = hotelIds.get(OUTSIDER)!; // different destination, no rate here
+    await getPool().query(
+      `INSERT INTO hotel_comparable (hotel_id,comparable_id,rank,similarity,basis)
+       VALUES ($1,$2,1,0.9,'DESTINATION_TIER_PRICEBAND')
+       ON CONFLICT DO NOTHING`,
+      [subjectId, useless],
+    );
+
+    const loaded = await loadLiveIntelligence(request, DEFAULT_CONFIG);
+    if (isLiveLoadFailure(loaded)) throw new Error(`expected a rate, got ${loaded.kind}`);
+
+    // It fell back to the destination and found the three hotels that do have
+    // rates — rather than reporting CURATED and no comps.
+    expect(loaded.compBasis).toBe('DESTINATION');
+    expect(loaded.compSet.compsUsed).toBeGreaterThanOrEqual(3);
+
+    await getPool().query(`DELETE FROM hotel_comparable WHERE hotel_id = $1`, [subjectId]);
+  });
+
   it('reports the comp basis, and prefers the curated set once one exists', async () => {
     const subjectId = hotelIds.get(SUBJECT)!;
     const request = {
@@ -248,20 +283,27 @@ suite('integration · universal hotel support', () => {
     if (isLiveLoadFailure(before)) throw new Error(`expected a rate, got ${before.kind}`);
     expect(before.compBasis).toBe('DESTINATION');
 
-    // Curate exactly one comp — the FURTHEST hotel, so the two bases cannot be
-    // confused for each other.
-    await getPool().query(
-      `INSERT INTO hotel_comparable (hotel_id,comparable_id,rank,similarity,basis)
-       VALUES ($1,$2,1,0.9,'DESTINATION_TIER_PRICEBAND')`,
-      [subjectId, hotelIds.get('US-FAR')],
-    );
+    // Curate a set that can actually carry the index. Fewer than minComps
+    // usable rates is not a curated comp set, it is an empty one wearing a
+    // label — see the widening test above.
+    for (const [i, code] of ['US-FAR', 'US-MID', 'US-NEAR'].entries()) {
+      await getPool().query(
+        `INSERT INTO hotel_comparable (hotel_id,comparable_id,rank,similarity,basis)
+         VALUES ($1,$2,$3,0.9,'DESTINATION_TIER_PRICEBAND')
+         ON CONFLICT DO NOTHING`,
+        [subjectId, hotelIds.get(code), i + 1],
+      );
+    }
 
     const after = await loadLiveIntelligence(request, DEFAULT_CONFIG);
     if (isLiveLoadFailure(after)) throw new Error(`expected a rate, got ${after.kind}`);
     expect(after.compBasis).toBe('CURATED');
 
+    // Curated order, not distance order: US-FAR is furthest and ranked first.
     const comps = await findCompetitorRates(subjectId, CHECK_IN, 2, 2, 0, CURRENCY, TERMS, 5, 48);
-    expect(comps.map((c) => c.hotelId)).toEqual(['US-FAR']);
+    expect(comps.map((c) => c.hotelId).sort()).toEqual(['US-FAR', 'US-MID', 'US-NEAR']);
+
+    await getPool().query(`DELETE FROM hotel_comparable WHERE hotel_id = $1`, [subjectId]);
   });
 
   it('counts recent attempts per stay, which is what bounds the comp-set top-up', async () => {
