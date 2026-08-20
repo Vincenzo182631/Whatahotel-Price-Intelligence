@@ -118,8 +118,9 @@ export async function findComparableIdentities(
  * Move a catalogued-but-unscheduled hotel into scheduled collection.
  *
  * The full-inventory sweep enrolls every hotel the source has at tier OFF —
- * catalogued and scoreable on demand, but not in the collection grid, because
- * ~7k hotels at WARM is ~320k stays and a collection cycle measured in months.
+ * catalogued and scoreable on demand, but not in the collection grid: the
+ * measured inventory is 3,202 hotels (2026-08-20), which at WARM is ~147k
+ * stays and a collection cycle of roughly a month.
  * A guest actually looking at a hotel is the signal that its history is worth
  * accruing, so the first live request promotes it and the scheduler picks it
  * up on the next run. Idempotent, and it never touches HOT or an inactive row.
