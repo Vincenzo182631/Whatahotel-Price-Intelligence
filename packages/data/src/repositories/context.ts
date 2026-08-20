@@ -49,7 +49,11 @@ export async function findComparableRates(
           AND o.children = $5 AND o.currency = $6 AND o.is_available
           AND o.comparability_class = $9
           AND o.observed_at >= now() - ($8 || ' hours')::interval
-        ORDER BY o.hotel_id, o.room_type_id, o.observed_at DESC
+        -- Cheapest within the freshest capture. See findAvailableRoomTypes:
+        -- ordering by observed_at alone priced a room by whichever of its
+        -- rate plans was captured last.
+        ORDER BY o.hotel_id, o.room_type_id, o.observation_slot DESC,
+                 o.nightly_amount_minor
      ),
      cheapest AS (
        SELECT DISTINCT ON (l.hotel_id) l.*

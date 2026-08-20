@@ -81,7 +81,12 @@ export async function findCompetitorRates(
           AND o.children = $5 AND o.currency = $6
           AND rp.meal_plan = $7 AND rp.refund_policy = $10 AND rp.audience = $11
           AND o.observed_at >= now() - ($9 || ' hours')::interval
-        ORDER BY o.hotel_id, o.room_type_id, o.observed_at DESC
+        -- Cheapest within the freshest capture, not merely the newest row:
+        -- a competitor room with two rate plans otherwise priced itself at
+        -- whichever was captured last, inflating the comp set and making
+        -- the subject look cheaper than it is. See findAvailableRoomTypes.
+        ORDER BY o.hotel_id, o.room_type_id, o.observation_slot DESC,
+                 o.nightly_amount_minor
      ),
      cheapest AS (
        SELECT DISTINCT ON (l.hotel_id) l.*
@@ -159,7 +164,10 @@ export async function findNearbyDateRates(
         AND o.check_in >= CURRENT_DATE
         AND o.check_in BETWEEN $4::date - $9::int AND $4::date + $9::int
         AND o.observed_at >= now() - ($10 || ' hours')::interval
-      ORDER BY o.check_in, o.observed_at DESC`,
+      -- Same rule as the subject and the comp set: freshest capture, then
+      -- cheapest within it. A neighbour date priced by an arbitrary rate
+      -- plan would move the calendar delta for no market reason.
+      ORDER BY o.check_in, o.observation_slot DESC, o.nightly_amount_minor`,
     [
       hotelId,
       roomTypeId,
