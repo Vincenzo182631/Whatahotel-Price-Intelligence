@@ -88,8 +88,10 @@ export type NewHotelTier = 'WARM' | 'OFF';
  *     hotel here" and "the API is unwell" are indistinguishable from a probe.
  *     Deactivating on a 500 would therefore let one bad afternoon empty the
  *     catalogue. Nothing here deletes or deactivates.
- *  2. **Discovered hotels start at tier OFF.** ~7k hotels at WARM would put
- *     ~320k stays into the scheduled grid — a cycle measured in months, and
+ *  2. **Discovered hotels start at tier OFF.** The measured inventory is
+ *     3,202 hotels across 705 destinations (first full sweep, 2026-08-20 —
+ *     3,988 ids probed above 3600 yielded 1,887, and 2,101 ids are not
+ *     hotels). At WARM that would put ~147k stays into the scheduled grid — a cycle measured in months, and
  *     the API spend to match. OFF means catalogued and scoreable on demand
  *     but not scheduled; `promoteHotelForCollection` moves a hotel to WARM the
  *     first time a guest actually looks at it, so scheduled collection follows

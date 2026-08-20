@@ -21,8 +21,9 @@
 # apart, and one bad afternoon must never be able to empty the catalogue.
 #
 # Discovered hotels land on collection tier OFF — catalogued and scoreable on
-# demand, but not in the scheduled grid. ~5k hotels at WARM would be ~230k
-# stays and a collection cycle measured in months. A hotel is promoted to WARM
+# demand, but not in the scheduled grid. The measured inventory is 3,202
+# hotels across 705 destinations (first full sweep, 2026-08-20); at WARM that
+# is ~147k stays and a collection cycle of roughly a month. A hotel is promoted to WARM
 # the first time a guest actually looks at it, so scheduled spend follows real
 # demand. See promoteHotelForCollection.
 #

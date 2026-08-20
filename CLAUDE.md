@@ -174,8 +174,9 @@ engine.
     both answer `500`, so a probe cannot tell them apart and deactivating on
     one would let a bad afternoon empty the catalogue), and what it finds
     starts at collection tier **`OFF`** — catalogued and scoreable on demand,
-    but out of the scheduled grid, because ~5k hotels at `WARM` is ~230k stays
-    and a cycle measured in months. `promoteHotelForCollection` moves a hotel
+    but out of the scheduled grid, because the measured inventory is **3,202
+    hotels across 705 destinations** (first full sweep, 2026-08-20), which at
+    `WARM` is ~147k stays and a cycle of roughly a month. `promoteHotelForCollection` moves a hotel
     to `WARM` the first time a guest actually looks at it, so scheduled API
     spend follows real demand instead of the whole of inventory.
 
