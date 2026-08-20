@@ -58,7 +58,11 @@ export async function findCurrentRate(key: StayKey, q?: Queryable): Promise<Curr
             ) AS only_non_refundable
        FROM stay s
       WHERE s.comparability_class = $3
-      ORDER BY s.observed_at DESC
+      -- Must agree with findAvailableRoomTypes, which selected this room on
+      -- the same rule: freshest capture, cheapest within it. Two rows that
+      -- differ in price inside one class would otherwise let the displayed
+      -- and scored price disagree with the room that was chosen.
+      ORDER BY s.observation_slot DESC, s.nightly_amount_minor
       LIMIT 1`,
     [
       key.hotelId,
@@ -219,7 +223,17 @@ export async function findAvailableRoomTypes(
         -- fresh its observations: deactivation is how a poisoned type (an
         -- offer-prose name) is retired while its history stays auditable.
         AND rt.is_active
-      ORDER BY o.room_type_id, o.observed_at DESC`,
+      -- Freshest capture first, then CHEAPEST within it. One room type
+      -- carries several rate plans for the same stay, and ordering by
+      -- observed_at alone kept whichever happened to be captured last —
+      -- measured on live data, that showed a Club Oceanfront room at
+      -- $964.00 when $819.40 was bookable, a 17.6% overstatement, while
+      -- the widget said "showing the lowest available rate".
+      -- observation_slot, not observed_at: rates from one collection run
+      -- share a slot but differ by milliseconds, so a price tie-break on
+      -- observed_at would never engage. Slot DESC keeps the guarantee that
+      -- a stale cheap price never outranks the current snapshot.
+      ORDER BY o.room_type_id, o.observation_slot DESC, o.nightly_amount_minor`,
     [hotelId, checkIn, nights, adults, children, currency],
   );
 

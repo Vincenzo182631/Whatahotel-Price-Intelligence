@@ -17,6 +17,7 @@ import {
   isLiveLoadFailure,
   loadLiveIntelligence,
 } from '../../packages/data/src/loadLiveIntelligence.js';
+import { findAvailableRoomTypes } from '../../packages/data/src/repositories/observations.js';
 import {
   findCompetitorRates,
   findMarketCompression,
@@ -52,6 +53,9 @@ function iso(base: string, offsetDays: number): string {
 suite('integration · live-market context queries', () => {
   let subjectId = 0;
   let roomTypeId = 0;
+  let sourceId = 0;
+  let ratePlanId = 0;
+  let batchId = 0;
   const hotelIds = new Map<string, number>();
 
   beforeAll(async () => {
@@ -63,7 +67,7 @@ suite('integration · live-market context queries', () => {
        VALUES ($1,'Live context test source',true) RETURNING id`,
       [SOURCE],
     );
-    const sourceId = src[0].id;
+    sourceId = src[0].id;
 
     const { rows: dest } = await pool.query(
       `INSERT INTO destination (slug,name,country_code) VALUES ('lc-town','LC Town','US')
@@ -107,12 +111,13 @@ suite('integration · live-market context queries', () => {
        VALUES ($1,$2,'LC-PLAN','ROOM_ONLY','REFUNDABLE','CONSORTIA',$3) RETURNING id`,
       [subjectId, sourceId, CLASS],
     );
-    const ratePlanId = rp[0].id;
+    ratePlanId = rp[0].id;
 
     const { rows: batch } = await pool.query(
       `INSERT INTO ingest_batch (source_id) VALUES ($1) RETURNING id`,
       [sourceId],
     );
+    batchId = batch[0].id as number;
 
     const insert = async (
       hotelId: number,
@@ -232,6 +237,75 @@ suite('integration · live-market context queries', () => {
   }
 
   // ── competitors ──────────────────────────────────────────────────────────
+
+  /**
+   * One room type carries several rate plans for the same stay. The selection
+   * must take the CHEAPEST of them, not whichever was written last — the
+   * widget promises "the lowest available rate", and on live data the
+   * observed_at ordering showed a Club Oceanfront room at $964.00 when
+   * $819.40 was bookable.
+   */
+  it('prices a room by its cheapest rate plan, not the last one captured', async () => {
+    const pool = getPool();
+    // Far outside the calendar window (21 days) and off the subject weekday,
+    // so these rows cannot be mistaken for a neighbouring date by any other
+    // test in this file.
+    const stay = iso(SUBJECT_CHECK_IN, 38);
+
+    const { rows: alt } = await pool.query(
+      `INSERT INTO rate_plan (hotel_id, source_id, source_plan_code, meal_plan,
+                              refund_policy, audience, comparability_class)
+       VALUES ($1,$2,'LC-ALT-PLAN','ROOM_ONLY','REFUNDABLE','CONSORTIA','WAH:ALT|OFFER')
+       RETURNING id`,
+      [subjectId, sourceId],
+    );
+
+    // ONE slot value, computed once and shared, so the rows are separable only
+    // by price. Deriving it per row would leave them milliseconds apart and
+    // silently restore the very ordering under test.
+    const slot = new Date(Date.now() - 3_600_000).toISOString();
+    const addRate = async (
+      nightlyMajor: number,
+      planId: number,
+      cls: string,
+      minutesAgo: number,
+    ) => {
+      const observedAt = new Date(Date.now() - minutesAgo * 60_000).toISOString();
+      await pool.query(
+        `INSERT INTO rate_observation (
+           observed_at, source_id, hotel_id, room_type_id, rate_plan_id, check_in, nights,
+           check_out, adults, children, currency, total_amount_minor, tax_basis,
+           observed_date, observation_slot, stay_dow_bucket, stay_season_band,
+           match_method, match_confidence, comparability_class, is_available, ingest_batch_id)
+         VALUES ($1::timestamptz,$2,$3,$4,$5,$6::date,3,$6::date + 3,2,0,$7,$8,'GROSS',
+                 $9::date,$10::timestamptz,'WEEKDAY','SHOULDER',
+                 'SOURCE_ID',1.00,$11,true,$12)`,
+        [
+          observedAt,
+          sourceId,
+          subjectId,
+          roomTypeId,
+          planId,
+          stay,
+          CURRENCY,
+          nightlyMajor * 100 * 3,
+          observedAt.slice(0, 10),
+          slot,
+          cls,
+          batchId,
+        ],
+      );
+    };
+
+    // The cheaper plan is written first, making the dearer row the most
+    // recently observed — exactly the shape that mispriced the live room.
+    await addRate(500, alt[0].id as number, 'WAH:ALT|OFFER', 40);
+    await addRate(900, ratePlanId, CLASS, 5);
+
+    const available = await findAvailableRoomTypes(subjectId, stay, 3, 2, 0, CURRENCY);
+    const chosen = available.find((r) => r.roomTypeId === roomTypeId);
+    expect(chosen?.nightlyMinor).toBe(500_00);
+  }, 30_000);
 
   it('returns live competitor rates for the exact same stay', async () => {
     const comps = await findCompetitorRates(
