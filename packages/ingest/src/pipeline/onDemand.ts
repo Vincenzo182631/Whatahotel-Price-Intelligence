@@ -37,6 +37,7 @@ import {
 } from '@wahpi/data';
 
 import type { RateQuery, RawRateRecord } from '../adapters/RateSourceAdapter.js';
+import { discoverCityComparables } from './enrollHotel.js';
 import {
   WHATAHOTEL_INGEST_TUNING,
   WHATAHOTEL_SOURCE_CODE,
@@ -169,6 +170,8 @@ export async function collectStayOnDemand(
     return NOT_PERFORMED('RECENTLY_FRUITLESS');
   }
 
+  await discoverCityComparablesQuietly(stay);
+
   const comparables = await findComparableIdentities(stay.hotelId, options.maxComparables);
   const { queries, hotelIdByWahId } = planOnDemandQueries(
     stay,
@@ -204,6 +207,12 @@ export async function topUpComparablesOnDemand(
   const lead = leadDaysOf(stay.checkIn, now);
   if (lead < 0 || lead > options.maxLeadDays) return NOT_PERFORMED('LEAD_OUT_OF_RANGE');
 
+  // Ask the source who this city's hotels ARE before deciding who to compare
+  // against. cityrates returns its own ranked top-15 for these exact dates, so
+  // the comp set is the source's shortlist rather than an accident of which
+  // ids the catalogue happens to hold. Cached per stay; never fatal.
+  await discoverCityComparablesQuietly(stay);
+
   const comparables = await findComparableIdentities(stay.hotelId, options.maxComparables);
   if (comparables.length === 0) return NOT_PERFORMED('NO_COMPARABLES');
 
@@ -235,6 +244,22 @@ export async function topUpComparablesOnDemand(
 }
 
 const queryKeyOf = (q: RateQuery): string => `${q.wahHotelId}|${q.checkIn}|${q.nights}|${q.adults}`;
+
+/**
+ * Discovery improves the comp set; it is not a precondition for having one.
+ * A failure here means we compare against what the catalogue already holds,
+ * which is exactly what happened before it existed — logged, then swallowed.
+ */
+async function discoverCityComparablesQuietly(stay: OnDemandStay): Promise<void> {
+  const checkOut = new Date(Date.parse(stay.checkIn + 'T00:00:00Z') + stay.nights * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  try {
+    await discoverCityComparables(stay.wahHotelId, stay.checkIn, checkOut, stay.adults);
+  } catch (err) {
+    console.error('city comparable discovery failed:', (err as Error).message);
+  }
+}
 
 /**
  * The shared body of both on-demand paths: fetch, ingest, record attempts.

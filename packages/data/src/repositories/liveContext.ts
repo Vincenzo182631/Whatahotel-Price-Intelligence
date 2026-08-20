@@ -29,8 +29,13 @@ import { db, type Queryable } from '../client.js';
  * score. That is not an acceptable answer for a widget that has to work on
  * every hotel page on the site, and the honest stand-in is the same filter the
  * curated set itself starts from: the same destination, minus the price and
- * tier ranking it cannot compute yet. Ordered by straight-line distance from
- * the subject, so the nearest hotels are the ones that get compared.
+ * tier ranking it cannot compute yet.
+ *
+ * Ordered by the SOURCE's own ranking first (`hotel.city_rank`, from
+ * `cityrates` — the only cross-hotel prominence signal the API offers), then by
+ * straight-line distance for everything the source has not ranked. Rank orders
+ * the comparison; it is never scored with, and it is never shown to a customer
+ * as a rating. See migration 0012 and docs/runbooks/source-api-inventory.md.
  *
  * The fallback is weaker evidence and is reported as such — see `compBasis` on
  * the loaded result, which the API publishes so nothing downstream can present
@@ -57,7 +62,9 @@ function compSetCte(limitParam: string): string {
            AND h.id <> $1
            AND s.destination_id IS NOT NULL
            AND h.destination_id = s.destination_id
-         ORDER BY (h.latitude IS NULL OR s.latitude IS NULL),
+         ORDER BY (h.city_rank IS NULL),
+                  h.city_rank DESC,
+                  (h.latitude IS NULL OR s.latitude IS NULL),
                   (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
                   h.id
          LIMIT ${limitParam})

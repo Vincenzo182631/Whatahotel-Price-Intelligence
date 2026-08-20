@@ -359,6 +359,12 @@ export interface ParsedHotel {
   readonly country: string | null;
   readonly latitude: number | null;
   readonly longitude: number | null;
+  /**
+   * The source's rank for this hotel within its city, when the record came
+   * from `cityrates` — the only method that carries one. Null everywhere else,
+   * which means "not ranked", never "ranked last".
+   */
+  readonly cityRank: number | null;
   readonly amadeusProperty: string | null;
   readonly perks: readonly ParsedPerk[];
   readonly url: string | null;
@@ -397,6 +403,7 @@ export function parseHotel(hotel: WahHotel): ParsedHotel | null {
     country: str(hotel.country),
     latitude: coord(hotel['loc-lat'], 90),
     longitude: coord(hotel['loc-long'], 180),
+    cityRank: num(hotel.rank),
     amadeusProperty: str(hotel['ama-property']),
     perks: parsePerks(hotel.perks),
     url: str(hotel.url),
