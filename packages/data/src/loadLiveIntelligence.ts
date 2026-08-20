@@ -181,7 +181,9 @@ export async function loadLiveIntelligence(
     audience: chosen.audience as RateAudience,
   };
 
-  const [competitors, neighbours, compressionInput] = await Promise.all([
+  const compLimit = Math.max(live.csi.minComps + 3, 8);
+
+  const [curatedCompetitors, neighbours, curatedCompression] = await Promise.all([
     findCompetitorRates(
       hotel.id,
       request.checkIn,
@@ -194,8 +196,9 @@ export async function loadLiveIntelligence(
       subjectTerms,
       // One more than needed, so a single stale comp does not drop the set
       // below the minimum.
-      Math.max(live.csi.minComps + 3, 8),
+      compLimit,
       live.csi.maxCompAgeHours,
+      false,
       q,
     ),
     findNearbyDateRates(
@@ -216,13 +219,71 @@ export async function loadLiveIntelligence(
       request.checkIn,
       request.nights,
       request.adults,
-      Math.max(live.csi.minComps + 3, 8),
+      compLimit,
       // Deliberately the same freshness bound as the comp-set query: the two
       // signals must agree about which hotels are bookable.
       live.csi.maxCompAgeHours,
+      false,
       q,
     ),
   ]);
+
+  /**
+   * A curated comp set that yields too few USABLE rates falls back, exactly as
+   * an empty one does.
+   *
+   * "Curated set exists" was the wrong trigger. Existing and useless is the
+   * worse case and it was the one left unhandled: hotel 1198 held a ranked
+   * comp set that produced 0 usable rates on three separate stays, so the
+   * index — 45% of the live score — was permanently unavailable in our
+   * best-collected destination. The on-demand top-up could not rescue it
+   * either; it fetched 128 competitor rates and inserted none, because every
+   * one was already stored and none matched the subject's terms. The pool was
+   * wrong, not stale.
+   *
+   * Only widen when it would actually help. If the destination yields no more
+   * than the curated set did, the curated answer stands, and the basis keeps
+   * saying CURATED — reporting a fallback that changed nothing would be a
+   * false admission of weaker evidence.
+   */
+  const hadCurated = await hasCuratedComparables(hotel.id, q);
+  let competitors = curatedCompetitors;
+  let compressionInput = curatedCompression;
+  let compBasis: CompBasis = hadCurated ? 'CURATED' : 'DESTINATION';
+
+  if (hadCurated && competitors.length < live.csi.minComps) {
+    const [widened, widenedCompression] = await Promise.all([
+      findCompetitorRates(
+        hotel.id,
+        request.checkIn,
+        request.nights,
+        request.adults,
+        request.children,
+        currency,
+        subjectTerms,
+        compLimit,
+        live.csi.maxCompAgeHours,
+        true,
+        q,
+      ),
+      findMarketCompression(
+        hotel.id,
+        request.checkIn,
+        request.nights,
+        request.adults,
+        compLimit,
+        live.csi.maxCompAgeHours,
+        true,
+        q,
+      ),
+    ]);
+    if (widened.length > competitors.length) {
+      competitors = widened;
+      // Compression must describe the same market the comp set does.
+      compressionInput = widenedCompression;
+      compBasis = 'DESTINATION';
+    }
+  }
 
   const compSet = computeCompSetIndex(current.nightlyMinor, competitors, config, now, {
     strength: compMatchStrength(matchTerms),
@@ -234,7 +295,7 @@ export async function loadLiveIntelligence(
   return {
     hotel,
     currency,
-    compBasis: (await hasCuratedComparables(hotel.id, q)) ? 'CURATED' : 'DESTINATION',
+    compBasis,
     roomTypeId: chosen.roomTypeId,
     roomName: chosen.canonicalName,
     roomSelectedBy: request.roomTypeId != null ? 'USER' : 'ENGINE',

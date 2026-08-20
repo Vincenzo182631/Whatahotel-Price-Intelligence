@@ -41,13 +41,28 @@ import { db, type Queryable } from '../client.js';
  * the loaded result, which the API publishes so nothing downstream can present
  * a city-wide comparison as a curated peer set.
  *
- * $1 is the subject hotel id; `limitParam` is the caller's own placeholder.
+ * ── Why "curated exists" is not the right trigger ──────────────────────────
+ *
+ * The fallback used to fire only when `hotel_comparable` was EMPTY. A curated
+ * set that exists but yields nothing usable is the worse case and it was the
+ * one left unhandled: measured on hotel 1198 (Ritz-Carlton Key Biscayne), the
+ * curated comps returned 0 usable rates on three separate stays while the
+ * top-up fetched 128 competitor rates and inserted none — every one already
+ * stored, none matching the subject's terms. Fetching more of the same could
+ * never fix it, because the pool was wrong rather than stale.
+ *
+ * So the caller re-asks with `widen` once it can see the count. That decision
+ * needs the usable comps, which only the full query produces, so it lives in
+ * loadLiveIntelligence rather than here — see `widenedCompetitors`.
+ *
+ * $1 is the subject hotel id; `limitParam` is the caller's own placeholder;
+ * `widenParam` is a boolean that suppresses the curated branch entirely.
  */
-function compSetCte(limitParam: string): string {
+function compSetCte(limitParam: string, widenParam: string): string {
   return `curated AS (
        SELECT c.comparable_id AS hotel_id, c.rank
          FROM hotel_comparable c
-        WHERE c.hotel_id = $1
+        WHERE c.hotel_id = $1 AND NOT ${widenParam}
         ORDER BY c.rank
         LIMIT ${limitParam}
      ),
@@ -107,10 +122,16 @@ export async function findCompetitorRates(
   terms: { mealPlan: string; refundPolicy: string; audience: string },
   limit: number,
   maxAgeHours: number,
+  /**
+   * Skip the curated set and take the destination instead. The caller sets it
+   * after seeing that the curated set produced fewer usable comps than the
+   * index needs — see the note on compSetCte.
+   */
+  widen = false,
   q?: Queryable,
 ): Promise<CompetitorRate[]> {
   const { rows } = await db(q).query(
-    `WITH ${compSetCte('$8')},
+    `WITH ${compSetCte('$8', '$12')},
      latest AS (
        SELECT DISTINCT ON (o.hotel_id, o.room_type_id)
               o.hotel_id, o.nightly_amount_minor, o.observed_at, o.is_available
@@ -156,6 +177,7 @@ export async function findCompetitorRates(
       maxAgeHours,
       terms.refundPolicy,
       terms.audience,
+      widen,
     ],
   );
 
@@ -261,10 +283,12 @@ export async function findMarketCompression(
    * as available.
    */
   maxAgeHours: number,
+  /** Must match the comp set's own choice, or the two describe different markets. */
+  widen = false,
   q?: Queryable,
 ): Promise<CompressionInput | null> {
   const { rows } = await db(q).query(
-    `WITH ${compSetCte('$5')},
+    `WITH ${compSetCte('$5', '$7')},
      priced AS (
        SELECT DISTINCT o.hotel_id
          FROM rate_observation o
@@ -285,7 +309,7 @@ export async function findMarketCompression(
        (SELECT count(*) FROM attempted)                                    AS attempted,
        (SELECT count(*) FROM attempted WHERE last_outcome = 'NO_AVAILABILITY'
            AND hotel_id NOT IN (SELECT hotel_id FROM priced))              AS sold_out`,
-    [hotelId, checkIn, nights, adults, limit, maxAgeHours],
+    [hotelId, checkIn, nights, adults, limit, maxAgeHours, widen],
   );
 
   const row = rows[0];
