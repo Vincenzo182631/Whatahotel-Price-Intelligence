@@ -92,10 +92,32 @@ reads as broken rather than as unstyled. Verified by omitting it. If an
 integrator reports "it looks wrong" rather than "nothing happens", check for
 the `<link>` first.
 
-**`data-wah-pi` is a marker attribute, not a value.** The element is found by
-the attribute selector `[data-wah-pi]`, so the host template needs no id and no
-class — that is the whole point of it. Its value is ignored, except as an
-optional shorthand for the hotel id (`data-wah-pi="1198"` works).
+**`data-wah-pi` is what the widget selects on — the element must carry it, or
+one of the equivalents below.** Its VALUE is ignored (except as an optional
+shorthand for the hotel id: `data-wah-pi="1198"` works), but the attribute
+itself is how the element is found.
+
+An earlier version of this page said the template "needs no id and no class",
+meaning we do not require one. It was reasonably read as "identify it however
+you like", and the staging embed came back as
+
+```html
+<div id="widget" class="wahpi-wrapper wahpi" data-hotel-id="2008" …></div>
+```
+
+— every stay attribute correct, and the one attribute we select on missing. The
+widget mounted nothing and looked dead. So the selector now also accepts the
+conventions an integrator naturally reaches for:
+
+| form                 | example                        |
+| -------------------- | ------------------------------ |
+| the marker attribute | `<div data-wah-pi>`            |
+| a class              | `<div class="wahpi">`          |
+| an id                | `<div id="wahpi">` / `#wah-pi` |
+
+All four are deliberate opt-in markers carrying our own name. `data-hotel-id`
+alone is deliberately NOT a mount target — a search-results page can carry it
+on every card, and that would render a panel per row.
 
 **The stay can come from the page instead of attributes**, which is what lets
 ONE template edit cover every hotel page on the site. Each field is resolved

@@ -1410,6 +1410,26 @@
     return null;
   }
 
+  /**
+   * Every way a host page can mark the element we mount into.
+   *
+   * `[data-wah-pi]` is the documented marker. The class and id forms exist
+   * because the documentation actively led an integrator away from it: the
+   * runbook said the host template "needs no id and no class", meaning we do
+   * not REQUIRE one — and it was reasonably read as "identify it however you
+   * like". The staging embed came back as
+   *
+   *   <div id="widget" class="wahpi-wrapper wahpi" data-hotel-id="2008" ...>
+   *
+   * with every stay attribute correct and the one attribute we actually select
+   * on missing, so the widget mounted nothing and looked dead.
+   *
+   * These are all deliberate opt-in markers carrying our own name — NOT
+   * `[data-hotel-id]`, which a search-results page could carry on every card
+   * and which would mount a panel per row.
+   */
+  var MOUNT_SELECTOR = '[data-wah-pi],.wahpi,#wahpi,#wah-pi';
+
   var CHECK_IN_SELECTORS = [
     '#checkIn',
     '#checkin',
@@ -1554,7 +1574,7 @@
     var signature = stateSignature();
     if (!force && signature === lastSignature) return;
     lastSignature = signature;
-    var nodes = document.querySelectorAll('[data-wah-pi]');
+    var nodes = document.querySelectorAll(MOUNT_SELECTOR);
     for (var i = 0; i < nodes.length; i++) autoMount(nodes[i]);
   }
 
@@ -1616,7 +1636,7 @@
     if (typeof document === 'undefined') return;
     lastSignature = stateSignature();
     watchPageState();
-    var nodes = document.querySelectorAll('[data-wah-pi]');
+    var nodes = document.querySelectorAll(MOUNT_SELECTOR);
     for (var i = 0; i < nodes.length; i++) {
       watchNode(nodes[i]);
       autoMount(nodes[i]);
@@ -1628,10 +1648,10 @@
           for (var j = 0; j < m.addedNodes.length; j++) {
             var added = m.addedNodes[j];
             if (added.nodeType !== 1) continue;
-            var found = added.matches && added.matches('[data-wah-pi]')
+            var found = added.matches && added.matches(MOUNT_SELECTOR)
               ? [added]
               : added.querySelectorAll
-                ? added.querySelectorAll('[data-wah-pi]')
+                ? added.querySelectorAll(MOUNT_SELECTOR)
                 : [];
             for (var k = 0; k < found.length; k++) {
               if (!found[k].__wahpiWatched) {
