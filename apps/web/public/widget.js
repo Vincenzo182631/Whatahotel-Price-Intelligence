@@ -1174,6 +1174,20 @@
     );
   }
 
+  /**
+   * Why a panel hid. Declared before mount() so both it and the auto-init
+   * below can report; see the fuller note at the auto-init block.
+   */
+  function explain(level, message) {
+    try {
+      if (typeof console === 'undefined') return;
+      var fn = console[level] || console.log;
+      if (fn) fn.call(console, '[wah-pi] ' + message);
+    } catch (e) {
+      /* a logging failure must never break the host page */
+    }
+  }
+
   function hideRoot(root) {
     root.textContent = '';
     root.className = 'wahpi';
@@ -1277,6 +1291,17 @@
             'We could not verify enough live data to score this stay. Try nearby dates, or ask an advisor.',
           );
         } else if (code === 'HOTEL_NOT_FOUND' || code === 'ROOM_TYPE_NOT_FOUND') {
+          // The commonest "it does nothing" report during integration, and the
+          // one case where hiding is CORRECT: the embed is fine, the hotel is
+          // simply not collected yet. Say so, or a working integration and a
+          // broken one look identical.
+          explain(
+            'info',
+            'hotel "' +
+              options.hotelId +
+              '" is not in the price-intelligence catalogue yet — panel hidden. ' +
+              'The embed is working; coverage is added city by city.',
+          );
           failQuietly('Not found', 'We could not find that hotel or room type.');
         } else {
           // Rule: never a fabricated or last-known score presented as current.
@@ -1305,21 +1330,84 @@
   //   <div data-wah-pi data-hotel-id="1198" data-check-in="2026-10-30"
   //        data-check-out="2026-11-02" data-adults="2"></div>
   //
-  // and this script does the rest: the API base defaults to wherever the
-  // script itself was loaded from, invalid or missing inputs mean NO request
-  // rather than a broken panel, and changing the data-attributes (a calendar
-  // page that swaps dates without a reload) remounts automatically.
+  // and this script does the rest. `data-wah-pi` is a MARKER attribute: the
+  // element is found by the attribute selector `[data-wah-pi]`, so the host
+  // needs no id and no class. Its value is ignored, except as a convenience
+  // shorthand for the hotel id (`data-wah-pi="1198"`).
+  //
+  // The stay can come from three places, in order of precedence:
+  //   1. data-attributes on the element,
+  //   2. the page URL's query string (hotelID / checkIn / checkOut / guests —
+  //      the names a booking page already carries), so a template that links
+  //      to /showRates.cfm?hotelID=…&checkIn=… needs only the marker div,
+  //   3. nothing, in which case the panel hides and says why in the console.
+  //
+  // Invalid or missing inputs mean NO request rather than a broken panel, and
+  // changing the data-attributes (a calendar page that swaps dates without a
+  // reload) remounts automatically.
 
   var ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  // `explain` (declared above mount) reports why a panel hid. A silent hide is
+  // right for a guest — an uncovered hotel must not clutter the page — but it
+  // is indistinguishable from a broken embed for whoever is integrating it.
+  // One console line costs the guest nothing and saves the integrator an
+  // afternoon.
+
+  /** Query-string value by any of several parameter spellings. */
+  function urlParam(names) {
+    try {
+      if (typeof window === 'undefined' || !window.location) return null;
+      var params = new URLSearchParams(window.location.search);
+      for (var i = 0; i < names.length; i++) {
+        var v = params.get(names[i]);
+        if (v !== null && v !== '') return v;
+      }
+    } catch (e) {
+      /* malformed URL: fall through to null */
+    }
+    return null;
+  }
+
+  /**
+   * Normalise a host page's date to YYYY-MM-DD.
+   *
+   * ISO passes through. MM/DD/YYYY and YYYY/MM/DD are accepted because a
+   * ColdFusion template commonly renders one of them, and rejecting a date the
+   * page clearly states would strand a correct integration.
+   */
+  function normalizeDate(value) {
+    if (!value) return '';
+    var v = String(value).trim();
+    if (ISO_DATE.test(v)) return v;
+    var pad = function (n) {
+      return (n.length === 1 ? '0' : '') + n;
+    };
+    var us = v.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (us) return us[3] + '-' + pad(us[1]) + '-' + pad(us[2]);
+    var ymd = v.match(/^(\d{4})[/](\d{1,2})[/](\d{1,2})$/);
+    if (ymd) return ymd[1] + '-' + pad(ymd[2]) + '-' + pad(ymd[3]);
+    return v;
+  }
 
   function autoConfig(node) {
     var ds = node.dataset || {};
+    // Data attributes win; the URL is the fallback so a booking page that
+    // already carries the stay in its query string needs only the marker div.
+    var hotelId =
+      ds.hotelId ||
+      (ds.wahPi && ds.wahPi !== '' ? ds.wahPi : null) ||
+      urlParam(['hotelID', 'hotelId', 'hotel_id', 'hotel']);
+    var checkIn = ds.checkIn || urlParam(['checkIn', 'checkin', 'check_in', 'arrive']);
+    var checkOut = ds.checkOut || urlParam(['checkOut', 'checkout', 'check_out', 'depart']);
+    var adults = ds.adults || urlParam(['adults', 'guests', 'numAdults']);
+    var children = ds.children || urlParam(['children', 'numChildren', 'kids']);
+
     var config = {
-      hotelId: ds.hotelId,
-      checkIn: ds.checkIn,
-      checkOut: ds.checkOut,
-      adults: parseInt(ds.adults || '2', 10) || 2,
-      children: parseInt(ds.children || '0', 10) || 0,
+      hotelId: hotelId ? String(hotelId).trim() : '',
+      checkIn: normalizeDate(checkIn),
+      checkOut: normalizeDate(checkOut),
+      adults: parseInt(adults || '2', 10) || 2,
+      children: parseInt(children || '0', 10) || 0,
       unavailable: ds.unavailable || 'hide',
     };
     if (ds.apiBase) config.apiBase = ds.apiBase;
@@ -1330,27 +1418,40 @@
     return config;
   }
 
-  function configValid(config) {
-    if (!config.hotelId || !ISO_DATE.test(config.checkIn || '') || !ISO_DATE.test(config.checkOut || '')) {
-      return false;
+  /** The reason this config cannot be used, or null when it can. */
+  function configProblem(config) {
+    if (!config.hotelId) {
+      return 'no hotel id — add data-hotel-id to the element, or a hotelID parameter to the page URL';
     }
-    if (config.checkOut <= config.checkIn) return false;
+    if (!ISO_DATE.test(config.checkIn) || !ISO_DATE.test(config.checkOut)) {
+      return (
+        'check-in/check-out missing or unrecognised (got "' +
+        config.checkIn +
+        '" and "' +
+        config.checkOut +
+        '") — expected YYYY-MM-DD or MM/DD/YYYY'
+      );
+    }
+    if (config.checkOut <= config.checkIn) return 'check-out is not after check-in';
     // A stay already begun cannot be scored honestly. ISO strings compare
     // lexicographically, so no Date parsing (and no timezone bugs) needed.
-    var today = new Date().toISOString().slice(0, 10);
-    return config.checkIn >= today;
+    if (config.checkIn < new Date().toISOString().slice(0, 10)) return 'check-in is in the past';
+    return null;
   }
 
   function autoMount(node) {
     try {
       var config = autoConfig(node);
-      if (!configValid(config)) {
+      var problem = configProblem(config);
+      if (problem) {
+        explain('warn', 'panel hidden: ' + problem);
         hideRoot(node);
         return;
       }
       mount(node, config);
     } catch (e) {
       // The host page must never break because the widget did.
+      explain('warn', 'panel hidden after an unexpected error: ' + (e && e.message));
       try {
         hideRoot(node);
       } catch (e2) {

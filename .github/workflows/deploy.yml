@@ -80,7 +80,11 @@ jobs:
             npx vercel env rm DATABASE_URL "$envname" --yes --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
             printf '%s' "$POOLED" | npx vercel env add DATABASE_URL "$envname" --token="$VERCEL_TOKEN"
             npx vercel env rm CORS_ORIGIN "$envname" --yes --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
-            printf '%s' 'https://www.whatahotel.com,https://whatahotel.com' | npx vercel env add CORS_ORIGIN "$envname" --token="$VERCEL_TOKEN"
+            # The allowlist the browser is checked against. The rpx-dev host is
+            # WhataHotel's staging site — the widget is integrated there first,
+            # and without it every call from staging fails CORS while looking
+            # like a broken embed. An origin off this list gets no header at all.
+            printf '%s' 'https://www.whatahotel.com,https://whatahotel.com,https://wah.rpx-dev.com' | npx vercel env add CORS_ORIGIN "$envname" --token="$VERCEL_TOKEN"
             # On-demand scoring fetches a guest's stay live when nothing has
             # collected it. Without the key that path silently degrades to the
             # honest no-score state, so the function gets the key when the
