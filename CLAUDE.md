@@ -76,6 +76,14 @@ engine.
 1. **Money is integer minor units.** Never floats. `roundHalfAwayFromZero`
    exists because Postgres `round(numeric)` and JS `Math.round` disagree, and a
    recomputed score must match a stored one.
+   **ADR is the base room rate, never the grand total over nights.**
+   `nightly_amount_minor` is `(total_amount_minor - taxes_fees_minor) / nights`
+   (migration 0011), which reconstructs the source's own per-night NET rate and
+   matches how whatahotel.com quotes a night. Dividing the gross total inflated
+   every nightly figure by 18-31% and put the widget on a different basis than
+   the page it embeds into. `total_amount_minor` stays GROSS — the stay total is
+   what the customer pays — so the two carry SEPARATE basis labels in the API
+   and the widget. One label describing both is wrong about one of them.
 2. **This is not a price predictor.** `WAIT` was retired in config v4 — gate G4,
    the eight never-WAIT guards, the boundary assertion and the `SHORT_LEAD_TIME`
    caveat are all gone, and migration 0008 makes the database reject the value

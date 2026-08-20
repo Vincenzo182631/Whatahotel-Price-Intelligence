@@ -317,4 +317,56 @@ BEGIN
     RAISE NOTICE 'CHECK 11 ok — DEFAULT partition is empty';
 END $$;
 
+-- Check 12 · ADR excludes taxes and fees ----------------------------------------
+--
+-- The acceptance case, encoded where it cannot drift: base room rates of
+-- $300 + $320 + $280 = $900 over 3 nights, with taxes and fees bringing the
+-- grand total to $1,050. ADR must be $300/night, NOT $350 — the widget sits
+-- beside whatahotel.com's own prices and has to quote a night the same way.
+--
+-- The second row is the no-stated-tax path: a source that gives no split means
+-- the total IS the base rate, which must round-trip rather than be discarded.
+DO $$
+DECLARE taxed BIGINT; untaxed BIGINT; hid BIGINT; sid BIGINT; rtid BIGINT; rpid BIGINT;
+BEGIN
+    SELECT h.id, s.id, rt.id, rp.id INTO hid, sid, rtid, rpid
+      FROM hotel h, source s, room_type rt, rate_plan rp
+     WHERE h.wah_hotel_id = 'CHECK-2962' AND s.code = 'TEST_SRC'
+       AND rt.hotel_id = h.id AND rt.normalized_name = 'ocean view king'
+       AND rp.hotel_id = h.id AND rp.source_plan_code = 'BB-FLEX';
+
+    INSERT INTO rate_observation (
+        observed_at, source_id, hotel_id, room_type_id, rate_plan_id,
+        check_in, nights, check_out, adults, children,
+        currency, total_amount_minor, taxes_fees_minor, tax_basis,
+        observed_date, observation_slot, stay_dow_bucket, stay_season_band,
+        match_method, match_confidence, comparability_class
+    ) VALUES
+      ('2026-08-14T11:00:00Z', sid, hid, rtid, rpid,
+       DATE '2026-10-05', 3, DATE '2026-10-08', 2, 0,
+       'USD', 105000, 15000, 'GROSS',
+       DATE '2026-08-14', '2026-08-14T11:00:00Z', 'WEEKDAY', 'SHOULDER',
+       'SOURCE_ID', 1.00, 'BREAKFAST_INCLUDED|FLEXIBLE|PUBLIC'),
+      ('2026-08-14T11:00:00Z', sid, hid, rtid, rpid,
+       DATE '2026-10-12', 3, DATE '2026-10-15', 2, 0,
+       'USD', 90000, NULL, 'NET',
+       DATE '2026-08-14', '2026-08-14T11:00:00Z', 'WEEKDAY', 'SHOULDER',
+       'SOURCE_ID', 1.00, 'BREAKFAST_INCLUDED|FLEXIBLE|PUBLIC');
+
+    SELECT nightly_amount_minor INTO taxed
+      FROM rate_observation WHERE hotel_id = hid AND check_in = DATE '2026-10-05';
+    SELECT nightly_amount_minor INTO untaxed
+      FROM rate_observation WHERE hotel_id = hid AND check_in = DATE '2026-10-12';
+
+    IF taxed <> 30000 THEN
+        RAISE EXCEPTION
+            'CHECK 12a FAILED: ADR = % (expected 30000 — $300 base, not $350 gross)', taxed;
+    END IF;
+    IF untaxed <> 30000 THEN
+        RAISE EXCEPTION
+            'CHECK 12b FAILED: ADR with no stated tax split = % (expected 30000)', untaxed;
+    END IF;
+    RAISE NOTICE 'CHECK 12 ok — ADR excludes taxes and fees ($300/night, not $350)';
+END $$;
+
 ROLLBACK;

@@ -64,10 +64,17 @@ export interface LoadedLiveIntelligence {
    * may not apply to the one they book (docs/mvp/08 §H).
    */
   readonly rateTerms: string;
-  /** Whether the price includes taxes. Never left ambiguous on screen. */
+  /**
+   * The basis of `totalMinor`. `nightlyMinor` is ALWAYS the base room rate
+   * before taxes and fees, so the two are reported separately on screen —
+   * one label describing both would be wrong about one of them.
+   */
   readonly taxBasis: TaxBasis;
+  /** ADR: base room rate per night, excluding taxes and fees. */
   readonly nightlyMinor: number;
+  /** The whole-stay total the customer pays. Unchanged by the ADR fix. */
   readonly totalMinor: number;
+  readonly taxesFeesMinor: number | null;
   readonly observedAt: string;
   readonly rateAgeHours: number;
   readonly result: LiveScoreResult;
@@ -213,6 +220,7 @@ export async function loadLiveIntelligence(
     taxBasis: current.taxBasis,
     nightlyMinor: current.nightlyMinor,
     totalMinor: current.totalMinor,
+    taxesFeesMinor: current.taxesFeesMinor,
     observedAt: current.observedAt,
     rateAgeHours,
     result: composeLiveScore(compSet, calendar, compression, rateAgeHours, config),

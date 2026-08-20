@@ -74,6 +74,24 @@
     return days + (days === 1 ? ' day ago' : ' days ago');
   }
 
+  /**
+   * The tax wording for a price block.
+   *
+   * The nightly figure is the ADR — the base room rate, the same basis
+   * whatahotel.com quotes — while the total is the full cost of the stay.
+   * They differ, so one label has to name both or it is wrong about one.
+   */
+  function taxLabel(price) {
+    var nightlyBasis = price.nightly_basis || 'NET';
+    var totalBasis = price.total_basis || price.tax_basis;
+    if (nightlyBasis === 'NET' && totalBasis === 'GROSS') {
+      return 'Nightly rate before taxes and fees · total includes them';
+    }
+    if (totalBasis === 'GROSS') return 'Includes taxes and fees';
+    if (totalBasis === 'NET') return 'Before taxes and fees';
+    return 'Nightly rate before taxes and fees · total tax treatment unconfirmed';
+  }
+
   function el(tag, className, text) {
     var node = document.createElement(tag);
     if (className) node.className = className;
@@ -204,14 +222,9 @@
     );
     wrap.appendChild(row);
 
-    // Rule: tax basis explicit, never ambiguous.
-    var taxText =
-      data.price.tax_basis === 'GROSS'
-        ? 'Includes taxes and fees'
-        : data.price.tax_basis === 'NET'
-          ? 'Before taxes and fees'
-          : 'Tax treatment unconfirmed';
-    wrap.appendChild(el('div', 'wahpi__tax', taxText));
+    // Rule: tax basis explicit, never ambiguous — and the nightly rate and the
+    // stay total do not share one. See renderLivePrice for the reasoning.
+    wrap.appendChild(el('div', 'wahpi__tax', taxLabel(data.price)));
 
     if (data.price.effective_nightly && data.price.benefit_value_per_night.amount_minor > 0) {
       wrap.appendChild(
@@ -784,20 +797,12 @@
     );
     wrap.appendChild(row);
 
-    // Rule: tax basis explicit, never ambiguous. A comp-set index built from
-    // net rates and read as gross is off by the tax factor — about 25% on this
-    // source.
-    wrap.appendChild(
-      el(
-        'div',
-        'wahpi__tax',
-        data.price.tax_basis === 'GROSS'
-          ? 'Includes taxes and fees'
-          : data.price.tax_basis === 'NET'
-            ? 'Before taxes and fees'
-            : 'Tax treatment unconfirmed',
-      ),
-    );
+    // Rule: tax basis explicit, never ambiguous — and the two figures above do
+    // NOT share a basis. The nightly rate is the base room rate (the same way
+    // whatahotel.com quotes a night); the total is what the stay actually
+    // costs, taxes and fees included. One label describing both would be
+    // wrong about one of them.
+    wrap.appendChild(el('div', 'wahpi__tax', taxLabel(data.price)));
     return wrap;
   }
 

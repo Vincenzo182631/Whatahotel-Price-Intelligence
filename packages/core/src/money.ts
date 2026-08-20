@@ -47,12 +47,26 @@ export function scaleMoney(m: Money, factor: number): Money {
   return money(roundHalfAwayFromZero(m.amountMinor * factor), m.currency);
 }
 
-/** Nightly rate from a stay total. Mirrors the DB generated column exactly. */
-export function nightlyFromTotal(totalMinor: Minor, nights: number): Minor {
+/**
+ * The Average Daily Rate: the BASE room rate per night, before taxes and fees.
+ * Mirrors the `nightly_amount_minor` generated column exactly (migration 0011).
+ *
+ * Not the grand total over nights. `totalMinor` is gross on this source, so
+ * dividing it inflated every nightly figure by the tax factor (~18-25%) and
+ * put the widget on a different basis than the whatahotel.com page around it.
+ *
+ * `taxesFeesMinor` null means the source stated no tax split, which is read as
+ * "the total IS the base rate" rather than as a reason to discard the rate.
+ */
+export function nightlyRate(
+  totalMinor: Minor,
+  taxesFeesMinor: Minor | null,
+  nights: number,
+): Minor {
   if (!Number.isInteger(nights) || nights <= 0) {
     throw new RangeError(`nights must be a positive integer, got ${nights}`);
   }
-  return roundHalfAwayFromZero(totalMinor / nights);
+  return roundHalfAwayFromZero((totalMinor - (taxesFeesMinor ?? 0)) / nights);
 }
 
 /**

@@ -5,7 +5,7 @@ import { DEFAULT_CONFIG } from '../../packages/core/src/config/defaults.js';
 import { validateConfig, withConfig } from '../../packages/core/src/config/schema.js';
 import { fFreshness, fVolatility, fVolume } from '../../packages/core/src/confidence/confidence.js';
 import {
-  nightlyFromTotal,
+  nightlyRate,
   pctBelow,
   roundHalfAwayFromZero,
   money,
@@ -31,13 +31,43 @@ describe('money', () => {
     expect(roundHalfAwayFromZero(2.4)).toBe(2);
   });
 
-  it('derives nightly from a stay total the same way the DB column does', () => {
-    expect(nightlyFromTotal(206700, 3)).toBe(68900);
-    expect(nightlyFromTotal(100000, 3)).toBe(33333);
+  /**
+   * ADR is the BASE room rate per night. Dividing the grand total by nights
+   * inflated every nightly figure by the tax and fee factor and put the widget
+   * on a different basis than the whatahotel.com page it embeds into.
+   */
+  it('excludes taxes and fees from the nightly rate', () => {
+    // The acceptance case: $300 + $320 + $280 base over 3 nights, taxes and
+    // fees bringing the grand total to $1,050. ADR is $300, never $350.
+    expect(nightlyRate(105000, 15000, 3)).toBe(30000);
+    // The bug this replaced, kept visible: total / nights was $350.
+    expect(nightlyRate(105000, null, 3)).toBe(35000);
+  });
+
+  it('reads a missing tax split as "the total is the base rate"', () => {
+    // A source stating no taxes must round-trip, not be discarded.
+    expect(nightlyRate(90000, null, 3)).toBe(30000);
+    expect(nightlyRate(90000, 0, 3)).toBe(30000);
+  });
+
+  it('handles varying nightly prices, stay lengths and rounding', () => {
+    // Uneven base rates: only the total matters, the per-night split does not.
+    expect(nightlyRate(90000, 0, 3)).toBe(30000);
+    // One night: ADR is the base rate itself.
+    expect(nightlyRate(37500, 7500, 1)).toBe(30000);
+    // A long stay whose base does not divide evenly, rounded like Postgres.
+    expect(nightlyRate(100000, 0, 3)).toBe(33333);
+    expect(nightlyRate(100100, 0, 3)).toBe(33367);
+  });
+
+  it('matches the DB generated column on the real observation it was drawn from', () => {
+    // A live 2-night stay: gross $1,858.85, taxes $333.85. The source's own
+    // rateDaily for it was $762.50 — reconstructed exactly.
+    expect(nightlyRate(185885, 33385, 2)).toBe(76250);
   });
 
   it('rejects a zero or negative night count', () => {
-    expect(() => nightlyFromTotal(1000, 0)).toThrow(RangeError);
+    expect(() => nightlyRate(1000, null, 0)).toThrow(RangeError);
   });
 
   it('computes percentage below a reference', () => {
