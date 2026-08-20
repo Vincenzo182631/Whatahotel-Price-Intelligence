@@ -3,18 +3,20 @@
 # Manual dispatch. The Vercel dashboard's git integration can do this on every
 # push once the repo is imported there — this workflow exists so a deploy can
 # also be driven from here, the same way everything else in this repo is: add
-# the named secrets, dispatch, read the summary.
+# the named secret, dispatch, read the summary.
 #
-# Required repository secrets (all three from the Vercel dashboard):
-#   VERCEL_TOKEN       Account Settings → Tokens
-#   VERCEL_ORG_ID      Project Settings → General (team/org id)
-#   VERCEL_PROJECT_ID  Project Settings → General
+# Required repository secrets:
+#   VERCEL_TOKEN  Vercel dashboard → Account Settings → Tokens
+#   DATABASE_URL  already set for collection — the pooler hostname the
+#                 serverless runtime needs is derived from it at deploy time
 #
-# The runtime environment (DATABASE_URL with the -pooler host, CORS_ORIGIN)
-# lives in the Vercel project's own env settings, not here — `vercel pull`
-# fetches it at build time. Secrets are checked by name, never enumerated:
-# enumerating the secret store is what tripped GitHub's malicious-workflow
-# detector on the database-setup workflow.
+# The project does NOT have to exist first: `vercel link` creates it under the
+# token's account on the first run and attaches to it on every run after. The
+# runtime environment (DATABASE_URL with the -pooler host, CORS_ORIGIN) is
+# pushed into the Vercel project by this workflow, so the dashboard needs no
+# hand-editing. Secrets are checked by name, never enumerated: enumerating the
+# secret store is what tripped GitHub's malicious-workflow detector on the
+# database-setup workflow.
 name: Deploy
 
 on:
@@ -34,9 +36,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
     steps:
       - uses: actions/checkout@v4
@@ -46,22 +45,42 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Check the Vercel secrets are set
+      - name: Check the secrets are set
         env:
           HAS_TOKEN: ${{ secrets.VERCEL_TOKEN != '' }}
-          HAS_ORG: ${{ secrets.VERCEL_ORG_ID != '' }}
-          HAS_PROJECT: ${{ secrets.VERCEL_PROJECT_ID != '' }}
+          HAS_DB: ${{ secrets.DATABASE_URL != '' }}
         run: |
           missing=""
-          [ "$HAS_TOKEN" = "true" ]   || missing="$missing VERCEL_TOKEN"
-          [ "$HAS_ORG" = "true" ]     || missing="$missing VERCEL_ORG_ID"
-          [ "$HAS_PROJECT" = "true" ] || missing="$missing VERCEL_PROJECT_ID"
+          [ "$HAS_TOKEN" = "true" ] || missing="$missing VERCEL_TOKEN"
+          [ "$HAS_DB" = "true" ]    || missing="$missing DATABASE_URL"
           if [ -n "$missing" ]; then
             echo "::error::Missing repository secret(s):$missing — see docs/runbooks/deploy.md."
             exit 1
           fi
 
       - run: npm ci
+
+      - name: Link the Vercel project (created on first run)
+        run: npx vercel link --yes --project whatahotel-price-intelligence-api --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Push the runtime environment into the project
+        env:
+          DB_URL: ${{ secrets.DATABASE_URL }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          # Serverless instances each open their own database connection, so
+          # the function must use the Neon POOLER endpoint — the repo secret
+          # holds the direct endpoint (migrations need that one). Derive the
+          # pooler hostname; a URL that already carries -pooler, or is not a
+          # Neon host, passes through unchanged.
+          POOLED=$(printf '%s' "$DB_URL" | sed -E 's/@([^.@/]+)\.([^/]*neon\.tech)/@\1-pooler.\2/; s/-pooler-pooler/-pooler/')
+          echo "::add-mask::$POOLED"
+          for envname in production preview; do
+            npx vercel env rm DATABASE_URL "$envname" --yes --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
+            printf '%s' "$POOLED" | npx vercel env add DATABASE_URL "$envname" --token="$VERCEL_TOKEN"
+            npx vercel env rm CORS_ORIGIN "$envname" --yes --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
+            printf '%s' 'https://www.whatahotel.com,https://whatahotel.com' | npx vercel env add CORS_ORIGIN "$envname" --token="$VERCEL_TOKEN"
+          done
 
       - name: Pull the Vercel project settings and environment
         run: npx vercel pull --yes --environment=${{ inputs.production && 'production' || 'preview' }} --token=${{ secrets.VERCEL_TOKEN }}

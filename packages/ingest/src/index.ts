@@ -22,6 +22,7 @@ export type {
 export {
   DEFAULT_INGEST_OPTIONS,
   ingestRecords,
+  ingestStayKey,
   observationSlot,
   validateRecord,
 } from './pipeline/pipeline.js';

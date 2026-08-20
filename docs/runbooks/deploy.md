@@ -54,11 +54,15 @@ deployed API. `npm run smoke` also works against a deployment:
 
 The **Deploy** workflow (`.github/workflows/deploy.yml`) drives the same
 deployment from Actions — useful when a deploy should be dispatched the way
-everything else in this repo is. It needs three repository secrets, all from
-the Vercel dashboard: `VERCEL_TOKEN` (Account Settings → Tokens),
-`VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` (both under Project Settings →
-General, after the project exists). Dispatch with `production` unchecked for a
-preview URL, checked for production.
+everything else in this repo is, and it needs no dashboard setup at all. One
+new repository secret: `VERCEL_TOKEN` (Vercel dashboard → Account Settings →
+Tokens → Create). Everything else is automatic: the workflow creates or links
+the project (`whatahotel-price-intelligence-api`) under the token's account,
+derives the pooler `DATABASE_URL` from the repo's existing secret (the repo
+holds the direct endpoint, which migrations need; the function must not use
+it), pushes it and `CORS_ORIGIN` into the project's environment, builds, and
+deploys. Dispatch with `production` unchecked for a preview URL, checked for
+production.
 
 ## Embedding on whatahotel.com
 

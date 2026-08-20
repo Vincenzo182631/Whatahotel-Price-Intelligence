@@ -63,12 +63,18 @@ merely mid-outage, and the weekly probe is what notices inventory reopening.
 
 `last_outcome` says why a stay yielded nothing:
 
-| Outcome           | Meaning                                                    |
-| ----------------- | ---------------------------------------------------------- |
-| `OK`              | rates returned and stored                                  |
-| `NO_AVAILABILITY` | status 204 — genuinely sold out for those dates            |
-| `ERROR`           | status 500 after retries — the API refuses this hotel/date |
-| `EMPTY`           | status 200 Success, zero rooms                             |
+| Outcome           | Meaning                                                                                                                                  |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `OK`              | at least one rate survived ingest — the stay is tracked                                                                                  |
+| `NO_AVAILABILITY` | status 204 — genuinely sold out for those dates                                                                                          |
+| `ERROR`           | status 500 after retries — the API refuses this hotel/date                                                                               |
+| `EMPTY`           | status 200 Success, zero rooms                                                                                                           |
+| `REJECTED`        | rates returned but every one was rejected at ingest (e.g. offer-prose room names) — the stay backs off like any other yield-nothing stay |
+
+`REJECTED` earned its place the expensive way: success used to be recorded at
+fetch time, so a hotel whose every rate carries an unusable room name (3561 —
+all of them named "perks"-style offer prose) fetched "successfully" four times
+a day forever, never produced an observation, and was never backed off.
 
 `EMPTY` is worth understanding before assuming a parser bug. The payload's
 `result` object distinguishes the two cases: `{"count": 0, "filtered": 65}` means

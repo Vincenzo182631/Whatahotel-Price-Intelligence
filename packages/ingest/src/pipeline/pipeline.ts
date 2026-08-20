@@ -80,6 +80,27 @@ export interface IngestResult {
   readonly rejectReasons: Record<string, number>;
   /** Room types created by discovery in this batch. Non-zero only on cold start. */
   readonly discoveredRoomTypes: number;
+  /**
+   * Stays (`ingestStayKey` format) where at least one record was inserted or
+   * was a duplicate of an existing observation — i.e. the stay is genuinely
+   * tracked after this batch. A stay present in the input but absent here had
+   * EVERY record rejected: it produced nothing the grid can see, and the
+   * collector must treat it as a failure or it will be re-fetched daily
+   * forever. Hotel 3561 proved this live — every rate it returns carries an
+   * offer-prose room name, so it fetched "successfully" four times a day
+   * while never yielding an observation.
+   */
+  readonly trackedStays: ReadonlySet<string>;
+}
+
+/** The stay identity used by `IngestResult.trackedStays`. */
+export function ingestStayKey(r: {
+  readonly wahHotelId: string;
+  readonly checkIn: string;
+  readonly nights: number;
+  readonly adults: number;
+}): string {
+  return `${r.wahHotelId}|${r.checkIn}|${r.nights}|${r.adults}`;
 }
 
 export type RejectReason =
@@ -334,6 +355,7 @@ export async function ingestRecords(
   const contexts = new Map<number, HotelContext>();
   const ratePlanCache: RatePlanCache = new Map();
   const rejectReasons: Record<string, number> = {};
+  const trackedStays = new Set<string>();
   let inserted = 0;
   let duplicate = 0;
   let rejected = 0;
@@ -488,6 +510,7 @@ export async function ingestRecords(
 
     if ((rowCount ?? 0) > 0) inserted += 1;
     else duplicate += 1;
+    trackedStays.add(ingestStayKey(record));
   }
 
   await client.query(
@@ -506,5 +529,6 @@ export async function ingestRecords(
     rejected,
     rejectReasons,
     discoveredRoomTypes,
+    trackedStays,
   };
 }
