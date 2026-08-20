@@ -8,7 +8,13 @@ holds the on-demand rate path we were treating as unbuilt work.
 **Everything below was read from the deployed client bundle on 2026-08-18.**
 Client bundles show the request shape and the rendering, not the server. Where
 this document states something about server behaviour it says so and marks it
-as unconfirmed. Confirm against the app's repository before building on it.
+as unconfirmed.
+
+> **The repository has since been read** (2026-08-20). All three open questions
+> at the foot of this document are answered, and the endpoint inventory —
+> including two things the bundle could not show, the `cityrates` ranking and
+> the `info` method — is in
+> [`source-api-inventory.md`](./source-api-inventory.md). Read that first.
 
 ---
 
@@ -172,11 +178,19 @@ Read out of the comparison app and worth holding to across both codebases:
 
 ## What is still needed from the app's side
 
-1. The server-side shape of `/api/rates` — specifically whether the full rate
-   list is available, with meal plan, refundability and room descriptor.
-2. Confirmation that `sourceHotelId` is always the `whatahotel.com` hotel ID,
-   including for any property added through a different path.
-3. Repository access, to add the scoring call inside the route handler.
+All three questions below were **answered on 2026-08-20** by reading the
+repository. Kept for the record; the answers are in
+[`source-api-inventory.md`](./source-api-inventory.md).
 
-Until (1) is answered, treat any assessment rendered against `entryNightly` as
-unsound and do not ship it.
+1. ~~The server-side shape of `/api/rates`~~ — it holds the **full** room list
+   (`LiveRates.rooms`), and `entryNightly` is merely `rooms[0].nightly`. The
+   parse does **not** carry meal plan or refundability, so scoring that typed
+   list would still breach rule 5; the raw `method=rates` payload does carry
+   them, and that is what this project already fetches for itself.
+2. ~~Confirmation that `sourceHotelId` is the whatahotel.com hotel ID~~ — yes,
+   mapped straight from `hotelID` with no translation layer anywhere.
+3. ~~Repository access~~ — granted.
+
+The warning stands with a narrower scope: an assessment rendered against
+`entryNightly` **alone** is unsound, because a hotel's cheapest offer is not
+comparable to another hotel's cheapest offer unless the terms match.
