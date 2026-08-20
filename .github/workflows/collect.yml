@@ -50,7 +50,7 @@ on:
       limit:
         description: 'Max stays to collect in this run'
         required: false
-        default: '800'
+        default: '1200'
       dry_run:
         description: 'Plan only — make no API calls and write nothing'
         type: boolean
@@ -130,16 +130,20 @@ jobs:
           fi
           npm run collect -- --catalog "${{ inputs.catalog }}" --concurrency 6 2>&1 | tee collect.log
 
-      # The limit was 500 until 2026-08-20. Measured steady-state demand is
-      # ~680 stays per run (~500 due + ~180 re-proposals of stays that yield
-      # nothing), so 500 truncated ~180 stays EVERY run — and truncated stays
-      # are permanently lost data (U3). 800 covers the measured demand with
-      # headroom; it is a cap, not a target, so runs with less due stay cheap.
+      # The limit was 500 until 2026-08-20, then 800 briefly the same day.
+      # A dry-run at 800 still truncated 135: the pre-fix rollover storms
+      # (see the ±1 day tolerance change) left the tracked set carrying near-
+      # duplicate parallel grids, and `planCollection` clamps its due list at
+      # the limit, so "800 due" meant "at least 800". 1200 clears the whole
+      # measured demand; it is a cap, not a target — runs with less due plan
+      # less — and the legacy demand decays as the duplicated check-in dates
+      # pass. Re-measure once truncation has been absent for a week; the
+      # steady-state figure was ~680/run before the storms.
       - name: Collect
         if: inputs.catalog == ''
         run: |
           npm run collect -- \
-            --limit "${{ inputs.limit || 800 }}" \
+            --limit "${{ inputs.limit || 1200 }}" \
             --concurrency 6 \
             ${{ inputs.dry_run && '--dry-run' || '' }} \
             2>&1 | tee collect.log
