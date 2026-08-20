@@ -85,6 +85,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   const request = { wahHotelId, checkIn, nights, adults, children, currency, roomTypeId, now };
   let loaded = await loadLiveIntelligence(request, config);
   let onDemand: OnDemandResult | null = null;
+  let onDemandError: string | null = null;
 
   // On-demand collection: a stay nothing has collected is fetched live, right
   // now, and scored from what comes back — the same pipeline, validation and
@@ -104,9 +105,14 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
           children,
         });
       } catch (err) {
-        // Never let a collection fault break the read path. err.message only:
-        // driver errors can carry connection strings.
-        console.error('on-demand collection error:', (err as Error).message);
+        // Never let a collection fault break the read path. err.message only,
+        // sanitized: driver errors can carry connection strings, and anything
+        // resembling a URL or credential is stripped before it can leave the
+        // process in a response or a log line.
+        onDemandError = String((err as Error).message ?? err)
+          .replace(/[a-z]+:\/\/\S+/gi, '<url>')
+          .slice(0, 200);
+        console.error('on-demand collection error:', onDemandError);
       }
       if (onDemand?.subjectTracked) {
         loaded = await loadLiveIntelligence(request, config);
@@ -134,7 +140,9 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
                 skipped: onDemand.skipped ?? null,
                 rates_fetched: onDemand.ratesFetched,
               }
-            : null,
+            : onDemandError
+              ? { performed: false, error: onDemandError }
+              : null,
         });
     }
   }
