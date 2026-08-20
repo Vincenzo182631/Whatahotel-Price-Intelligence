@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_GRID_SPEC,
   backoffHours,
+  gridLeadDays,
+  planGridTopUp,
+  type GridSpec,
 } from '../../packages/data/src/repositories/collection.js';
 
 import {
@@ -207,5 +210,84 @@ describe('collection backoff', () => {
       expect(hours).toBeGreaterThanOrEqual(previous);
       previous = hours;
     }
+  });
+});
+
+/**
+ * Grid coverage must tolerate ±1 day. The grid's lead times are relative to
+ * today and no two of them differ by one day, so under an exact-date match
+ * every UTC-day rollover makes the ENTIRE grid look untracked. Measured on
+ * 2026-08-19, the first rollover after go-live: "690 new, 231 due", truncated
+ * 421 stays at the run limit, starving the HOT-tier refreshes.
+ */
+describe('grid coverage tolerance', () => {
+  const DAY = 86_400_000;
+  const now = new Date('2026-08-19T06:00:00Z');
+  const hotels = [{ id: 1, wahHotelId: '1198' }];
+  const dateAt = (base: Date, days: number) =>
+    new Date(base.getTime() + days * DAY).toISOString().slice(0, 10);
+
+  /** One lead, one stay length — isolates the coverage rule itself. */
+  const oneLead: GridSpec = {
+    ...DEFAULT_GRID_SPEC,
+    anchorLeadDays: [10],
+    satelliteOffsetDays: [0],
+    nights: [1],
+  };
+  const key = (days: number) => `1|${dateAt(now, days)}|1|2`;
+
+  it('proposes the full grid on a cold start', () => {
+    const out = planGridTopUp(hotels, new Set(), new Set(), DEFAULT_GRID_SPEC, now);
+    expect(out.length).toBe(
+      gridLeadDays(DEFAULT_GRID_SPEC).length * DEFAULT_GRID_SPEC.nights.length,
+    );
+  });
+
+  it('treats a stay tracked one day either side as covering the wanted date', () => {
+    for (const offset of [-1, 0, 1]) {
+      const out = planGridTopUp(hotels, new Set([key(10 + offset)]), new Set(), oneLead, now);
+      expect(out).toEqual([]);
+    }
+  });
+
+  it('does not stretch coverage past one day', () => {
+    for (const offset of [-2, 2]) {
+      const out = planGridTopUp(hotels, new Set([key(10 + offset)]), new Set(), oneLead, now);
+      expect(out.map((s) => s.checkIn)).toEqual([dateAt(now, 10)]);
+    }
+  });
+
+  it("covers today's whole grid with yesterday's — the rollover regression", () => {
+    // Yesterday's collection, transplanted forward one day: exactly what the
+    // tracked set looks like at the first run after a UTC-day rollover.
+    const yesterday = new Date(now.getTime() - DAY);
+    const seen = new Set<string>();
+    for (const lead of gridLeadDays(DEFAULT_GRID_SPEC)) {
+      for (const nights of DEFAULT_GRID_SPEC.nights) {
+        seen.add(`1|${dateAt(yesterday, lead)}|${nights}|${DEFAULT_GRID_SPEC.adults}`);
+      }
+    }
+    expect(planGridTopUp(hotels, seen, new Set(), DEFAULT_GRID_SPEC, now)).toEqual([]);
+  });
+
+  it('never lets one tracked stay satisfy two distinct grid leads', () => {
+    // Adjacent grid leads are ≥3 days apart, so a tracked stay between two
+    // wanted dates can sit within tolerance of at most one of them.
+    const twoLeads: GridSpec = { ...oneLead, anchorLeadDays: [10, 13] };
+    const out = planGridTopUp(hotels, new Set([key(11)]), new Set(), twoLeads, now);
+    expect(out.map((s) => s.checkIn)).toEqual([dateAt(now, 13)]);
+  });
+
+  it('keeps backoff exact-date — a neighbour having failed says nothing about this stay', () => {
+    const skipped = planGridTopUp(hotels, new Set(), new Set([key(10)]), oneLead, now);
+    expect(skipped).toEqual([]);
+    const neighbour = planGridTopUp(hotels, new Set(), new Set([key(9)]), oneLead, now);
+    expect(neighbour.map((s) => s.checkIn)).toEqual([dateAt(now, 10)]);
+  });
+
+  it('matches nights and adults exactly — tolerance is about dates only', () => {
+    const wrongNights = new Set([`1|${dateAt(now, 10)}|3|2`]);
+    const out = planGridTopUp(hotels, wrongNights, new Set(), oneLead, now);
+    expect(out.map((s) => s.checkIn)).toEqual([dateAt(now, 10)]);
   });
 });

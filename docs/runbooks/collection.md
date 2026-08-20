@@ -13,10 +13,22 @@ collection as data loss, not as a retryable job.
 `npm run collect` does three things, in order:
 
 1. **Extends the stay grid.** For every active hotel it ensures a stay exists at
-   each target lead time (7, 14, 21, 30, 45, 60, 90 days) for 1- and 3-night
-   stays. Those offsets are relative to _today_, so the grid rolls forward as
-   time passes. This step is idempotent — after the first run it only adds the
-   dates that have newly come into range.
+   each target lead time (anchor pairs 14/17, 35/38, 63/66 with ±7/±14-day
+   satellites — see `DEFAULT_GRID_SPEC`) for 1- and 3-night stays. Those leads
+   are relative to _today_, so the grid rolls forward as time passes. This step
+   is idempotent — after the first run it only adds the dates that have newly
+   come into range.
+
+   Coverage is **±1 day tolerant** (`GRID_COVERAGE_TOLERANCE_DAYS`): a wanted
+   date counts as tracked if a stay of the same hotel/nights/adults exists
+   within a day of it. Without that tolerance the daily rollover re-proposed
+   the whole grid: no two grid leads differ by one day, so each new UTC day's
+   wanted dates were disjoint from yesterday's, every one of them looked
+   untracked, and the run truncated at `--limit` — measured 2026-08-19 as
+   "690 new, 231 due", with 421 stays cut and HOT-tier refreshes starved.
+   ±1 is safe because adjacent grid leads are at least 3 days apart, so one
+   tracked stay can never satisfy two wanted dates.
+
 2. **Refreshes what is due.** `planCollection()` returns tracked stays whose last
    capture is older than their tier's interval.
 3. **Rolls up.** Baselines at every ladder level, then comp sets.

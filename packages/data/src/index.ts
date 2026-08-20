@@ -28,9 +28,11 @@ export type { BaselineLookup, BaselineUpsert } from './repositories/baselines.js
 
 export {
   DEFAULT_GRID_SPEC,
+  GRID_COVERAGE_TOLERANCE_DAYS,
   backoffHours,
   findMissingGridStays,
   gridLeadDays,
+  planGridTopUp,
   recordCollectionAttempts,
 } from './repositories/collection.js';
 export type { AttemptOutcome, GridSpec, GridStay } from './repositories/collection.js';
