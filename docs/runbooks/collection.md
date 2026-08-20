@@ -185,7 +185,7 @@ EOF
 ```cron
 # /etc/cron.d/wahpi-collect     (every 6 hours, matching the HOT tier)
 0 */6 * * *  wahpi  set -a; . /etc/wahpi.env; set +a; \
-  cd /srv/wahpi && /usr/bin/npm run collect -- --limit 800 --concurrency 6 \
+  cd /srv/wahpi && /usr/bin/npm run collect -- --limit 1200 --concurrency 6 \
   >> /var/log/wahpi/collect.log 2>&1
 ```
 
@@ -212,7 +212,7 @@ Type=oneshot
 User=wahpi
 WorkingDirectory=/srv/wahpi
 EnvironmentFile=/etc/wahpi.env
-ExecStart=/usr/bin/npm run collect -- --limit 800 --concurrency 6
+ExecStart=/usr/bin/npm run collect -- --limit 1200 --concurrency 6
 ```
 
 ```ini
@@ -355,10 +355,21 @@ raises. Look for `401` in the log.
 
 **`plan truncated`.** More stays were due than `--limit` allowed. Raise the limit
 or shorten the interval. Do not ignore it: with no history in the source, the
-skipped stays are gone. The limit went 500 → 800 on 2026-08-20 after two days
-live measured steady-state demand at ~680 per run (~500 due + ~180 re-proposals
-of stays that yield nothing) — 500 was truncating ~180 stays on every firing,
-and the uncollected dues carried forward as a permanent backlog.
+skipped stays are gone. The limit went 500 → 800 → 1200 on 2026-08-20. Two days
+live had measured steady-state demand at ~680 per run (~500 due + ~180
+re-proposals of stays that yield nothing), so 500 truncated ~180 every firing
+and the uncollected dues carried forward as a standing backlog. 800 then proved
+still short in a dry run: the pre-fix rollover storms had left the tracked set
+carrying near-duplicate parallel grids, and because `planCollection` clamps its
+due list at the limit, "N due" always means "at least N". 1200 absorbed all of
+it. That legacy demand decays as the duplicated check-in dates pass — once
+truncation has been absent for a week, re-measure with a `dry_run: true`
+dispatch before deciding whether to lower the limit again.
+
+One number to know when reading the plan line: `mergeTasks` puts new grid stays
+first and `planCollection` sorts dues HOT-first, so when a plan does truncate,
+what falls off the end is the stalest WARM/COLD dues — never a HOT refresh and
+never a new grid stay.
 
 **Nothing due and no gaps.** Expected if a run happened within the tier
 interval. If it persists for a day, confirm hotels exist and are active:
