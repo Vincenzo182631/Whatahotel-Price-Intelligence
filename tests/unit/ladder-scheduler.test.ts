@@ -278,11 +278,21 @@ describe('grid coverage tolerance', () => {
     expect(out.map((s) => s.checkIn)).toEqual([dateAt(now, 13)]);
   });
 
-  it('keeps backoff exact-date — a neighbour having failed says nothing about this stay', () => {
-    const skipped = planGridTopUp(hotels, new Set(), new Set([key(10)]), oneLead, now);
-    expect(skipped).toEqual([]);
-    const neighbour = planGridTopUp(hotels, new Set(), new Set([key(9)]), oneLead, now);
-    expect(neighbour.map((s) => s.checkIn)).toEqual([dateAt(now, 10)]);
+  it('keys backoff by grid slot, so it holds across the daily date shift', () => {
+    // Slot key is hotel|lead|nights|adults. The same backed-off slot must be
+    // skipped today AND tomorrow, even though the wanted DATE differs — keyed
+    // by date, the skip evaporated at every rollover and the failure counter
+    // could never outlast the 6-hour cron.
+    const slot = new Set(['1|10|1|2']);
+    expect(planGridTopUp(hotels, new Set(), slot, oneLead, now)).toEqual([]);
+    const tomorrow = new Date(now.getTime() + DAY);
+    expect(planGridTopUp(hotels, new Set(), slot, oneLead, tomorrow)).toEqual([]);
+  });
+
+  it('does not let one backed-off slot suppress a different slot', () => {
+    const twoLeads: GridSpec = { ...oneLead, anchorLeadDays: [10, 13] };
+    const out = planGridTopUp(hotels, new Set(), new Set(['1|10|1|2']), twoLeads, now);
+    expect(out.map((s) => s.checkIn)).toEqual([dateAt(now, 13)]);
   });
 
   it('matches nights and adults exactly — tolerance is about dates only', () => {

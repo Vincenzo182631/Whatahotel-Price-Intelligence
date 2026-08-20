@@ -46,11 +46,20 @@ collector can back off: the first three failures are free, then the retry delay
 doubles — 1h, 2h, 4h … capped at one week. **Any success resets the counter to
 zero**, so a stay that starts pricing again is picked straight back up.
 
-The delay is in hours, so it interacts with how often the cron fires: at
-6-hourly, the early doublings are shorter than the gap between runs and so pass
-unnoticed, and a genuinely dead stay takes roughly a dozen attempts over three
-or four days to settle at the weekly cap. That is deliberate — backing off
-faster would risk exiling a stay that is merely mid-outage.
+**Backoff is keyed by grid slot** — `(hotel, lead_days, nights, adults)` — not
+by date (migration 0010). The slot is what gets re-requested daily; the date is
+just the slot's current position. Keyed by date, a never-pricing stay got a
+fresh key every UTC day, its counter restarted at ~4, and the backoff could
+never outlast the 6-hour cron: measured 2026-08-20 as hotel 3561 re-proposing
+its whole 46-stay grid daily plus ~46 of 3554's dates — ~540 wasted calls a
+day, forever. `check_in` on the row means "the date last attempted" and
+advances as the slot rolls.
+
+The curve against the 6-hourly cron: ~4 failures on day one, the delay first
+exceeds the cron on day two, and a genuinely dead slot settles at the weekly
+cap around day ten — roughly fifteen probe calls in total, then one per week.
+That pace is deliberate — backing off faster would risk exiling a stay that is
+merely mid-outage, and the weekly probe is what notices inventory reopening.
 
 `last_outcome` says why a stay yielded nothing:
 

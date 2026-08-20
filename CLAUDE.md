@@ -149,6 +149,9 @@ engine.
     grid sees it as missing and would re-request it every run forever;
     `collection_attempt` exists solely to stop that. It is not a fact table —
     nothing in it reaches a baseline or a score. Any success resets the counter.
+    Backoff keys on the **grid slot** (`hotel|lead|nights|adults`), never the
+    date: wanted dates shift daily, so date keys reset the counter every UTC
+    day and the backoff can never outlast the 6-hour cron (migration 0010).
 
 ## Adding or changing a factor
 
