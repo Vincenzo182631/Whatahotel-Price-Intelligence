@@ -73,6 +73,7 @@ production.
 The zero-JavaScript form — one edit to the hotel-page template:
 
 ```html
+<link rel="stylesheet" href="https://<deployment>/widget.css" />
 <script src="https://<deployment>/widget.js" defer></script>
 <div
   data-wah-pi
@@ -82,6 +83,14 @@ The zero-JavaScript form — one edit to the hotel-page template:
   data-adults="#guests#"
 ></div>
 ```
+
+**Both files are required, and the stylesheet is the one that gets forgotten.**
+The widget does not inject its own CSS, so a page with only `widget.js`
+renders every word correctly and none of the design: no card, no score tiles,
+no verdict box — a column of plain text in the host page's body font, which
+reads as broken rather than as unstyled. Verified by omitting it. If an
+integrator reports "it looks wrong" rather than "nothing happens", check for
+the `<link>` first.
 
 **`data-wah-pi` is a marker attribute, not a value.** The element is found by
 the attribute selector `[data-wah-pi]`, so the host template needs no id and no
