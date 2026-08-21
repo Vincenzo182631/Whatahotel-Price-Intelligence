@@ -37,9 +37,18 @@ const settings = googleSettings();
 if (flag('--dry-run')) {
   const targets = await findResolutionTargets(limit, settings.refreshHours);
   const fresh = targets.filter((t) => !t.placeId).length;
+  // Hotels a real run would skip without calling Google. This is the number
+  // that decides whether the key is worth spending on, so it is on the
+  // headline rather than inferable from the 25 rows printed below.
+  const noGeo = targets.filter((t) => !t.placeId && t.latitude === null).length;
   console.log(
     `${targets.length} hotel(s) queued (limit ${limit}, refresh ${settings.refreshHours}h) — ` +
-      `${fresh} never looked up, ${targets.length - fresh} due a refresh:`,
+      `${fresh} never looked up, ${targets.length - fresh} due a refresh, ` +
+      `${noGeo} unplaceable (skipped, no call made).`,
+  );
+  console.log(
+    `A real run would make about ${fresh - noGeo} search call(s) and ` +
+      `${targets.length - noGeo} details call(s).`,
   );
   for (const t of targets.slice(0, 25)) {
     console.log(
