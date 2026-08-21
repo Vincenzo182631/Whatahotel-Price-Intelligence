@@ -108,6 +108,14 @@ export interface LoadedLiveIntelligence {
   /** The currency everything in this result is denominated in. */
   readonly currency: string;
   readonly compBasis: CompBasis;
+  /**
+   * The source ids of the competitors the comparison actually used.
+   *
+   * Their PRICES are deliberately not returned — another hotel's commercial
+   * data — but their identities are what lets a caller attach context we hold
+   * about them, such as a guest rating.
+   */
+  readonly competitorWahIds: readonly string[];
   readonly compRoomMatch: CompRoomMatch;
   /** Is the price premium supported by what the rate includes? */
   readonly premium: PremiumJustificationResult;
@@ -420,6 +428,7 @@ export async function loadLiveIntelligence(
     currency,
     compBasis,
     compRoomMatch,
+    competitorWahIds: competitors.filter((c) => c.isAvailable).map((c) => c.hotelId),
     premium,
     roomTypeId: chosen.roomTypeId,
     roomName: chosen.canonicalName,

@@ -369,4 +369,49 @@ BEGIN
     RAISE NOTICE 'CHECK 12 ok — ADR excludes taxes and fees ($300/night, not $350)';
 END $$;
 
+-- Check 13 · a guest rating is bounded, or refused --------------------------
+--
+-- The reputation columns (migration 0013) hold a number a customer reads as a
+-- statement about a real property. A 46 stored where 4.6 was meant would
+-- render as a five-star hotel rated 46, and a negative review count would
+-- render as evidence that does not exist. Both are refused at the schema, not
+-- merely filtered in a client — there is more than one writer over time, and
+-- the guarantee has to outlive whichever one forgets.
+DO $$
+DECLARE hid BIGINT;
+BEGIN
+    SELECT id INTO hid FROM hotel WHERE wah_hotel_id = 'CHECK-2962';
+
+    -- 9.9 fits NUMERIC(2,1) and fails the range CHECK; 46 fails the precision
+    -- first. Both are refusals and both matter — a decimal-point slip lands on
+    -- one or the other depending on the digit — so both are asserted, and the
+    -- handler names both codes rather than assuming which fires.
+    BEGIN
+        UPDATE hotel SET google_rating = 9.9 WHERE id = hid;
+        RAISE EXCEPTION 'CHECK 13a FAILED: a rating of 9.9 was accepted';
+    EXCEPTION WHEN check_violation OR numeric_value_out_of_range THEN
+        RAISE NOTICE 'CHECK 13a ok — a rating outside 0-5 is refused';
+    END;
+
+    BEGIN
+        UPDATE hotel SET google_rating = 46 WHERE id = hid;
+        RAISE EXCEPTION 'CHECK 13b FAILED: a rating of 46 was accepted';
+    EXCEPTION WHEN check_violation OR numeric_value_out_of_range THEN
+        RAISE NOTICE 'CHECK 13b ok — a misplaced decimal point is refused';
+    END;
+
+    BEGIN
+        UPDATE hotel SET google_user_rating_count = -1 WHERE id = hid;
+        RAISE EXCEPTION 'CHECK 13c FAILED: a negative review count was accepted';
+    EXCEPTION WHEN check_violation THEN
+        RAISE NOTICE 'CHECK 13c ok — a negative review count is refused';
+    END;
+
+    UPDATE hotel
+       SET google_rating = 4.6, google_user_rating_count = 3241,
+           google_match_status = 'VERIFIED'
+     WHERE id = hid;
+    RAISE NOTICE 'CHECK 13  ok — a real rating stores unchanged';
+END $$;
+
 ROLLBACK;

@@ -72,6 +72,10 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WAH_API_KEY: ${{ secrets.WAH_API_KEY }}
+      # Optional. Absent, the reputation step reports NOT_CONFIGURED and the
+      # run is unaffected — guest ratings are context beside the price, never
+      # a term in any score.
+      GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4
@@ -163,6 +167,24 @@ jobs:
           if [ -n "$repaired" ]; then
             echo "::notice::$repaired malformed response(s) repaired (known API defect)."
           fi
+
+      # Reputation, not rates. Deliberately AFTER collection and deliberately
+      # unable to fail it: a rating is context beside the price, and a Google
+      # outage must never cost us a collection window we cannot backfill (U3).
+      #
+      # Batched at 200 because the sweep both discovers new hotels and
+      # refreshes stale ones, and the queue orders never-looked-at first — so a
+      # bounded batch still converges on a growing catalogue rather than
+      # spending the whole budget re-reading what it already knows.
+      - name: Refresh guest reputation
+        if: inputs.catalog == '' && inputs.dry_run != true
+        continue-on-error: true
+        run: |
+          if [ -z "$GOOGLE_PLACES_API_KEY" ]; then
+            echo "GOOGLE_PLACES_API_KEY is not set — skipping the reputation sweep."
+            exit 0
+          fi
+          npm run places -- --limit 200 2>&1 | tail -40
 
       - name: Summarise the run
         if: always()

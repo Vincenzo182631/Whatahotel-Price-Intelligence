@@ -19,18 +19,28 @@
  * zero — a zero renders to a customer as "terrible deal".
  */
 
-import { liveBandLabel, liveVerdictLabel } from '@wahpi/core';
+import {
+  buildLiveExplanationBundle,
+  liveBandLabel,
+  liveVerdictLabel,
+  type ReputationFact,
+} from '@wahpi/core';
 import {
   findHotelByWahId,
+  findVerifiedReputations,
+  findVerifiedReputationsByWahIds,
   isLiveLoadFailure,
   loadActiveConfig,
   loadLiveIntelligence,
   promoteHotelForCollection,
 } from '@wahpi/data';
 import {
+  OpenAiReasoner,
   collectStayOnDemand,
   enrollHotel,
   ensureDestinationDepth,
+  explainLive,
+  openAiSettings,
   topUpComparablesOnDemand,
   type OnDemandResult,
 } from '@wahpi/ingest';
@@ -66,6 +76,29 @@ const round1 = (value: number | null): number | null =>
 
 const round3 = (value: number | null): number | null =>
   value === null ? null : Math.round(value * 1000) / 1000;
+
+/**
+ * One reasoner for the process, not one per request.
+ *
+ * Its cache is keyed on the bundle's facts, so two guests looking at the same
+ * stay in the same hour share one call. A per-request instance would carry an
+ * empty cache every time and pay for every page view.
+ *
+ * Null when OPENAI_API_KEY is unset, which is a supported configuration: the
+ * deterministic renderer answers, and nothing about the response shape moves.
+ */
+let reasoner: OpenAiReasoner | null | undefined;
+function liveReasoner(): OpenAiReasoner | null {
+  if (reasoner === undefined) {
+    const settings = openAiSettings();
+    reasoner = OpenAiReasoner.fromEnv({
+      model: settings.model,
+      timeoutMs: settings.timeoutMs,
+      cacheMinutes: settings.cacheMinutes,
+    });
+  }
+  return reasoner;
+}
 
 /**
  * Plain language, no jargon, and never a prediction.
@@ -288,6 +321,82 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     return round3(signal?.weightApplied ?? 0) ?? 0;
   };
 
+  /**
+   * Guest reputation — context, never a term in the score.
+   *
+   * Read from what the reputation sweep already resolved (scripts/resolve-places.mjs).
+   * Nothing is fetched from Google on a page view: a rating belongs to the
+   * hotel rather than to the stay, so there is nothing per-request to look up,
+   * and a guest's request should not pay for a discovery that benefits
+   * everyone after them.
+   *
+   * Only VERIFIED matches are returned — the repository enforces that, not the
+   * caller — and an unmatched or doubtfully matched hotel yields null. Never a
+   * zero rating: 0.0 stars is a claim about the property, and one we have no
+   * basis for.
+   */
+  let subjectReputation: ReputationFact | null = null;
+  let comparableRatings: number[] = [];
+  try {
+    const [subject, comps] = await Promise.all([
+      findVerifiedReputations([loaded.hotel.id]),
+      findVerifiedReputationsByWahIds(loaded.competitorWahIds),
+    ]);
+    const mine = subject.get(loaded.hotel.id);
+    if (mine && mine.rating !== null) {
+      subjectReputation = {
+        source: 'GOOGLE',
+        rating: mine.rating,
+        review_count: mine.userRatingCount,
+        display_name: mine.displayName,
+      };
+    }
+    comparableRatings = [...comps.values()]
+      .map((r) => r.rating)
+      .filter((r): r is number => r !== null);
+  } catch (err) {
+    // Context is optional; the price answer is not. A reputation lookup that
+    // fails costs the reader a sentence, not the response.
+    console.error('reputation lookup failed:', (err as Error).message);
+  }
+
+  const bundle = buildLiveExplanationBundle({
+    configVersion: config.version,
+    hotelName: loaded.hotel.name,
+    roomTypeName: loaded.roomName,
+    roomClass:
+      loaded.availableRooms.find((r) => r.roomTypeId === loaded.roomTypeId)?.roomClass ?? null,
+    checkIn,
+    checkOut,
+    nights,
+    adults,
+    children,
+    currency,
+    nightlyMinor: loaded.nightlyMinor,
+    totalMinor: loaded.totalMinor,
+    observedAt: loaded.observedAt,
+    result,
+    compSet,
+    calendar,
+    compression,
+    premium,
+    compBasis: loaded.compBasis,
+    compRoomMatch: loaded.compRoomMatch,
+    reputation: subjectReputation,
+    comparableRatings,
+  });
+
+  /**
+   * The prose a customer reads.
+   *
+   * `explainLive` returns the deterministic sentences when no model is
+   * configured, when the call fails, and when the draft fails validation — so
+   * this never throws and never blocks. `source` is published because a
+   * reader of the API is entitled to know whether a sentence was written by a
+   * template or by a model that was then checked against the facts above.
+   */
+  const explanation = await explainLive(liveReasoner(), bundle);
+
   const body = {
     generated_at: now.toISOString(),
     model: 'LIVE_MARKET',
@@ -384,6 +493,54 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       comparables_with_included_value: premium.compsWithBenefits,
       effective_index: round1(premium.effectiveCsi),
       summary: premiumSummary(premium.level),
+    },
+
+    /**
+     * What other guests say about the property.
+     *
+     * Present ONLY when the hotel was matched to a Google place with enough
+     * confidence to be sure it is the same property, and Google holds a
+     * rating for it. Otherwise the whole block is null — absent, not zero.
+     *
+     * `rating` and `review_count` are published together on purpose: 4.9 from
+     * 32 reviews and 4.7 from 4,500 are not the same claim, and a client
+     * rendering the first without the second would present them as though
+     * they were.
+     *
+     * This does not move `verdict.score`. Nothing in packages/core/src/scoring
+     * reads it. It is evidence for the explanation and a fact for the reader.
+     */
+    reputation: subjectReputation
+      ? {
+          source: 'GOOGLE',
+          rating: subjectReputation.rating,
+          review_count: subjectReputation.review_count,
+          display_name: subjectReputation.display_name,
+          affects_score: false,
+          // How the comparables rate, when enough of them carry a rating —
+          // three, below which an "average" is one hotel wearing a plural.
+          comparable_median_rating: bundle.reputation.comparable_median_rating,
+          comparables_with_rating: bundle.reputation.comparables_with_rating,
+        }
+      : null,
+
+    /**
+     * The customer-facing sentences, and where they came from.
+     *
+     * TEMPLATE  the deterministic renderer wrote them.
+     * MODEL     a language model reworded the facts and the draft passed
+     *           validation — every numeral present in the bundle's allowlist,
+     *           no predictive language.
+     * CACHE     an identical set of facts was reworded recently.
+     *
+     * The model never computes and never sees a rate source; it is handed the
+     * finished facts and asked for readable English. A draft that fails
+     * validation is discarded whole, and TEMPLATE ships instead.
+     */
+    explanation: {
+      text: explanation.text,
+      sentences: explanation.sentences,
+      source: explanation.source,
     },
 
     signals: {

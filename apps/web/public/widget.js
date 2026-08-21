@@ -105,6 +105,20 @@
     return wrap;
   }
 
+  var PREMIUM_LABEL = {
+    HIGH: 'Premium looks justified',
+    MODERATE: 'Premium partly justified',
+    LOW: 'Premium hard to justify',
+    LIMITED_DATA: 'Priced above the comparable set',
+  };
+
+  var PREMIUM_TONE = {
+    HIGH: 'wahpi--good',
+    MODERATE: 'wahpi--neutral',
+    LOW: 'wahpi--bad',
+    LIMITED_DATA: 'wahpi--neutral',
+  };
+
   var SCORE_TONE = {
     EXCELLENT: 'wahpi--good',
     GOOD: 'wahpi--good',
@@ -903,6 +917,74 @@
     return wrap;
   }
 
+  /**
+   * The sentences the API wrote, verbatim.
+   *
+   * The widget does NOT assemble prose from numbers. Every sentence here was
+   * produced server-side from an already-computed fact bundle and, when a
+   * language model wrote it, validated against that bundle's numeric
+   * allowlist before it left the server. Rewriting any of it in the browser
+   * would put unvalidated text on the page.
+   */
+  function renderLiveExplanation(data) {
+    var explanation = data.explanation;
+    if (!explanation || !explanation.text) return null;
+    var wrap = section(null);
+    wrap.appendChild(el('p', 'wahpi__summary', explanation.text));
+    return wrap;
+  }
+
+  /**
+   * Is the extra money buying anything?
+   *
+   * Its own block, next to the score rather than inside it: a hotel can be
+   * expensive and still the right choice, and collapsing those two questions
+   * into one number is how "costs more" becomes "is worse".
+   *
+   * LIMITED_DATA is rendered as limited data, never as a soft yes.
+   */
+  function renderLivePremium(data) {
+    var premium = data.premium_justification;
+    if (!premium || premium.level === 'NOT_PREMIUM') return null;
+
+    var wrap = section(null);
+    var box = el('div', 'wahpi__premium ' + (PREMIUM_TONE[premium.level] || 'wahpi--neutral'));
+    box.appendChild(el('div', 'wahpi__premium-label', PREMIUM_LABEL[premium.level] || 'Premium pricing'));
+    box.appendChild(el('div', 'wahpi__premium-text', premium.summary));
+    wrap.appendChild(box);
+    return wrap;
+  }
+
+  /**
+   * The guest rating, when we hold a verified one.
+   *
+   * Shown with its review count attached — a rating without one invites a
+   * reader to weigh 32 reviews the same as 4,500 — and labelled as not
+   * affecting the score, because it does not. An unmatched hotel renders
+   * nothing at all rather than an empty star row.
+   */
+  function renderLiveReputation(data) {
+    var rep = data.reputation;
+    if (!rep || rep.rating === null || rep.rating === undefined) return null;
+
+    var wrap = section(null);
+    var row = el('div', 'wahpi__reputation');
+    row.appendChild(el('span', 'wahpi__reputation-rating', rep.rating.toFixed(1)));
+    row.appendChild(el('span', 'wahpi__reputation-scale', '/ 5 on Google'));
+    if (rep.review_count !== null && rep.review_count !== undefined) {
+      row.appendChild(
+        el(
+          'span',
+          'wahpi__reputation-count',
+          rep.review_count.toLocaleString() + (rep.review_count === 1 ? ' review' : ' reviews'),
+        ),
+      );
+    }
+    row.appendChild(el('span', 'wahpi__reputation-note', 'Context only — not part of the score.'));
+    wrap.appendChild(row);
+    return wrap;
+  }
+
   /** The measured facts, verbatim from the API. The widget does not compute. */
   function renderLiveReasons(data) {
     var reasons = data.verdict.reasons || [];
@@ -1080,6 +1162,9 @@
     append(root, renderRoomPicker(data, state));
     append(root, renderLivePrice(data));
     append(root, renderLiveVerdict(data));
+    append(root, renderLiveExplanation(data));
+    append(root, renderLivePremium(data));
+    append(root, renderLiveReputation(data));
     append(root, renderLiveReasons(data));
     append(root, renderLiveDetails(data, state));
     append(root, renderLiveProvenance(data));

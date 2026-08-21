@@ -44,6 +44,18 @@ export {
 export type { AttemptOutcome, GridSpec, GridStay } from './repositories/collection.js';
 
 export {
+  findResolutionTargets,
+  findVerifiedReputations,
+  findVerifiedReputationsByWahIds,
+  saveResolution,
+} from './repositories/reputation.js';
+export type {
+  HotelReputation,
+  ResolutionResult,
+  ResolutionTarget,
+} from './repositories/reputation.js';
+
+export {
   findCompetitorRates,
   findMarketCompression,
   findNearbyDateRates,

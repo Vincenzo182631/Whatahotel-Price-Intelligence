@@ -50,6 +50,30 @@ export type {
   OnDemandStay,
 } from './pipeline/onDemand.js';
 
+export { sweepPlaces } from './pipeline/resolvePlaces.js';
+export type { PlaceSweepOptions, PlaceSweepResult } from './pipeline/resolvePlaces.js';
+
+export { PlacesClient } from './adapters/google/places.js';
+export type { PlaceReputation, PlacesClientOptions } from './adapters/google/places.js';
+export { bestMatch, distanceKm, normalizeName, scoreMatch } from './adapters/google/match.js';
+export type { HotelIdentity, MatchScore, PlaceCandidate } from './adapters/google/match.js';
+export { resolveHotel, searchQuery } from './adapters/google/resolve.js';
+export type { Resolution, ResolutionOutcome, ResolvableHotel } from './adapters/google/resolve.js';
+export {
+  googleConfigured,
+  googleSettings,
+  openAiConfigured,
+  openAiSettings,
+} from './adapters/google/settings.js';
+export type { GoogleSettings, OpenAiSettings } from './adapters/google/settings.js';
+
+export { OpenAiReasoner, bundleKey, explainLive } from './adapters/openai/reasoner.js';
+export type {
+  ExplanationSource,
+  LiveExplanation,
+  ReasonerOptions,
+} from './adapters/openai/reasoner.js';
+
 export { ensureRollupFunctions, refreshBaselines } from './rollup/baseline.js';
 export type { RollupOptions, RollupResult } from './rollup/baseline.js';
 
