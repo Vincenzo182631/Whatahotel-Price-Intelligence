@@ -17,7 +17,12 @@
  */
 
 import { findResolutionTargets, closePool } from '../packages/data/dist/index.js';
-import { googleConfigured, googleSettings, sweepPlaces } from '../packages/ingest/dist/index.js';
+import {
+  PlacesClient,
+  googleConfigured,
+  googleSettings,
+  sweepPlaces,
+} from '../packages/ingest/dist/index.js';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -73,9 +78,24 @@ if (!googleConfigured()) {
   process.exit(0);
 }
 
+// Distinct refusal reasons, printed once each. "45 failed" is a shrug;
+// "403 PERMISSION_DENIED: Places API (New) has not been enabled" is a fix.
+const seenErrors = new Set();
+const client = PlacesClient.fromEnv({
+  onRequest: ({ kind, ok, status, detail }) => {
+    if (ok) return;
+    const line = `${kind} ${status ?? 'no-response'}${detail ? `: ${detail}` : ''}`;
+    if (!seenErrors.has(line)) {
+      seenErrors.add(line);
+      console.log(`  google error — ${line}`);
+    }
+  },
+});
+
 const started = Date.now();
 const result = await sweepPlaces({
   limit,
+  client,
   onHotel: ({ hotel, status, confidence, reasons }) => {
     const conf = confidence === null ? '' : ` ${confidence}`;
     console.log(`  ${status.padEnd(10)}${conf.padEnd(6)} ${hotel.name} — ${reasons.join('; ')}`);
