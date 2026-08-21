@@ -71,11 +71,11 @@ production.
 Two secrets are optional and pushed into the function only when the repository
 holds them:
 
-| Secret | Reaches the function? | Without it |
-| --- | --- | --- |
-| `WAH_API_KEY` | yes | on-demand scoring degrades to the honest no-score state |
-| `OPENAI_API_KEY` | yes | the explanation is the deterministic template |
-| `GOOGLE_PLACES_API_KEY` | **no, by design** | no guest rating anywhere |
+| Secret                  | Reaches the function? | Without it                                              |
+| ----------------------- | --------------------- | ------------------------------------------------------- |
+| `WAH_API_KEY`           | yes                   | on-demand scoring degrades to the honest no-score state |
+| `OPENAI_API_KEY`        | yes                   | the explanation is the deterministic template           |
+| `GOOGLE_PLACES_API_KEY` | **no, by design**     | no guest rating anywhere                                |
 
 `GOOGLE_PLACES_API_KEY` is deliberately never pushed to Vercel. The reputation
 sweep runs in Actions and writes to the database; the function only reads what
