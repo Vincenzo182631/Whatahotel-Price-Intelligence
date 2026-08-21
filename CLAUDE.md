@@ -287,7 +287,12 @@ engine.
     Matching is decided by geography, not by name: "Four Seasons Hotel Miami"
     and "Four Seasons Resort Palm Beach" share most of their words, so a hotel
     whose coordinates we do not hold is capped below the threshold and never
-    verified on name alone. See `docs/runbooks/reputation-and-reasoning.md`.
+    verified on name alone. **The refresh interval is the entire ongoing
+    bill**: 3,033 resolvable hotels is ~92,000 billed Places calls a month at
+    24h and ~13,200 at the 168h default, and a rating averaged over thousands
+    of reviews moves by hundredths over months — so a daily refresh buys 7x
+    the cost for precision the signal does not have. See
+    `docs/runbooks/reputation-and-reasoning.md`.
 
 ## Adding or changing a factor
 

@@ -20,7 +20,20 @@ const num = (name: string, fallback: number): number => {
 };
 
 export interface GoogleSettings {
-  /** How stale cached reputation may get before a refresh is due. */
+  /**
+   * How stale cached reputation may get before a refresh is due.
+   *
+   * Weekly, not daily, and the reason is arithmetic. Measured 2026-08-21, the
+   * catalogue holds 3,202 hotels of which 3,033 are resolvable. A 24-hour
+   * refresh is ~92,000 billed Place Details calls a MONTH, every month, and
+   * those calls carry `rating` and `userRatingCount` — Google's dearer
+   * fields. Weekly is ~13,200.
+   *
+   * Nothing is lost for the 7x. A property's guest rating is an average over
+   * thousands of reviews; it moves by hundredths over months, and no guest
+   * decision turns on today's value versus last Tuesday's. Refreshing a slow
+   * signal quickly buys precision the signal does not have.
+   */
   readonly refreshHours: number;
   readonly timeoutMs: number;
   /**
@@ -42,7 +55,7 @@ export interface OpenAiSettings {
 
 export function googleSettings(): GoogleSettings {
   return {
-    refreshHours: num('GOOGLE_PLACES_REFRESH_HOURS', 24),
+    refreshHours: num('GOOGLE_PLACES_REFRESH_HOURS', 168),
     timeoutMs: num('GOOGLE_PLACES_TIMEOUT_MS', 4_000),
     minMatchConfidence: num('GOOGLE_PLACES_MIN_MATCH_CONFIDENCE', 0.7),
   };
