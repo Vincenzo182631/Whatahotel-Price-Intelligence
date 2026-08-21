@@ -60,8 +60,22 @@ export interface PlacesClientOptions {
   readonly timeoutMs?: number;
   readonly baseSearchUrl?: string;
   readonly baseDetailsUrl?: string;
-  /** Called once per request with the outcome. Never receives the key. */
-  readonly onRequest?: (info: { kind: 'search' | 'details'; ms: number; ok: boolean }) => void;
+  /**
+   * Called once per request with the outcome. Never receives the key: the key
+   * travels only in a request header, and `detail` is Google's own
+   * error.status/error.message pair, which describes the refusal ("API key
+   * not valid", "Places API (New) has not been enabled…") and is what turns
+   * "45 failed" into a diagnosis instead of a shrug.
+   */
+  readonly onRequest?: (info: {
+    kind: 'search' | 'details';
+    ms: number;
+    ok: boolean;
+    /** HTTP status, when a response arrived at all. */
+    status?: number;
+    /** Google's error status + message, bounded. Never the key, never the URL. */
+    detail?: string;
+  }) => void;
 }
 
 interface RawPlace {
@@ -153,11 +167,29 @@ export class PlacesClient {
         signal: controller.signal,
       });
       const ok = response.ok;
-      this.onRequest?.({ kind, ms: Date.now() - started, ok });
       // Unlike the WhataHotel API, Google's HTTP status IS the outcome. A 4xx
       // here is a real refusal — bad key, quota, malformed mask — and is not
-      // worth retrying inside a page-view budget.
-      if (!ok) return null;
+      // worth retrying inside a page-view budget. It IS worth naming: the
+      // first live sweep failed all 45 lookups in 5 seconds and the log could
+      // not say why, because this branch discarded the body unread.
+      if (!ok) {
+        let detail: string | undefined;
+        try {
+          const payload = (await response.json()) as {
+            error?: { status?: string; message?: string };
+          };
+          if (payload.error) {
+            detail = `${payload.error.status ?? ''} ${payload.error.message ?? ''}`
+              .trim()
+              .slice(0, 300);
+          }
+        } catch {
+          // Body was not JSON; the status code alone will have to do.
+        }
+        this.onRequest?.({ kind, ms: Date.now() - started, ok, status: response.status, detail });
+        return null;
+      }
+      this.onRequest?.({ kind, ms: Date.now() - started, ok, status: response.status });
       return (await response.json()) as T;
     } catch {
       // Timeout or transport failure. Deliberately swallowed: reputation is
