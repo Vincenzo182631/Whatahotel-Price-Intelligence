@@ -1551,6 +1551,11 @@
     '[data-wah-check-out]',
   ];
   var GUEST_SELECTORS = ['#guests', '[name="guests"]', '[name="adults"]', '#adults'];
+  // Rooms count. Not sent to the API — the rate is per room, so two rooms of
+  // the same category is the same rate twice — but a change to it is a change
+  // to the booking, and the panel should not sit there describing the search
+  // the guest just left behind.
+  var ROOM_COUNT_SELECTORS = ['#rooms', '[name="rooms"]', '#numRooms', '[name="numRooms"]'];
 
   /**
    * Normalise a host page's date to YYYY-MM-DD.
@@ -1678,6 +1683,7 @@
       formValue(CHECK_IN_SELECTORS) || '',
       formValue(CHECK_OUT_SELECTORS) || '',
       formValue(GUEST_SELECTORS) || '',
+      formValue(ROOM_COUNT_SELECTORS) || '',
     ].join('|');
   }
 
@@ -1711,7 +1717,11 @@
         function (e) {
           var t = e && e.target;
           if (!t || !t.matches) return;
-          var watched = CHECK_IN_SELECTORS.concat(CHECK_OUT_SELECTORS, GUEST_SELECTORS).join(',');
+          var watched = CHECK_IN_SELECTORS.concat(
+        CHECK_OUT_SELECTORS,
+        GUEST_SELECTORS,
+        ROOM_COUNT_SELECTORS,
+      ).join(',');
           try {
             if (t.matches(watched)) scheduleRemount();
           } catch (err) {

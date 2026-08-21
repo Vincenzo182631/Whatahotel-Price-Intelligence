@@ -47,6 +47,8 @@ Neither predicts a future price. The widget defaults to the live model because i
 
 `signals.comp_set.topped_up` records whether this request fetched competitor rates live to build the comparison — null when the stored comp set was already sufficient, which is the common case. A stored subject rate does not imply an answerable stay: the index needs `minComps` competitor rates on the subject's terms, and the on-demand path proper fires only when the SUBJECT is missing.
 
+`signals.comp_set.room_match` says how closely the competitors' ROOMS match the one being scored: `CLASS_AND_VIEW` is a genuine like-for-like, `CLASS` drops the view, and `ANY` means no equivalent category is sold in that market and the comparison is against whatever is. `ANY` is a disclosure, never an equivalence claim.
+
 `signals.comp_set.basis` says where the comp set came from. `CURATED` is the ranked peer set built from accrued baselines. `DESTINATION` is the same destination's hotels, taken in the SOURCE's own `cityrates` rank order (its "best hotels in this city" answer, fetched for the guest's exact dates) with distance breaking ties for anything it has not ranked — weaker evidence, published rather than hidden so nothing renders a city-wide comparison as a peer one. It flips to `CURATED` automatically on the first rollup with baselines to rank. The rank orders the comparison and is never scored on: see `docs/runbooks/source-api-inventory.md`.
 
 ---

@@ -46,6 +46,7 @@ suite('integration · universal hotel support', () => {
   let sourceId = 0;
   let entryRoomTypeId = 0;
   let suiteRoomTypeId = 0;
+  const compSuiteRoomTypeIds = new Map<string, number>();
 
   beforeAll(async () => {
     const pool = getPool();
@@ -148,9 +149,23 @@ suite('integration · universal hotel support', () => {
     // Deliberately inserted AFTER, and dearer: the list must come back
     // cheapest-first regardless of insertion order.
     await insert(hotelIds.get(SUBJECT)!, rtSuite[0].id, 2600);
+    // Each neighbour gets a cheap ROOM and a dear SUITE, so the comp set has a
+    // genuine choice between "an equivalent room" and "their cheapest room".
+    for (const code of ['US-NEAR', 'US-MID', 'US-FAR'] as const) {
+      const { rows: nrt } = await pool.query(
+        `INSERT INTO room_type (hotel_id,canonical_name,normalized_name,room_class)
+         VALUES ($1,$2,$3,'SUITE') RETURNING id`,
+        [hotelIds.get(code), `${code} Suite`, `${code.toLowerCase()} suite`],
+      );
+      compSuiteRoomTypeIds.set(code, nrt[0].id);
+    }
     await insert(hotelIds.get('US-NEAR')!, null, 1800);
     await insert(hotelIds.get('US-MID')!, null, 2000);
     await insert(hotelIds.get('US-FAR')!, null, 2200);
+    await insert(hotelIds.get('US-NEAR')!, compSuiteRoomTypeIds.get('US-NEAR')!, 2800);
+    await insert(hotelIds.get('US-MID')!, compSuiteRoomTypeIds.get('US-MID')!, 3000);
+    await insert(hotelIds.get('US-FAR')!, compSuiteRoomTypeIds.get('US-FAR')!, 3200);
+
     // Same price as the nearest neighbour, different destination. If it ever
     // appears in the comp set the destination filter has stopped working.
     await insert(hotelIds.get(OUTSIDER)!, null, 1800);
@@ -371,6 +386,52 @@ suite('integration · universal hotel support', () => {
     // The room list is the same whichever room is selected — it describes the
     // stay, not the selection, so the picker never loses its other options.
     expect(loaded.availableRooms).toHaveLength(2);
+  });
+
+  it("compares a suite against suites, not against everyone else's cheapest room", async () => {
+    const request = {
+      wahHotelId: SUBJECT,
+      checkIn: CHECK_IN,
+      nights: 2,
+      adults: 2,
+      children: 0,
+      currency: null,
+      roomTypeId: suiteRoomTypeId,
+      now: new Date(),
+    };
+    const loaded = await loadLiveIntelligence(request, DEFAULT_CONFIG);
+    if (isLiveLoadFailure(loaded)) throw new Error(`expected a rate, got ${loaded.kind}`);
+
+    // The subject suite is 2,600. The neighbours' SUITES are 2,800-3,200 and
+    // their rooms are 1,800-2,200. Compared against rooms it would look wildly
+    // overpriced; against suites it is the cheapest suite in the market. Which
+    // comparison we make is the difference between a fair verdict and a
+    // penalty for being a suite at all.
+    expect(loaded.compRoomMatch).toBe('CLASS_AND_VIEW');
+    expect(loaded.compSet.medianCompetitorNightlyMinor).toBeGreaterThan(260_000);
+  });
+
+  it('falls back to any room when no equivalent category is sold, and says so', async () => {
+    // The entry ROOM has no view stated and the neighbours' rooms carry no
+    // room type at all, so nothing matches on class — the honest answer is to
+    // compare on what exists and report the weaker rung rather than return
+    // nothing or pretend the rooms are equivalent.
+    const loaded = await loadLiveIntelligence(
+      {
+        wahHotelId: SUBJECT,
+        checkIn: CHECK_IN,
+        nights: 2,
+        adults: 2,
+        children: 0,
+        currency: null,
+        roomTypeId: entryRoomTypeId,
+        now: new Date(),
+      },
+      DEFAULT_CONFIG,
+    );
+    if (isLiveLoadFailure(loaded)) throw new Error(`expected a rate, got ${loaded.kind}`);
+    expect(loaded.compRoomMatch).toBe('ANY');
+    expect(loaded.compSet.compsUsed).toBeGreaterThanOrEqual(3);
   });
 
   it('counts recent attempts per stay, which is what bounds the comp-set top-up', async () => {
