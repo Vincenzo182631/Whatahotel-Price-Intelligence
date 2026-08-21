@@ -29,19 +29,37 @@ const value = (name, fallback) => {
 const limit = Number(value('--limit', '200'));
 const settings = googleSettings();
 
-if (!googleConfigured()) {
-  console.log('GOOGLE_PLACES_API_KEY is not set — nothing to do.');
+// The dry run comes FIRST, deliberately. Listing the queue is a database
+// read — it calls Google for nothing — and "how many hotels are waiting, and
+// which ones" is exactly the question worth answering BEFORE deciding whether
+// to add a paid key. Gating it behind the key made the dry run useless in the
+// one situation it was written for.
+if (flag('--dry-run')) {
+  const targets = await findResolutionTargets(limit, settings.refreshHours);
+  const fresh = targets.filter((t) => !t.placeId).length;
+  console.log(
+    `${targets.length} hotel(s) queued (limit ${limit}, refresh ${settings.refreshHours}h) — ` +
+      `${fresh} never looked up, ${targets.length - fresh} due a refresh:`,
+  );
+  for (const t of targets.slice(0, 25)) {
+    console.log(
+      `  ${t.hotelId}  ${t.name}${t.city ? ` — ${t.city}` : ''}${t.placeId ? '  [refresh]' : ''}` +
+        `${t.latitude === null ? '  (no coordinates — cannot be verified)' : ''}`,
+    );
+  }
+  if (targets.length > 25) console.log(`  … and ${targets.length - 25} more`);
+
+  // Said last so it is the line a reader ends on, and said as a fact about
+  // this run rather than as an error: an absent key is a supported state.
+  if (!googleConfigured()) {
+    console.log('\nGOOGLE_PLACES_API_KEY is not set — a real run would resolve none of these.');
+  }
   await closePool();
   process.exit(0);
 }
 
-if (flag('--dry-run')) {
-  const targets = await findResolutionTargets(limit, settings.refreshHours);
-  console.log(`${targets.length} hotel(s) queued (limit ${limit}, refresh ${settings.refreshHours}h):`);
-  for (const t of targets.slice(0, 25)) {
-    console.log(`  ${t.hotelId}  ${t.name}${t.city ? ` — ${t.city}` : ''}${t.placeId ? '  [refresh]' : ''}`);
-  }
-  if (targets.length > 25) console.log(`  … and ${targets.length - 25} more`);
+if (!googleConfigured()) {
+  console.log('GOOGLE_PLACES_API_KEY is not set — nothing to do.');
   await closePool();
   process.exit(0);
 }
@@ -58,11 +76,21 @@ const result = await sweepPlaces({
 console.log(
   `\n${result.considered} considered in ${Math.round((Date.now() - started) / 1000)}s: ` +
     `${result.verified} verified, ${result.unverified} unverified, ` +
-    `${result.noMatch} no match, ${result.failed} failed.`,
+    `${result.noMatch} no match, ${result.failed} failed, ` +
+    `${result.skippedNoGeo} skipped for want of coordinates.`,
 );
 if (result.failed > 0) {
   // Not an error exit: failures write nothing and are retried next sweep.
   console.log('Failed lookups were not recorded and stay in the queue.');
+}
+if (result.skippedNoGeo > 0) {
+  // Named as a catalogue problem, because that is what it is. Nothing about
+  // reputation can be fixed by trying harder here.
+  console.log(
+    `${result.skippedNoGeo} hotel(s) have no coordinates, so no Google result could clear ` +
+      'the match threshold. They were not asked about and not recorded, and they resolve ' +
+      'on their own once the catalogue carries their location.',
+  );
 }
 
 await closePool();

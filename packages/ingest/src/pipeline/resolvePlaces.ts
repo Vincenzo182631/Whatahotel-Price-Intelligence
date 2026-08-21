@@ -43,11 +43,26 @@ export interface PlaceSweepResult {
   readonly noMatch: number;
   /** Calls that failed. Deliberately NOT written to the database. */
   readonly failed: number;
+  /**
+   * Hotels we hold no coordinates for. Never asked about, never written.
+   *
+   * Counted separately and loudly: a sweep that is mostly this number is not
+   * a reputation problem, it is a catalogue one, and the two want different
+   * fixes.
+   */
+  readonly skippedNoGeo: number;
   readonly skipped: 'NOT_CONFIGURED' | null;
 }
 
 export async function sweepPlaces(options: PlaceSweepOptions = {}): Promise<PlaceSweepResult> {
-  const empty = { considered: 0, verified: 0, unverified: 0, noMatch: 0, failed: 0 };
+  const empty = {
+    considered: 0,
+    verified: 0,
+    unverified: 0,
+    noMatch: 0,
+    failed: 0,
+    skippedNoGeo: 0,
+  };
   const client = options.client === undefined ? PlacesClient.fromEnv() : options.client;
   if (!client) return { ...empty, skipped: 'NOT_CONFIGURED' };
 
@@ -62,9 +77,21 @@ export async function sweepPlaces(options: PlaceSweepOptions = {}): Promise<Plac
   let unverified = 0;
   let noMatch = 0;
   let failed = 0;
+  let skippedNoGeo = 0;
 
   for (const hotel of targets) {
     const outcome = await resolveHotel(client, hotel, settings.minMatchConfidence);
+    if (outcome.status === 'SKIPPED_NO_GEO') {
+      skippedNoGeo += 1;
+      options.onHotel?.({
+        hotel,
+        status: 'SKIPPED_NO_GEO',
+        confidence: null,
+        reasons: ['no coordinates on our side — nothing Google returned could clear the bar'],
+      });
+      continue;
+    }
+
     if (outcome.status === 'FAILED') {
       // Nothing written: the hotel stays in the queue and is retried next
       // sweep. See resolve.ts — recording NO_MATCH here would retire it
@@ -103,5 +130,13 @@ export async function sweepPlaces(options: PlaceSweepOptions = {}): Promise<Plac
     });
   }
 
-  return { considered: targets.length, verified, unverified, noMatch, failed, skipped: null };
+  return {
+    considered: targets.length,
+    verified,
+    unverified,
+    noMatch,
+    failed,
+    skippedNoGeo,
+    skipped: null,
+  };
 }
