@@ -84,6 +84,24 @@ export interface ScoringConfig {
     };
 
     /**
+     * Premium Justification — is a hotel dearer than its comp set because it
+     * gives more for the money? Measured in money against money: the value a
+     * rate INCLUDES versus the value the comparables include. See
+     * computePremiumJustification for why that is the only honest measure
+     * available today.
+     */
+    readonly premium: {
+      /** Below this premium there is nothing to justify. */
+      readonly premiumThresholdPct: number;
+      /** Share of the premium covered by included value to call it HIGH. */
+      readonly highCoverShare: number;
+      readonly moderateCoverShare: number;
+      /** Comparables stating their inclusions before the verdict is confident. */
+      readonly confidentCompsWithBenefits: number;
+      readonly confidentComps: number;
+    };
+
+    /**
      * Calendar Delta = (subject ADR − nearby ADR) ÷ nearby ADR × 100.
      *
      * Compares the chosen dates against other bookable dates for the SAME
@@ -261,7 +279,7 @@ export const DEFAULT_CONFIG: ScoringConfig = {
   //
   // The v2 factor weights are retained unchanged, and every analysis records the
   // version that produced it, so older scores stay reproducible.
-  version: 4,
+  version: 5,
 
   score: {
     weight: {
@@ -292,6 +310,22 @@ export const DEFAULT_CONFIG: ScoringConfig = {
       maxCompAgeHours: 24,
       // CSI 130 → 0, CSI 70 → 100. Centred so parity (100) lands mid-scale.
       scoreAtCsi: { zero: 130, full: 70 },
+    },
+
+    premium: {
+      // 5% is inside the noise of which room the comp set happened to match;
+      // calling that a "premium" would invite a verdict about nothing.
+      premiumThresholdPct: 5,
+      // Included value covering 70% of the premium is a hotel that is barely
+      // dearer once you count what you get. Half is a real but partial
+      // offset. Below that the premium is mostly unexplained by the evidence
+      // we hold — which is a statement about our evidence, not a claim that
+      // the hotel is not worth it.
+      highCoverShare: 0.7,
+      moderateCoverShare: 0.35,
+      // One comparable stating its inclusions is an anecdote about a market.
+      confidentCompsWithBenefits: 3,
+      confidentComps: 5,
     },
     calendar: {
       dipMax: -15,

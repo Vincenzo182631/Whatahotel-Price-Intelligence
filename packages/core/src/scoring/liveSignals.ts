@@ -78,6 +78,14 @@ export interface CompetitorRate {
   readonly observedAt: string;
   /** False when the hotel was checked and had no inventory. */
   readonly isAvailable: boolean;
+  /**
+   * The per-night cash value of what this rate INCLUDES — breakfast, a
+   * property credit, an upgrade, late checkout — already discounted by each
+   * benefit's realization factor. Undefined means "we do not know what this
+   * hotel includes", which is NOT the same as "it includes nothing" and must
+   * never be scored as zero. See computePremiumJustification.
+   */
+  readonly benefitValuePerNightMinor?: Minor;
 }
 
 export interface CompSetResult {
@@ -124,6 +132,20 @@ export function computeCompSetIndex(
     strength: 'RESOLVED',
     unknown: [],
   },
+  /**
+   * When supplied, the sub-score is computed on the EFFECTIVE ratio — both
+   * sides net of what their rates include — instead of the raw price ratio.
+   *
+   * This is the contextual price penalty. A hotel 30% dearer that includes
+   * enough to cover most of the gap is not 30% dearer to the guest, and the
+   * raw ratio says it is. Only supplied when both sides' inclusions are
+   * actually known; otherwise the penalty is exactly what it always was.
+   *
+   * The BANDS stay on the raw CSI on purpose: "priced above comparable
+   * hotels" is a fact about the price, and a guest comparing our label to the
+   * two numbers on screen must not find it arguing with them.
+   */
+  effectiveCsi: number | null = null,
 ): CompSetResult {
   const cfg = config.live.csi;
   const weight = config.live.weight.compSet;
@@ -176,7 +198,7 @@ export function computeCompSetIndex(
       code: 'S1_COMP_SET',
       name,
       available: true,
-      subScore: scale(csi, cfg.scoreAtCsi.zero, cfg.scoreAtCsi.full),
+      subScore: scale(effectiveCsi ?? csi, cfg.scoreAtCsi.zero, cfg.scoreAtCsi.full),
       weight,
       weightApplied: 0,
       unavailableReason: null,
@@ -357,5 +379,166 @@ export function computeCompression(
     band,
     checked: input.checked,
     soldOut: input.soldOut,
+  };
+}
+
+// ── Premium Justification ──────────────────────────────────────────────────
+//
+// "This hotel is expensive, therefore it is bad" is the failure mode this
+// exists to remove. The Comp-Set Index is a PRICE ratio: a hotel 30% above its
+// comp set scores zero on the largest component of the live score, whatever it
+// offers for the money. That is right for a value question and wrong for the
+// question a guest actually asks about a premium property.
+//
+// ── What we can honestly measure, and what we cannot ──────────────────────
+//
+// The brief lists ratings, service, spa, dining and amenities. Measured
+// 2026-08-21, NONE of them are available to us:
+//
+//   - `hotel.star_rating` and `hotel.luxury_tier` are never written by any
+//     catalogue sync, because no endpoint returns them.
+//   - Guest ratings appear in no endpoint at all.
+//   - Amenities, dining and policies exist only behind `method=info`, which
+//     answers 500 for our API key on every hotel tried (7/7).
+//
+// What IS real, validated and substantial is what each rate INCLUDES: the
+// preferred-partner benefits — breakfast for two, a property credit, an
+// upgrade, late checkout — parsed from the source's own `perks` array, valued
+// with realization factors, and already the basis of factor F6. The catalogue
+// sweep wrote 9,259 of them.
+//
+// So justification is measured in MONEY, against money. A hotel charging $100
+// more per night while including $150 of value the others do not is not
+// expensive; it is cheaper, and the raw price ratio says the opposite. That is
+// a real quality-and-experience differential, brand-agnostic by construction,
+// and it needs no invented units to compare against a price premium.
+//
+// When neither side's inclusions are known we say LIMITED_DATA and leave the
+// price penalty exactly as it was. Absence of evidence never becomes evidence
+// of a justified premium — that would be flattery, and the guest is the one
+// who pays for it.
+
+export type PremiumLevel = 'HIGH' | 'MODERATE' | 'LOW' | 'NOT_PREMIUM' | 'LIMITED_DATA';
+
+/**
+ * Structurally identical to LiveConfidence in liveScore.ts, declared here
+ * rather than imported: liveScore already imports this module, and the cycle
+ * is not worth one type alias.
+ */
+export type PremiumConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export interface PremiumJustificationResult {
+  /** How much dearer than the comp median, as a percentage. Negative = cheaper. */
+  readonly premiumPct: number | null;
+  /**
+   * The share of that premium covered by value this rate includes and the
+   * comparables do not, as a percentage of the comp median. Null when neither
+   * side's inclusions are known.
+   */
+  readonly coveredPct: number | null;
+  readonly level: PremiumLevel;
+  readonly confidence: PremiumConfidence;
+  /** The comp median once both sides are net of what they include. */
+  readonly effectiveCsi: number | null;
+  readonly subjectBenefitPerNightMinor: Minor | null;
+  readonly medianCompBenefitPerNightMinor: Minor | null;
+  /** How many comparables told us what they include. */
+  readonly compsWithBenefits: number;
+}
+
+/**
+ * Is the premium supported by what the rate includes?
+ *
+ * Deliberately NOT a weighted factor competing for score. It reports a verdict
+ * of its own (§7 — Value and Overall must not collapse into one number) and it
+ * modulates the price penalty through the effective CSI, which is the same
+ * comparison run on the price the guest effectively pays.
+ */
+export function computePremiumJustification(
+  subjectNightlyMinor: Minor,
+  subjectBenefitPerNightMinor: Minor | null,
+  competitors: readonly CompetitorRate[],
+  config: ScoringConfig,
+): PremiumJustificationResult {
+  const cfg = config.live.premium;
+  const usable = competitors.filter(
+    (c) => c.isAvailable && Number.isFinite(c.nightlyMinor) && c.nightlyMinor > 0,
+  );
+
+  const none: PremiumJustificationResult = {
+    premiumPct: null,
+    coveredPct: null,
+    level: 'LIMITED_DATA',
+    confidence: 'LOW',
+    effectiveCsi: null,
+    subjectBenefitPerNightMinor: subjectBenefitPerNightMinor,
+    medianCompBenefitPerNightMinor: null,
+    compsWithBenefits: 0,
+  };
+
+  if (usable.length < config.live.csi.minComps || subjectNightlyMinor <= 0) return none;
+
+  const compMedian = median(usable.map((c) => c.nightlyMinor));
+  if (compMedian <= 0) return none;
+  const premiumPct = ((subjectNightlyMinor - compMedian) / compMedian) * 100;
+
+  // Cheaper than the comp set: there is no premium to justify. Say so plainly
+  // rather than inventing a verdict about a question nobody asked.
+  if (premiumPct <= cfg.premiumThresholdPct) {
+    return {
+      ...none,
+      premiumPct,
+      level: 'NOT_PREMIUM',
+      confidence: 'HIGH',
+      effectiveCsi: (subjectNightlyMinor / compMedian) * 100,
+    };
+  }
+
+  // Only comparables that actually told us what they include may speak to what
+  // the market includes. A comp with no benefit data is silent, not zero.
+  const known = usable.filter((c) => typeof c.benefitValuePerNightMinor === 'number');
+  const compsWithBenefits = known.length;
+  const haveEvidence = subjectBenefitPerNightMinor !== null && compsWithBenefits > 0;
+
+  if (!haveEvidence) {
+    // The common case today, and the honest one: we can see the price gap and
+    // nothing about what either side gives for it. The penalty stands.
+    return { ...none, premiumPct, level: 'LIMITED_DATA', confidence: 'LOW' };
+  }
+
+  const medianCompBenefit = median(known.map((c) => c.benefitValuePerNightMinor as number));
+  const subjectBenefit = subjectBenefitPerNightMinor as number;
+
+  // Net of what each side includes. Both sides adjusted, or it is not a
+  // comparison — discounting only the subject would be exactly the brand
+  // favouritism this must not do.
+  const effectiveSubject = Math.max(0, subjectNightlyMinor - subjectBenefit);
+  const effectiveComp = Math.max(1, compMedian - medianCompBenefit);
+  const effectiveCsi = (effectiveSubject / effectiveComp) * 100;
+
+  const coveredPct = ((subjectBenefit - medianCompBenefit) / compMedian) * 100;
+  const share = coveredPct / premiumPct;
+
+  const level: PremiumLevel =
+    share >= cfg.highCoverShare ? 'HIGH' : share >= cfg.moderateCoverShare ? 'MODERATE' : 'LOW';
+
+  // Thin evidence is still evidence, but it is not certainty. One comparable
+  // stating its inclusions cannot carry a confident verdict about a market.
+  const confidence: PremiumConfidence =
+    compsWithBenefits >= cfg.confidentCompsWithBenefits && usable.length >= cfg.confidentComps
+      ? 'HIGH'
+      : compsWithBenefits >= 2
+        ? 'MEDIUM'
+        : 'LOW';
+
+  return {
+    premiumPct,
+    coveredPct,
+    level,
+    confidence,
+    effectiveCsi,
+    subjectBenefitPerNightMinor: subjectBenefit,
+    medianCompBenefitPerNightMinor: medianCompBenefit,
+    compsWithBenefits,
   };
 }

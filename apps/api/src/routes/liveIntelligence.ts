@@ -67,6 +67,28 @@ const round1 = (value: number | null): number | null =>
 const round3 = (value: number | null): number | null =>
   value === null ? null : Math.round(value * 1000) / 1000;
 
+/**
+ * Plain language, no jargon, and never a prediction.
+ *
+ * Each line states what was measured and stops there. "Appears" and "may not"
+ * are load-bearing: this is a judgement from the evidence we hold, not a claim
+ * about what the hotel is worth.
+ */
+function premiumSummary(level: string): string {
+  switch (level) {
+    case 'HIGH':
+      return 'Premium pricing appears justified. This room costs more than comparable hotels, and most of that difference is covered by what the rate includes.';
+    case 'MODERATE':
+      return 'Premium pricing appears partly justified. This room costs more than comparable hotels, and some of that difference is covered by what the rate includes.';
+    case 'LOW':
+      return 'Premium pricing may not be justified. This room costs more than comparable hotels without a matching advantage in what the rate includes.';
+    case 'NOT_PREMIUM':
+      return 'This room is not priced above comparable hotels, so there is no premium to justify.';
+    default:
+      return 'Limited data. This room is priced above the competitive set, but there is not enough comparable information to judge whether the premium is justified.';
+  }
+}
+
 export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   const { url } = ctx;
 
@@ -248,7 +270,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     }
   }
 
-  const { result, compSet, calendar, compression } = loaded;
+  const { result, compSet, calendar, compression, premium } = loaded;
   // Whatever the hotel is actually quoted in, resolved by the loader.
   const currency = loaded.currency;
 
@@ -337,6 +359,31 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       confidence: result.confidence,
       weight_coverage: round3(result.weightCoverage),
       reasons: result.reasons,
+    },
+
+    /**
+     * Is the price premium supported by what the rate includes?
+     *
+     * Deliberately its own block rather than folded into `verdict`: a hotel
+     * can be poor VALUE and still a defensible choice, and collapsing the two
+     * into one number is how "expensive" becomes "bad". `level` answers the
+     * premium question, `verdict.score` answers the value question, and they
+     * are allowed to disagree.
+     *
+     * `LIMITED_DATA` means we can see the price gap and nothing about what
+     * either side gives for it. It is never a soft yes.
+     */
+    premium_justification: {
+      level: premium.level,
+      confidence: premium.confidence,
+      premium_pct: round1(premium.premiumPct),
+      // How much of the premium the extra included value actually covers.
+      covered_pct: round1(premium.coveredPct),
+      included_value_nightly: money(premium.subjectBenefitPerNightMinor, currency),
+      comparable_included_value_nightly: money(premium.medianCompBenefitPerNightMinor, currency),
+      comparables_with_included_value: premium.compsWithBenefits,
+      effective_index: round1(premium.effectiveCsi),
+      summary: premiumSummary(premium.level),
     },
 
     signals: {
