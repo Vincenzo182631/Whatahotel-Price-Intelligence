@@ -68,6 +68,21 @@ it), pushes it and `CORS_ORIGIN` into the project's environment, builds, and
 deploys. Dispatch with `production` unchecked for a preview URL, checked for
 production.
 
+Two secrets are optional and pushed into the function only when the repository
+holds them:
+
+| Secret                  | Reaches the function? | Without it                                              |
+| ----------------------- | --------------------- | ------------------------------------------------------- |
+| `WAH_API_KEY`           | yes                   | on-demand scoring degrades to the honest no-score state |
+| `OPENAI_API_KEY`        | yes                   | the explanation is the deterministic template           |
+| `GOOGLE_PLACES_API_KEY` | **no, by design**     | no guest rating anywhere                                |
+
+`GOOGLE_PLACES_API_KEY` is deliberately never pushed to Vercel. The reputation
+sweep runs in Actions and writes to the database; the function only reads what
+was already stored, so handing it that key would widen the function's blast
+radius for no capability. Set it as a repository secret only — see
+[`reputation-and-reasoning.md`](./reputation-and-reasoning.md).
+
 ## Embedding on whatahotel.com
 
 The zero-JavaScript form — one edit to the hotel-page template:
