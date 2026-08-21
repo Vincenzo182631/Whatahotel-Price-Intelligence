@@ -42,8 +42,14 @@ export interface ResolutionOutcome {
   readonly reasons: readonly string[];
 }
 
-/** Its own type so a caller cannot confuse "no match" with "did not ask". */
-export type Resolution = ResolutionOutcome | { readonly status: 'FAILED' };
+/**
+ * Its own type so a caller cannot confuse "no match" with "did not ask".
+ *
+ * FAILED         we asked and the call broke. Write nothing, retry later.
+ * SKIPPED_NO_GEO we did not ask, because the answer could not have been used.
+ */
+export type Resolution =
+  ResolutionOutcome | { readonly status: 'FAILED' } | { readonly status: 'SKIPPED_NO_GEO' };
 
 export function searchQuery(hotel: ResolvableHotel): string {
   return [hotel.name, hotel.city].filter(Boolean).join(' ');
@@ -87,6 +93,21 @@ export async function resolveHotel(
       mapsUri: place.mapsUri,
       reasons: ['refresh of an existing mapping'],
     };
+  }
+
+  // No coordinates on OUR side, and no existing mapping to refresh.
+  //
+  // scoreMatch caps such a candidate at 0.65 — below the 0.7 threshold — so
+  // there is no candidate Google could return that would clear the bar. Asking
+  // anyway would spend a Text Search call to obtain a foregone UNVERIFIED, and
+  // UNVERIFIED is never retried: one sweep would permanently retire every
+  // hotel whose coordinates we happen not to hold yet.
+  //
+  // That is a gap in our own catalogue, not a fact about the hotel, and it
+  // closes the moment coordinates arrive. So: do not call, do not write, and
+  // let the next sweep find it again. Same reasoning as FAILED.
+  if (hotel.latitude === null || hotel.longitude === null) {
+    return { status: 'SKIPPED_NO_GEO' };
   }
 
   const candidates = await client.searchText(searchQuery(hotel));

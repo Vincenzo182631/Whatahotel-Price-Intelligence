@@ -161,7 +161,7 @@ describe('resolveHotel', () => {
       MIN,
     );
     expect(outcome.status).toBe('UNVERIFIED');
-    if (outcome.status === 'FAILED') return;
+    if (outcome.status !== 'UNVERIFIED') return;
     // A doubtful match's data is never kept — not even provisionally.
     expect(outcome.placeId).toBeNull();
     expect(outcome.rating).toBeNull();
@@ -170,6 +170,39 @@ describe('resolveHotel', () => {
   it('records NO_MATCH when Google answers and knows of nothing', async () => {
     const outcome = await resolveHotel(fakeClient({ search: [] }), MIAMI, MIN);
     expect(outcome.status).toBe('NO_MATCH');
+  });
+
+  it('does not even ask about a hotel we hold no coordinates for', async () => {
+    // scoreMatch caps such a candidate below the threshold, so no answer
+    // Google could give would clear the bar. Asking would spend a Text Search
+    // call on a foregone UNVERIFIED — and UNVERIFIED is never retried, so one
+    // sweep would permanently retire every hotel whose location the catalogue
+    // has not recorded yet. That is a gap in OUR data, not a fact about the
+    // hotel, and it closes on its own.
+    let asked = false;
+    const client = {
+      searchText: async () => {
+        asked = true;
+        return [candidate()];
+      },
+      details: async () => null,
+    } as unknown as PlacesClient;
+
+    const outcome = await resolveHotel(client, { ...MIAMI, latitude: null, longitude: null }, MIN);
+    expect(outcome.status).toBe('SKIPPED_NO_GEO');
+    expect(asked).toBe(false);
+  });
+
+  it('still refreshes a mapped hotel that has no coordinates', async () => {
+    // The skip is about DECIDING a match. A mapping already decided does not
+    // need re-deciding, so a missing coordinate must not stop its rating
+    // staying current.
+    const outcome = await resolveHotel(
+      fakeClient({ details: { ...candidate(), rating: 4.2, userRatingCount: 10, mapsUri: null } }),
+      { ...MIAMI, latitude: null, longitude: null, placeId: 'place-1' },
+      MIN,
+    );
+    expect(outcome.status).toBe('VERIFIED');
   });
 
   it('writes NOTHING when the call itself failed', async () => {
@@ -198,7 +231,7 @@ describe('resolveHotel', () => {
     const outcome = await resolveHotel(client, { ...MIAMI, placeId: 'place-1' }, MIN);
     expect(searched).toBe(false);
     expect(outcome.status).toBe('VERIFIED');
-    if (outcome.status === 'FAILED') return;
+    if (outcome.status !== 'VERIFIED') return;
     // Null confidence: a refresh does not re-earn the original match's score,
     // and the repository leaves the stored value alone when given null.
     expect(outcome.confidence).toBeNull();

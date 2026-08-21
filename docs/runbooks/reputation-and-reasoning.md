@@ -88,6 +88,24 @@ failed call and `[]` for "Google answered and knows of no such place". Recording
 `NO_MATCH` on a timeout would retire a hotel from reputation permanently over a
 four-second blip, because the queue deliberately never revisits a `NO_MATCH`.
 
+### Hotels with no coordinates are skipped, not asked about
+
+A hotel whose location the catalogue does not hold is capped below the match
+threshold, so no answer Google could give would clear the bar. The sweep does
+not call for it at all: asking would spend a Text Search on a foregone
+`UNVERIFIED`, and `UNVERIFIED` is never retried — one sweep would permanently
+retire every such hotel over a gap in **our** data rather than a fact about
+theirs.
+
+Measured on a freshly swept destination, **14 of 15 hotels had no
+coordinates**. If a sweep reports mostly `skipped for want of coordinates`,
+that is a catalogue problem and not a reputation one; nothing about the Google
+integration can fix it, and it resolves on its own as the catalogue records
+locations.
+
+An already-mapped hotel is still refreshed even without coordinates — the skip
+is about _deciding_ a match, and a decided one does not need re-deciding.
+
 To force a retry of an `UNVERIFIED` or `NO_MATCH` hotel — after a rename, or
 after lowering the confidence threshold — clear its status:
 
