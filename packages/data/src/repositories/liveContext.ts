@@ -183,7 +183,20 @@ export async function findCompetitorRates(
         WHERE l.is_available
         ORDER BY l.hotel_id, l.nightly_amount_minor
      )
-     SELECT h.wah_hotel_id, h.name, ch.nightly_amount_minor, ch.observed_at
+     SELECT h.wah_hotel_id, h.name, ch.nightly_amount_minor, ch.observed_at,
+            -- What this hotel's rate INCLUDES, per night, discounted by each
+            -- benefit's realization factor. NULL when we hold no benefit rows
+            -- for the hotel: "we do not know what it includes" is not the same
+            -- as "it includes nothing", and Premium Justification must be able
+            -- to tell those apart.
+            (SELECT sum(
+                      CASE WHEN b.basis = 'PER_NIGHT'
+                           THEN COALESCE(hb.value_minor, b.default_value_minor) * b.realization_factor
+                           ELSE COALESCE(hb.value_minor, b.default_value_minor) * b.realization_factor / $3
+                      END)
+               FROM hotel_benefit hb
+               JOIN benefit b ON b.id = hb.benefit_id
+              WHERE hb.hotel_id = ch.hotel_id) AS benefit_per_night
        FROM cheapest ch
        JOIN hotel h ON h.id = ch.hotel_id
       ORDER BY ch.nightly_amount_minor`,
@@ -211,6 +224,9 @@ export async function findCompetitorRates(
     nightlyMinor: Number(r.nightly_amount_minor),
     observedAt: (r.observed_at as Date).toISOString(),
     isAvailable: true,
+    ...(r.benefit_per_night === null || r.benefit_per_night === undefined
+      ? {}
+      : { benefitValuePerNightMinor: Math.round(Number(r.benefit_per_night)) }),
   }));
 }
 

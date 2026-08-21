@@ -268,3 +268,64 @@ The priors follow a single rule: **weight tracks a factor's reliability and its 
 5. **Score stability** — the same query re-run a day later should not swing more than `STABILITY_MAX_DELTA` (10 points) absent a real price change. Instability signals a starved baseline.
 
 Every one of these is measurable from data the system already persists (doc 05 `analysis` table), which is why the analysis record stores the full factor breakdown and config version.
+
+---
+
+## Premium Justification (config v5, 2026-08-21)
+
+**The failure this removes.** The Comp-Set Index is a price ratio:
+`subject ADR ÷ median comparable ADR × 100`, mapped to a sub-score by
+`scoreAtCsi: { zero: 130, full: 70 }` — CSI 70 scores 100, CSI 130 scores 0,
+clamped, at 45% of the live weight. A hotel 30% above its comp set therefore
+scores **zero** on the largest component of the score, whatever it offers for
+the money. Right for a value question; wrong for the question a guest asks
+about a premium property.
+
+**What we can honestly measure.** The brief asks for hotel quality, guest
+ratings, service, spa, dining and amenities. Measured 2026-08-21, none of them
+are reachable:
+
+| signal                        | status                                                                 |
+| ----------------------------- | ---------------------------------------------------------------------- |
+| `hotel.star_rating`           | never written — no endpoint returns it                                 |
+| `hotel.luxury_tier`           | same; only seeded reference rows carry one                             |
+| guest ratings                 | in no endpoint at all                                                  |
+| amenities, dining, policies   | only via `method=info`, which answers 500 for our API key (7/7 hotels) |
+| **included benefits (perks)** | **real, validated, 9,259 rows written by the catalogue sweep**         |
+
+So justification is measured in **money against money**: the value a rate
+includes — breakfast for two, a property credit, an upgrade, late checkout,
+each discounted by its realization factor — against the value the comparables
+include. A hotel charging $100 more per night while including $150 the others
+do not is not expensive; it is cheaper, and the raw price ratio says the
+opposite. That differential is a genuine experience difference, brand-agnostic
+by construction, and needs no invented units to set against a price premium.
+
+**The contextual penalty.** When both sides' inclusions are known, the comp-set
+sub-score is computed on the _effective_ ratio — each side net of what it
+includes — instead of the raw one. Nothing else changes: the **bands stay on
+the raw CSI**, because "priced above comparable hotels" is a fact about the
+price, and a label arguing with the two numbers on screen would be worse than
+no label.
+
+**When we cannot see.** No benefit data on either side means `LIMITED_DATA`,
+`confidence: LOW`, and the price penalty exactly as it was. Absence of evidence
+never becomes evidence of a justified premium — that is flattery, and the guest
+pays for it. A comparable that told us nothing is _silent_, not zero: counting
+it as zero would manufacture a justified premium out of gaps in our own data.
+
+**Levels.** `coveredPct / premiumPct` — the share of the premium the extra
+included value actually covers — at or above `highCoverShare` (0.70) is `HIGH`,
+above `moderateCoverShare` (0.35) is `MODERATE`, below is `LOW`. A premium at
+or under `premiumThresholdPct` (5%) is `NOT_PREMIUM`: there is nothing to
+justify, and inventing a verdict about it would answer a question nobody asked.
+
+**Not a weighted factor.** It reports separately (`premium_justification` in
+the API) and modulates the existing penalty. Value and Overall must not
+collapse into one number — a hotel can be poor value and still a defensible
+choice, and merging them is precisely how "expensive" becomes "bad".
+
+**Scenario impact:** none. S1–S9 carry no benefit data, so every one of them
+takes the `LIMITED_DATA` path and scores exactly as it did under v4. The change
+is inert until real perk data is present on both sides — which is the correct
+shape for a change that must never flatter a hotel on absent evidence.

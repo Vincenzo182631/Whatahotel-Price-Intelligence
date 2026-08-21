@@ -255,6 +255,22 @@ engine.
     `signals.comp_set.room_match`, and `ANY` must never be presented as
     equivalence: it means nobody else sells that category.
 
+21. **Expensive is not the same as bad.** The Comp-Set Index is a price ratio,
+    and at 45% weight a hotel 30% above its comp set scored zero on the largest
+    component whatever it offered. Config v5 adds **Premium Justification**:
+    the value a rate INCLUDES against the value its comparables include, in
+    money, so it can be set against a price premium without inventing units.
+    Where both sides are known the comp-set sub-score is computed on the
+    EFFECTIVE ratio — each side net of its inclusions — and the bands stay on
+    the raw CSI, because "priced above comparable hotels" is a fact about the
+    price. **The quality signals the brief asks for do not exist in this
+    source**: no endpoint returns a star rating or a guest rating, and
+    amenities live only behind `method=info`, which answers 500 for our key.
+    Included value is the only validated quality evidence we hold, and when
+    neither side's is known the answer is `LIMITED_DATA` with the penalty
+    unchanged. A comparable that told us nothing is silent, not zero — scoring
+    it zero would manufacture a justified premium out of gaps in our own data.
+
 ## Adding or changing a factor
 
 1. Update `docs/mvp/02-deal-score.md` with the rationale first.

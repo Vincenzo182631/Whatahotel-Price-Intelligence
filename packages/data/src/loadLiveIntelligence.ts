@@ -15,11 +15,13 @@ import {
   describeRateTerms,
   computeCalendarDelta,
   computeCompSetIndex,
+  computePremiumJustification,
   computeCompression,
   compMatchStrength,
   unknownDimensions,
   type CalendarResult,
   type CompSetResult,
+  type PremiumJustificationResult,
   type CompressionResult,
   type LiveScoreResult,
   type MealPlan,
@@ -30,6 +32,7 @@ import {
 } from '@wahpi/core';
 
 import type { Queryable } from './client.js';
+import { findBenefits } from './repositories/context.js';
 import { findHotelByWahId, hasCuratedComparables, type HotelRow } from './repositories/hotels.js';
 import {
   findAvailableRoomTypes,
@@ -106,6 +109,8 @@ export interface LoadedLiveIntelligence {
   readonly currency: string;
   readonly compBasis: CompBasis;
   readonly compRoomMatch: CompRoomMatch;
+  /** Is the price premium supported by what the rate includes? */
+  readonly premium: PremiumJustificationResult;
   readonly roomTypeId: number;
   readonly roomName: string;
   readonly roomSelectedBy: 'USER' | 'ENGINE';
@@ -359,10 +364,48 @@ export async function loadLiveIntelligence(
     }
   }
 
-  const compSet = computeCompSetIndex(current.nightlyMinor, competitors, config, now, {
-    strength: compMatchStrength(matchTerms),
-    unknown: unknownDimensions(matchTerms),
-  });
+  /**
+   * What the SUBJECT's rate includes, per night — the same benefit machinery
+   * factor F6 uses, reused rather than reimplemented.
+   *
+   * Null, not zero, when the hotel has no benefit rows: a hotel we hold no
+   * perk data for has not been shown to include nothing, and scoring it as
+   * nothing would penalise a gap in OUR data as though it were a gap in the
+   * hotel's offering.
+   */
+  const subjectBenefits = await findBenefits(hotel.id, null, request.checkIn, q);
+  const subjectBenefitPerNight =
+    subjectBenefits.length === 0
+      ? null
+      : Math.round(
+          subjectBenefits.reduce((total: number, b) => {
+            const realized = b.valueMinor * b.realizationFactor;
+            return total + (b.basis === 'PER_NIGHT' ? realized : realized / request.nights);
+          }, 0),
+        );
+
+  const premium = computePremiumJustification(
+    current.nightlyMinor,
+    subjectBenefitPerNight,
+    competitors,
+    config,
+  );
+
+  const compSet = computeCompSetIndex(
+    current.nightlyMinor,
+    competitors,
+    config,
+    now,
+    {
+      strength: compMatchStrength(matchTerms),
+      unknown: unknownDimensions(matchTerms),
+    },
+    // The contextual penalty. Only when both sides' inclusions are known —
+    // otherwise the price ratio stands exactly as it did.
+    premium.level === 'HIGH' || premium.level === 'MODERATE' || premium.level === 'LOW'
+      ? premium.effectiveCsi
+      : null,
+  );
   const calendar = computeCalendarDelta(current.nightlyMinor, neighbours, config);
   const compression = computeCompression(compressionInput, config);
 
@@ -377,6 +420,7 @@ export async function loadLiveIntelligence(
     currency,
     compBasis,
     compRoomMatch,
+    premium,
     roomTypeId: chosen.roomTypeId,
     roomName: chosen.canonicalName,
     roomSelectedBy: request.roomTypeId != null ? 'USER' : 'ENGINE',

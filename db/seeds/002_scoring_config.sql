@@ -1,4 +1,4 @@
--- Scoring configuration, version 4.
+-- Scoring configuration, version 5.
 --
 -- GENERATED FILE — do not edit by hand.
 -- Source of truth: packages/core/src/config/defaults.ts
@@ -13,14 +13,14 @@
 -- analysis row references the version that produced it, and deleting one would
 -- make those scores irreproducible.
 UPDATE scoring_config SET is_active = false
- WHERE is_active AND version <> 4;
+ WHERE is_active AND version <> 5;
 
 INSERT INTO scoring_config (version, config, is_active, note, created_by)
 VALUES (
-    4,
+    5,
     $config$
 {
-  "version": 4,
+  "version": 5,
   "score": {
     "weight": {
       "f1Historical": 0.33,
@@ -69,6 +69,13 @@ VALUES (
         "zero": 130,
         "full": 70
       }
+    },
+    "premium": {
+      "premiumThresholdPct": 5,
+      "highCoverShare": 0.7,
+      "moderateCoverShare": 0.35,
+      "confidentCompsWithBenefits": 3,
+      "confidentComps": 5
     },
     "calendar": {
       "dipMax": -15,
@@ -186,7 +193,7 @@ VALUES (
 }
 $config$::jsonb,
     true,
-    'Retires WAIT. "It may be worth waiting" is a claim about tomorrow''s price and this system does not forecast. Gate G4, the eight never-WAIT guards and the rec.wait config block are gone, along with the SHORT_LEAD_TIME caveat that argued against waiting. rec.book.urgencyScarcityRooms carries over the one value that did non-predictive work. Uncalibrated.',
+    'Uncalibrated.',
     'mvp-spec'
 )
 ON CONFLICT (version) DO UPDATE
