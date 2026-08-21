@@ -42,7 +42,7 @@ The page talks to our API; only our API talks to Google and OpenAI.
 
 ```bash
 GOOGLE_PLACES_API_KEY=...                 # unset ⇒ no reputation anywhere
-GOOGLE_PLACES_REFRESH_HOURS=24            # how stale a cached rating may get
+GOOGLE_PLACES_REFRESH_HOURS=168           # how stale a cached rating may get
 GOOGLE_PLACES_TIMEOUT_MS=4000
 GOOGLE_PLACES_MIN_MATCH_CONFIDENCE=0.7    # below this, the match is not used
 
@@ -190,7 +190,38 @@ complete list of what we store — widening one changes the bill, so it is a
 deliberate edit and the test asserts the exact mask string.
 
 A hotel costs one Text Search plus one Details call to resolve, then one Details
-call per `GOOGLE_PLACES_REFRESH_HOURS`. Resolution is never done on a page view:
+call per `GOOGLE_PLACES_REFRESH_HOURS`.
+
+### The refresh interval is the whole ongoing bill
+
+Measured against the production catalogue on 2026-08-21:
+
+|                                                      |                        |
+| ---------------------------------------------------- | ---------------------- |
+| Catalogued hotels                                    | 3,202                  |
+| Unplaceable — no coordinates, skipped without a call | 169 (5.3%)             |
+| Resolvable                                           | 3,033                  |
+| First sweep                                          | ~6,066 calls, one time |
+
+After that, the recurring cost is one Details call per resolvable hotel per
+refresh interval, and nothing else:
+
+| `GOOGLE_PLACES_REFRESH_HOURS` | Details calls/month |
+| ----------------------------- | ------------------- |
+| 24                            | ~92,000             |
+| **168 (the default)**         | **~13,200**         |
+| 720                           | ~3,100              |
+
+168 rather than 24 because a property's guest rating is an average over
+thousands of reviews. It moves by hundredths over months, and no guest decision
+turns on today's value against last Tuesday's — so a daily refresh buys 7x the
+bill for precision the signal does not have. Lower it only with a reason that
+survives that arithmetic.
+
+Re-run `npm run places -- --dry-run` to re-measure; it prints the queue size,
+the unplaceable count and the call estimate, and needs no key to do it.
+
+Resolution is never done on a page view:
 a rating belongs to the hotel rather than to the stay, so there is nothing
 per-request to look up, and a guest's request should not pay for a discovery
 that benefits everyone after them.
