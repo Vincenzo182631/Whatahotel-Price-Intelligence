@@ -223,6 +223,7 @@ export async function findAvailableRoomTypes(
     roomTypeId: number;
     canonicalName: string;
     roomClass: string;
+    viewType: string;
     nightlyMinor: number;
     comparabilityClass: string;
     /** Rate terms as ingested — the comp set matches on these, not the class. */
@@ -235,7 +236,7 @@ export async function findAvailableRoomTypes(
 > {
   const { rows } = await db(q).query(
     `SELECT DISTINCT ON (o.room_type_id)
-            o.room_type_id, rt.canonical_name, rt.room_class,
+            o.room_type_id, rt.canonical_name, rt.room_class, rt.view_type,
             o.nightly_amount_minor, o.comparability_class, o.observed_at,
             rp.meal_plan, rp.refund_policy, rp.audience,
             COALESCE((
@@ -272,6 +273,7 @@ export async function findAvailableRoomTypes(
       roomTypeId: row.room_type_id as number,
       canonicalName: row.canonical_name as string,
       roomClass: row.room_class as string,
+      viewType: row.view_type as string,
       nightlyMinor: row.nightly_amount_minor as number,
       comparabilityClass: row.comparability_class as string,
       mealPlan: row.meal_plan as string,

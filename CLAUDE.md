@@ -238,6 +238,23 @@ engine.
     term classification. `cityrates`' own `rateDaily` is unreliable and is
     never used as a price.
 
+20. **Compare a room to an equivalent room, not to the market's cheapest.**
+    The comp set matches on rate TERMS, which answers "is this the same
+    product commercially" and says nothing about whether it is the same kind of
+    room. Without a room filter, a guest asking about an ocean-view suite was
+    measured against whatever each competitor's cheapest terms-matching room
+    happened to be — so a dearer category scored badly by construction rather
+    than by evidence, which is exactly the "do not penalise a room for costing
+    more" failure. `loadLiveIntelligence` walks three rungs, strongest first,
+    stopping at the first that can carry the index: same class AND view, then
+    same class, then any room. Measured on hotel 2008 (Sep 8-11): the $994
+    Garden Suite scores **6.3 MARKET** against other suites, where against
+    entry-level rooms it scored 1.1 PREMIUM — and the $774 Historic Ocean still
+    scores 1.3 PREMIUM against other ocean-view rooms, because there the
+    premium is real. The rung used rides in the response as
+    `signals.comp_set.room_match`, and `ANY` must never be presented as
+    equivalence: it means nobody else sells that category.
+
 ## Adding or changing a factor
 
 1. Update `docs/mvp/02-deal-score.md` with the rationale first.

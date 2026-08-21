@@ -52,9 +52,11 @@ export {
 export { isLiveLoadFailure, loadLiveIntelligence } from './loadLiveIntelligence.js';
 export type {
   CompBasis,
+  CompRoomMatch,
   LiveLoadFailure,
   LiveRequest,
   LoadedLiveIntelligence,
+  RoomOption,
 } from './loadLiveIntelligence.js';
 
 export {

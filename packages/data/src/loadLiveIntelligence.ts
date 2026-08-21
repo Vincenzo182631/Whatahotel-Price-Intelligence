@@ -70,11 +70,42 @@ export type LiveLoadFailure =
  */
 export type CompBasis = 'CURATED' | 'DESTINATION';
 
+/**
+ * How closely the competitors' ROOMS match the one being scored.
+ *
+ * `CLASS_AND_VIEW` is a genuine like-for-like: an ocean-view suite measured
+ * against other ocean-view suites. `CLASS` drops the view. `ANY` is the old
+ * behaviour — whatever room each competitor sells on matching terms, usually
+ * their cheapest — which is the only thing available in a market where nobody
+ * else sells that category, and must be disclosed rather than presented as
+ * equivalence. Never fabricate an equivalent room: report the rung.
+ */
+export type CompRoomMatch = 'CLASS_AND_VIEW' | 'CLASS' | 'ANY';
+
+/** One room a guest could pick for this stay, with what it costs. */
+export interface RoomOption {
+  readonly roomTypeId: number;
+  readonly name: string;
+  readonly roomClass: string;
+  readonly nightlyMinor: number;
+}
+
 export interface LoadedLiveIntelligence {
   readonly hotel: HotelRow;
+  /**
+   * Every room type with a live rate for this exact stay, cheapest first.
+   *
+   * The loader already had to build this list to choose a room; it was thrown
+   * away, so a client could only ever show the engine's pick. Publishing it is
+   * what lets a guest ask about the room they actually want — and the score
+   * that comes back is genuinely recomputed for it, because the comp set, the
+   * nearby-date series and the terms match all key off the chosen room.
+   */
+  readonly availableRooms: readonly RoomOption[];
   /** The currency everything in this result is denominated in. */
   readonly currency: string;
   readonly compBasis: CompBasis;
+  readonly compRoomMatch: CompRoomMatch;
   readonly roomTypeId: number;
   readonly roomName: string;
   readonly roomSelectedBy: 'USER' | 'ENGINE';
@@ -183,7 +214,21 @@ export async function loadLiveIntelligence(
 
   const compLimit = Math.max(live.csi.minComps + 3, 8);
 
-  const [curatedCompetitors, neighbours, curatedCompression] = await Promise.all([
+  /**
+   * Competitors, on the closest equivalent ROOM that actually exists.
+   *
+   * Three rungs, strongest first, stopping at the first that can carry the
+   * index. The point is §5 of the room-category work: a guest asking about an
+   * Ocean View suite should be measured against comparable rooms, not against
+   * each competitor's cheapest entry-level one — otherwise a dearer category
+   * scores badly by construction rather than by evidence.
+   *
+   * The fallback is not a failure, it is the market: in a destination where
+   * nobody else sells that category there IS no equivalent, and the honest
+   * move is to compare on what exists and say so. `compRoomMatch` rides in the
+   * response for exactly that reason.
+   */
+  const competitorsFor = (roomClass: string | null, viewType: string | null) =>
     findCompetitorRates(
       hotel.id,
       request.checkIn,
@@ -191,16 +236,21 @@ export async function loadLiveIntelligence(
       request.adults,
       request.children,
       currency,
-      // Terms, not the class: the class is hotel-specific and can never match
-      // a competitor. See findCompetitorRates and normalize/compMatch.ts.
+      // Terms, not the class: the comparability class is hotel-specific and
+      // can never match a competitor. See normalize/compMatch.ts.
       subjectTerms,
       // One more than needed, so a single stale comp does not drop the set
       // below the minimum.
       compLimit,
       live.csi.maxCompAgeHours,
       false,
+      roomClass,
+      viewType,
       q,
-    ),
+    );
+
+  const [curatedCompetitors, neighbours, curatedCompression] = await Promise.all([
+    competitorsFor(chosen.roomClass, chosen.viewType),
     findNearbyDateRates(
       hotel.id,
       chosen.roomTypeId,
@@ -246,8 +296,26 @@ export async function loadLiveIntelligence(
    * saying CURATED — reporting a fallback that changed nothing would be a
    * false admission of weaker evidence.
    */
+  // Walk down the room-equivalence ladder only as far as necessary.
+  let compRoomMatch: CompRoomMatch = 'CLASS_AND_VIEW';
+  let roomMatched = curatedCompetitors;
+  if (roomMatched.length < live.csi.minComps) {
+    const byClass = await competitorsFor(chosen.roomClass, null);
+    if (byClass.length > roomMatched.length) {
+      roomMatched = byClass;
+      compRoomMatch = 'CLASS';
+    }
+  }
+  if (roomMatched.length < live.csi.minComps) {
+    const anyRoom = await competitorsFor(null, null);
+    if (anyRoom.length > roomMatched.length) {
+      roomMatched = anyRoom;
+      compRoomMatch = 'ANY';
+    }
+  }
+
   const hadCurated = await hasCuratedComparables(hotel.id, q);
-  let competitors = curatedCompetitors;
+  let competitors = roomMatched;
   let compressionInput = curatedCompression;
   let compBasis: CompBasis = hadCurated ? 'CURATED' : 'DESTINATION';
 
@@ -264,6 +332,11 @@ export async function loadLiveIntelligence(
         compLimit,
         live.csi.maxCompAgeHours,
         true,
+        // The widened set drops the room filter too. It exists precisely
+        // because nothing closer was available, so re-imposing equivalence
+        // here would guarantee it finds nothing either.
+        null,
+        null,
         q,
       ),
       findMarketCompression(
@@ -279,6 +352,7 @@ export async function loadLiveIntelligence(
     ]);
     if (widened.length > competitors.length) {
       competitors = widened;
+      compRoomMatch = 'ANY';
       // Compression must describe the same market the comp set does.
       compressionInput = widenedCompression;
       compBasis = 'DESTINATION';
@@ -294,8 +368,15 @@ export async function loadLiveIntelligence(
 
   return {
     hotel,
+    availableRooms: available.map((r) => ({
+      roomTypeId: r.roomTypeId,
+      name: r.canonicalName,
+      roomClass: r.roomClass,
+      nightlyMinor: r.nightlyMinor,
+    })),
     currency,
     compBasis,
+    compRoomMatch,
     roomTypeId: chosen.roomTypeId,
     roomName: chosen.canonicalName,
     roomSelectedBy: request.roomTypeId != null ? 'USER' : 'ENGINE',

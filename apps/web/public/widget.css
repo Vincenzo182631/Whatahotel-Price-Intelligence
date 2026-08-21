@@ -471,3 +471,40 @@
   color: #6b6b6b;
   font-style: italic;
 }
+
+/* ── room-category chooser ──────────────────────────────────────────────
+   Rendered only when the stay has more than one bookable room. It sits above
+   the price because changing it changes the price — and the score with it. */
+
+.wahpi__room-picker {
+  margin: 14px 0 0;
+}
+
+.wahpi__room-label {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--wahpi-muted);
+  margin-bottom: 6px;
+}
+
+.wahpi__room-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border: 1px solid var(--wahpi-line);
+  border-radius: 8px;
+  background: var(--wahpi-bg);
+  color: var(--wahpi-fg);
+  /* inherit, not a stack of our own: the control should read as part of the
+     host page's form furniture rather than as an embedded island. */
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.wahpi__room-select:focus-visible {
+  outline: 2px solid var(--wahpi-accent);
+  outline-offset: 1px;
+}

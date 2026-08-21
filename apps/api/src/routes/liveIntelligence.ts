@@ -287,6 +287,17 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         name: loaded.roomName,
         selected_by: loaded.roomSelectedBy,
       },
+      // Every room bookable for THIS stay, cheapest first, so a client can
+      // offer the choice rather than only ever showing the engine's pick.
+      // Re-request with `room_type_id` to score any of them: the comp set, the
+      // nearby-date series and the terms match are all keyed on the chosen
+      // room, so the answer is recomputed rather than relabelled.
+      room_options: loaded.availableRooms.map((room) => ({
+        room_type_id: String(room.roomTypeId),
+        name: room.name,
+        room_class: room.roomClass,
+        nightly: money(room.nightlyMinor, currency),
+      })),
       rate_plan: {
         summary: loaded.rateTerms,
         comparability_class: loaded.comparabilityClass,
@@ -336,6 +347,12 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         // what a city we have not collected long enough to rank falls back to.
         // Published so nothing renders a city-wide comparison as a peer one.
         basis: loaded.compBasis,
+        // How closely the competitors' ROOMS match the one being scored.
+        // CLASS_AND_VIEW is a genuine like-for-like; ANY means nobody else
+        // sells an equivalent category and the comparison is against whatever
+        // they do sell. Published so a premium room is never made to look
+        // overpriced against entry-level rooms without the reader knowing.
+        room_match: loaded.compRoomMatch,
         unavailable_reason: compSet.signal.unavailableReason,
         sub_score: compSet.signal.subScore,
         weight: compSet.signal.weight,

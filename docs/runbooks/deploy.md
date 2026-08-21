@@ -182,6 +182,15 @@ The programmatic form is unchanged for pages that want control:
 `mount()` defaults to the live-market model. Pass `model: 'history'` for the
 accrued-history analysis once baselines have matured.
 
+**Room categories.** When a stay has more than one bookable room the panel
+shows a "Room category" dropdown, priced, cheapest first. Choosing one
+re-requests with `room_type_id` and re-scores from scratch — the comp set, the
+nearby dates and the terms match all key off the chosen room, so the verdict
+moves with the category rather than the price alone. A single-room stay shows
+no dropdown. A pinned category that stops being bookable (sold out, or the
+guest moved the dates) falls back to the lowest available rate with a console
+note, rather than reporting "not found" for a hotel that still has rates.
+
 **On-demand scoring.** A stay nothing has collected triggers a live fetch
 server-side — the guest's exact stay plus its comparables, ingested through
 the same pipeline as scheduled collection, then scored — so any valid dates on

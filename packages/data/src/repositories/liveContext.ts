@@ -128,6 +128,20 @@ export async function findCompetitorRates(
    * index needs — see the note on compSetCte.
    */
   widen = false,
+  /**
+   * Restrict competitors to an equivalent ROOM, not merely an equivalent rate.
+   *
+   * Terms alone answer "is this the same product commercially"; they say
+   * nothing about whether it is the same kind of room. Without this, a guest
+   * asking about an Ocean View suite was measured against whatever each
+   * competitor's cheapest terms-matching room happened to be — usually an
+   * entry-level room — so a dearer category looked overpriced by construction
+   * rather than by evidence. Null means "any room", which is the honest
+   * fallback when nothing equivalent is bookable; the caller reports which
+   * rung it landed on.
+   */
+  roomClass: string | null = null,
+  viewType: string | null = null,
   q?: Queryable,
 ): Promise<CompetitorRate[]> {
   const { rows } = await db(q).query(
@@ -147,6 +161,14 @@ export async function findCompetitorRates(
           AND o.check_in = $2::date AND o.nights = $3 AND o.adults = $4
           AND o.children = $5 AND o.currency = $6
           AND rp.meal_plan = $7 AND rp.refund_policy = $10 AND rp.audience = $11
+          -- A room whose class we do not know never matches a class we DO
+          -- know: rt.room_class is NULL on the LEFT JOIN, so the comparison
+          -- yields NULL and the row drops. Same rule as the terms match —
+          -- symmetric ignorance is fair, ignorance against knowledge is not.
+          -- ::text on the COLUMN, not the parameter: room_class and view_type
+          -- are enums, and an enum does not compare to a bound text parameter.
+          AND ($13::text IS NULL OR rt.room_class::text = $13)
+          AND ($14::text IS NULL OR rt.view_type::text = $14)
           AND o.observed_at >= now() - ($9 || ' hours')::interval
         -- Cheapest within the freshest capture, not merely the newest row:
         -- a competitor room with two rate plans otherwise priced itself at
@@ -178,6 +200,8 @@ export async function findCompetitorRates(
       terms.refundPolicy,
       terms.audience,
       widen,
+      roomClass,
+      viewType,
     ],
   );
 
