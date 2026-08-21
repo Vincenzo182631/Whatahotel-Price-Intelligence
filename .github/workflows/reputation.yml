@@ -1,0 +1,121 @@
+# Resolve hotels to Google places and refresh their guest ratings.
+#
+# The sweep also runs as the last step of every rate collection, which is the
+# right cadence for keeping up. This workflow exists for the other case: running
+# it on its own, now, without spending WhataHotel API calls to get at it —
+# after adding the key, after a threshold change, or to see the match split
+# before trusting it.
+#
+# Required repository secrets:
+#   DATABASE_URL             the same Postgres collection writes to
+#   GOOGLE_PLACES_API_KEY    optional; without it this reports and exits 0
+#
+# ── What this writes, and what it must never write ────────────────────────
+#
+# The rating is an INTELLIGENCE SIGNAL, not a term in any score. Nothing under
+# packages/core/src/scoring reads it. It informs the explanation and it is
+# shown to a guest beside the price, and that is the whole of its job.
+#
+# A doubtful match stores no data, and a FAILED lookup stores nothing at all —
+# the queue never revisits a NO_MATCH, so recording one on a timeout would
+# retire a hotel from reputation permanently. See
+# docs/runbooks/reputation-and-reasoning.md.
+
+name: Refresh guest reputation
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Max hotels to resolve or refresh in this run'
+        required: false
+        default: '200'
+      dry_run:
+        description: 'Show the queue only — call Google for nothing'
+        type: boolean
+        required: false
+        default: false
+
+# One sweep at a time. Two overlapping runs would pay twice for the same
+# lookups and race on the same hotel rows.
+concurrency:
+  group: reputation-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Which secrets are present
+        # Booleans per named secret, never a dump of the whole secret store —
+        # enumerating it is the shape of an exfiltration attack and GitHub's
+        # detector is right to flag it. See db-setup.yml for the incident.
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+          HAS_GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY != '' }}
+        run: |
+          echo "DATABASE_URL present:          $HAS_DATABASE_URL"
+          echo "GOOGLE_PLACES_API_KEY present: $HAS_GOOGLE_PLACES_API_KEY"
+
+      - name: Fail early if the database is missing
+        run: |
+          # The Google key being absent is a supported configuration and the
+          # sweep says so for itself. The database being absent is not: the
+          # sweep would resolve nothing and report a healthy empty run.
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Missing repository secret: DATABASE_URL"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Sweep
+        run: |
+          set -o pipefail
+          npm run places -- \
+            --limit "${{ inputs.limit || 200 }}" \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            2>&1 | tee places.log
+
+      - name: Summarise the run
+        if: always()
+        run: |
+          {
+            echo '### Reputation sweep'
+            echo
+            echo '```'
+            tail -30 places.log 2>/dev/null || echo 'no output captured'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # A sweep that verified nothing at all is worth a look even though it
+          # is not an error: it is what a wrong threshold and a broken key both
+          # look like from the outside.
+          if grep -qE '^0 considered' places.log 2>/dev/null; then
+            echo "::notice::Nothing was queued — every active hotel is already resolved and fresh."
+          elif grep -qE ': .*0 verified' places.log 2>/dev/null; then
+            echo "::warning::The sweep verified no hotels. Check the match split before assuming the key is at fault."
+          fi
+
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: places-log-${{ github.run_id }}
+          path: places.log
+          retention-days: 14
