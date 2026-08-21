@@ -67,6 +67,7 @@ jobs:
         env:
           DB_URL: ${{ secrets.DATABASE_URL }}
           WAH_KEY: ${{ secrets.WAH_API_KEY }}
+          OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           # Serverless instances each open their own database connection, so
@@ -92,6 +93,20 @@ jobs:
             if [ -n "$WAH_KEY" ]; then
               npx vercel env rm WAH_API_KEY "$envname" --yes --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
               printf '%s' "$WAH_KEY" | npx vercel env add WAH_API_KEY "$envname" --token="$VERCEL_TOKEN"
+            fi
+            # The reasoning layer rewords the already-computed explanation.
+            # Optional in exactly the same way: without it the API returns the
+            # deterministic sentences and nothing else about the response
+            # moves. Server side only — it reaches the function and nothing
+            # else, and never the browser.
+            #
+            # GOOGLE_PLACES_API_KEY is deliberately NOT pushed here. The
+            # reputation sweep runs in Actions and writes to the database; the
+            # function only ever reads what it already stored, so giving the
+            # function that key would widen its blast radius for nothing.
+            if [ -n "$OPENAI_KEY" ]; then
+              npx vercel env rm OPENAI_API_KEY "$envname" --yes --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
+              printf '%s' "$OPENAI_KEY" | npx vercel env add OPENAI_API_KEY "$envname" --token="$VERCEL_TOKEN"
             fi
           done
 
