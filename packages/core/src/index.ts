@@ -145,6 +145,16 @@ export {
 } from './explanation/predictive.js';
 export { renderTemplate } from './explanation/template.js';
 export type { RenderedExplanation } from './explanation/template.js';
+export { LIVE_BUNDLE_VERSION, buildLiveExplanationBundle } from './explanation/liveBundle.js';
+export type {
+  LiveBundleInput,
+  LiveExplanationBundle,
+  ReputationFact,
+} from './explanation/liveBundle.js';
+export { renderLiveExplanation } from './explanation/liveTemplate.js';
+export type { RenderedLiveExplanation } from './explanation/liveTemplate.js';
+export { validateNarrative } from './explanation/validate.js';
+export type { NarrativeConstraints, ValidationResult } from './explanation/validate.js';
 
 export { analyze } from './analyze.js';
 export type { AnalyzeOutput } from './analyze.js';

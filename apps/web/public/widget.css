@@ -182,6 +182,50 @@
   font-size: 0.98rem;
 }
 
+/* D2 · summary, premium justification, reputation */
+.wahpi__summary {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.5;
+}
+
+.wahpi__premium {
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.wahpi__premium-label {
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+.wahpi__premium-text {
+  font-size: 0.86rem;
+  color: var(--wahpi-muted);
+  margin-top: 3px;
+}
+
+.wahpi__reputation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+.wahpi__reputation-rating {
+  font-size: 1.1rem;
+  font-weight: 650;
+}
+.wahpi__reputation-scale,
+.wahpi__reputation-count {
+  font-size: 0.86rem;
+  color: var(--wahpi-muted);
+}
+/* Stated, not implied: a rating sitting beside a score reads as part of it. */
+.wahpi__reputation-note {
+  font-size: 0.76rem;
+  color: var(--wahpi-muted);
+  flex-basis: 100%;
+}
+
 /* E · reasons */
 .wahpi__reasons {
   list-style: none;

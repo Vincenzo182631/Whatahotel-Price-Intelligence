@@ -128,7 +128,7 @@ engine.
    one observation is not zero volatility, it is no information — scoring it
    1.00 made confidence _fall_ as the second observation arrived. Same principle
    as rule 3. Set `included: false` and let the weights renormalize.
-10. **The API key is a credential.** `WAH_API_KEY`, environment only, redacted
+10. **API keys are credentials.** `WAH_API_KEY`, environment only, redacted
     from every log line by `redact()`. Committed fixtures are scrubbed of the
     key and of `cfid`/`cftoken` session tokens, and a test enumerates the
     fixture directory to enforce it — do not replace that with a hardcoded
@@ -266,10 +266,28 @@ engine.
     price. **The quality signals the brief asks for do not exist in this
     source**: no endpoint returns a star rating or a guest rating, and
     amenities live only behind `method=info`, which answers 500 for our key.
+    (Google Places supplies a guest rating — see rule 22 — but it is context
+    beside the price, not a term in the score, so it does not change this.)
     Included value is the only validated quality evidence we hold, and when
     neither side's is known the answer is `LIMITED_DATA` with the penalty
     unchanged. A comparable that told us nothing is silent, not zero — scoring
     it zero would manufacture a justified premium out of gaps in our own data.
+
+22. **Reputation is evidence, never a term.** The Google rating (migration 0013) informs the explanation and is shown beside the price. Nothing under
+    `packages/core/src/scoring` reads it, and the API says so with
+    `affects_score: false`. A rating and a price index are different kinds of
+    number — 4.9 from 32 reviews and 4.7 from 4,500 are not comparable
+    strengths of evidence, and a weighted score cannot express that difference
+    while a reader can. An unmatched, doubtfully matched or unrated hotel
+    renders NO rating rather than a zero one: 0.0 stars is a claim about a real
+    property, and the same principle as rule 3. `UNVERIFIED` and `NO_MATCH`
+    data is never used or displayed, and a FAILED lookup writes **nothing at
+    all** — recording `NO_MATCH` on a timeout would retire a hotel from
+    reputation forever, because the queue deliberately never revisits one.
+    Matching is decided by geography, not by name: "Four Seasons Hotel Miami"
+    and "Four Seasons Resort Palm Beach" share most of their words, so a hotel
+    whose coordinates we do not hold is capped below the threshold and never
+    verified on name alone. See `docs/runbooks/reputation-and-reasoning.md`.
 
 ## Adding or changing a factor
 
@@ -371,5 +389,20 @@ eight of them means we cannot predict it at all. Two of their values survive
 because they describe the market now rather than later —
 `rec.book.urgencyScarcityRooms` and `rec.book.urgencyDemand`, both feeding gate
 G3.
+
+**Reputation and the reasoning layer are live** (2026-08-21, migration 0013).
+`packages/ingest/src/adapters/google/` resolves hotels to Google places — geo is
+the arbiter, name similarity alone cannot separate two properties of the same
+brand — and `packages/ingest/src/adapters/openai/` rewords the finished facts.
+The live model now has its own `ExplanationBundle`
+(`packages/core/src/explanation/liveBundle.ts`) with the same numeric allowlist
+the history model has had since M5, plus a deterministic renderer that must keep
+working with the model disabled (rule 4) and `validateNarrative`, which rejects
+a draft whole rather than patching it. Both integrations are optional: with
+neither key set, the API returns `reputation: null` and
+`explanation.source: "TEMPLATE"`, and nothing else about the response moves.
+`OPENAI_API_KEY` and `GOOGLE_PLACES_API_KEY` are server-side only — never in
+HTML, widget JavaScript, a data attribute, or anything a bundler inlines into
+the browser.
 
 The weights in every version so far remain uncalibrated priors.
