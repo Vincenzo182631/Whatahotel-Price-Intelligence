@@ -28,6 +28,34 @@ function mountSelector(): string {
   return match[1] as string;
 }
 
+describe('room-category picker', () => {
+  it('renders only when the stay has more than one bookable room', () => {
+    // A one-option <select> is a control that cannot be used, and it implies a
+    // choice the guest does not have.
+    expect(WIDGET).toMatch(/options\.length < 2[^\n]*return null/);
+  });
+
+  it('re-requests instead of relabelling what is on screen', () => {
+    // The comp set, the nearby-date series and the terms match all key off the
+    // chosen room, so a category change is a different question. Patching the
+    // room name in place would leave the old score beside the new room.
+    expect(WIDGET).toMatch(/next\.roomTypeId = roomTypeId/);
+    expect(WIDGET).toMatch(/mount\(root, next\)/);
+  });
+
+  it('drops a pinned room when the stay itself changes', () => {
+    // A room_type_id is only meaningful for the dates it was priced for.
+    expect(WIDGET).toMatch(/pinned\.stay === staySignature\(config\)/);
+  });
+
+  it('falls back to the engine pick when a pinned room disappears', () => {
+    // Sold out, or the guest moved the dates. Showing "not found" for a hotel
+    // that still has rates would be wrong twice over.
+    expect(WIDGET).toMatch(/ROOM_TYPE_NOT_FOUND' && options\.roomTypeId/);
+    expect(WIDGET).toMatch(/delete withoutRoom\.roomTypeId/);
+  });
+});
+
 describe('widget mount selector', () => {
   it('accepts the documented marker attribute', () => {
     expect(mountSelector().split(',')).toContain('[data-wah-pi]');

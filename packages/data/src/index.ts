@@ -55,6 +55,7 @@ export type {
   LiveLoadFailure,
   LiveRequest,
   LoadedLiveIntelligence,
+  RoomOption,
 } from './loadLiveIntelligence.js';
 
 export {

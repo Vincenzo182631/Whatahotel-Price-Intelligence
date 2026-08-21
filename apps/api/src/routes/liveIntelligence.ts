@@ -287,6 +287,17 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         name: loaded.roomName,
         selected_by: loaded.roomSelectedBy,
       },
+      // Every room bookable for THIS stay, cheapest first, so a client can
+      // offer the choice rather than only ever showing the engine's pick.
+      // Re-request with `room_type_id` to score any of them: the comp set, the
+      // nearby-date series and the terms match are all keyed on the chosen
+      // room, so the answer is recomputed rather than relabelled.
+      room_options: loaded.availableRooms.map((room) => ({
+        room_type_id: String(room.roomTypeId),
+        name: room.name,
+        room_class: room.roomClass,
+        nightly: money(room.nightlyMinor, currency),
+      })),
       rate_plan: {
         summary: loaded.rateTerms,
         comparability_class: loaded.comparabilityClass,

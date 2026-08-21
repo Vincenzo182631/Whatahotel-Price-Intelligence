@@ -70,8 +70,26 @@ export type LiveLoadFailure =
  */
 export type CompBasis = 'CURATED' | 'DESTINATION';
 
+/** One room a guest could pick for this stay, with what it costs. */
+export interface RoomOption {
+  readonly roomTypeId: number;
+  readonly name: string;
+  readonly roomClass: string;
+  readonly nightlyMinor: number;
+}
+
 export interface LoadedLiveIntelligence {
   readonly hotel: HotelRow;
+  /**
+   * Every room type with a live rate for this exact stay, cheapest first.
+   *
+   * The loader already had to build this list to choose a room; it was thrown
+   * away, so a client could only ever show the engine's pick. Publishing it is
+   * what lets a guest ask about the room they actually want — and the score
+   * that comes back is genuinely recomputed for it, because the comp set, the
+   * nearby-date series and the terms match all key off the chosen room.
+   */
+  readonly availableRooms: readonly RoomOption[];
   /** The currency everything in this result is denominated in. */
   readonly currency: string;
   readonly compBasis: CompBasis;
@@ -294,6 +312,12 @@ export async function loadLiveIntelligence(
 
   return {
     hotel,
+    availableRooms: available.map((r) => ({
+      roomTypeId: r.roomTypeId,
+      name: r.canonicalName,
+      roomClass: r.roomClass,
+      nightlyMinor: r.nightlyMinor,
+    })),
     currency,
     compBasis,
     roomTypeId: chosen.roomTypeId,

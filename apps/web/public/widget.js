@@ -742,6 +742,52 @@
     return value === null || value === undefined ? '—' : Number(value).toFixed(1);
   }
 
+  /**
+   * The room-category chooser.
+   *
+   * Rendered only when the stay actually has more than one bookable room — a
+   * single-option <select> is a control that cannot be used, and it implies a
+   * choice the guest does not have.
+   *
+   * Changing it RE-REQUESTS with `room_type_id` rather than re-labelling what
+   * is on screen. The comp set, the nearby-date series and the terms match are
+   * all keyed on the chosen room, so a different category is a different
+   * question with a different answer — not the same score under a new name.
+   */
+  function renderRoomPicker(data, state) {
+    var options = data.subject.room_options || [];
+    if (options.length < 2 || typeof state.onRoomChange !== 'function') return null;
+
+    var wrap = el('div', 'wahpi__room-picker');
+    var id = 'wahpi-room-' + state.uid;
+
+    var label = el('label', 'wahpi__room-label', 'Room category');
+    label.setAttribute('for', id);
+    wrap.appendChild(label);
+
+    var select = document.createElement('select');
+    select.className = 'wahpi__room-select';
+    select.id = id;
+
+    for (var i = 0; i < options.length; i += 1) {
+      var option = options[i];
+      var node = document.createElement('option');
+      node.value = option.room_type_id;
+      // The price belongs in the label: choosing a category IS a price
+      // decision, and making the guest select each one to discover the cost
+      // turns a comparison into a scavenger hunt.
+      node.textContent = option.name + ' — ' + formatMoney(option.nightly) + '/night';
+      if (option.room_type_id === data.subject.room_type.room_type_id) node.selected = true;
+      select.appendChild(node);
+    }
+
+    select.addEventListener('change', function () {
+      state.onRoomChange(select.value);
+    });
+    wrap.appendChild(select);
+    return wrap;
+  }
+
   function renderLiveSubject(data) {
     var wrap = section(null);
     wrap.appendChild(el('h2', null, data.subject.hotel.name));
@@ -1031,6 +1077,7 @@
     root.setAttribute('aria-busy', 'false');
 
     append(root, renderLiveSubject(data));
+    append(root, renderRoomPicker(data, state));
     append(root, renderLivePrice(data));
     append(root, renderLiveVerdict(data));
     append(root, renderLiveReasons(data));
@@ -1204,6 +1251,23 @@
    */
   var REQUEST_TIMEOUT_MS = 25000;
 
+  /**
+   * The stay a room-category choice belongs to.
+   *
+   * A room_type_id is only meaningful for the dates and occupancy it was
+   * priced for, so a pinned choice must survive an incidental remount and be
+   * dropped when the guest actually changes the stay.
+   */
+  function staySignature(config) {
+    return [
+      config.hotelId || '',
+      config.checkIn || '',
+      config.checkOut || '',
+      config.adults || '',
+      config.children || '',
+    ].join('|');
+  }
+
   function mount(root, options) {
     if (!root) throw new Error('WahPriceIntelligence.mount: no element supplied');
     options = options || {};
@@ -1221,6 +1285,29 @@
       expanded: options.expanded === true,
       // Distinguishes aria-controls ids when several widgets share a page.
       uid: (mount.seq = (mount.seq || 0) + 1),
+    };
+
+    // Picking a room category re-mounts this element with that room pinned.
+    // It goes through mount() rather than patching the panel in place because
+    // EVERYTHING changes — price, score, confidence, comp set, reasons — and a
+    // partial repaint is how a new score ends up beside an old explanation.
+    //
+    // `expanded` rides along so a guest who opened the workings keeps them
+    // open, and mount()'s own generation counter invalidates the in-flight
+    // request, so a slow answer for the previous room cannot land on this one.
+    state.onRoomChange = function (roomTypeId) {
+      var next = {};
+      for (var key in options) {
+        if (Object.prototype.hasOwnProperty.call(options, key)) next[key] = options[key];
+      }
+      next.roomTypeId = roomTypeId;
+      next.expanded = state.expanded;
+      // Remember the choice against the stay it was made for, so an unrelated
+      // remount (the host page firing an input event) does not silently throw
+      // it away — and a REAL stay change does, because a room id belongs to
+      // the dates it was priced for. See autoConfig.
+      root.__wahpiRoom = { stay: staySignature(next), roomTypeId: roomTypeId };
+      mount(root, next);
     };
 
     // A remount (the host page changed dates or hotel) invalidates any fetch
@@ -1290,6 +1377,23 @@
             'Not available for these dates',
             'We could not verify enough live data to score this stay. Try nearby dates, or ask an advisor.',
           );
+        } else if (code === 'ROOM_TYPE_NOT_FOUND' && options.roomTypeId) {
+          // A pinned room category is not bookable for this stay any more —
+          // sold out, or the guest moved the dates. Fall back to the engine's
+          // pick rather than reporting "not found" for a hotel that plainly
+          // has rates: the room went away, the hotel did not.
+          explain(
+            'info',
+            'room category ' + options.roomTypeId + ' is no longer available for this stay — ' +
+              'falling back to the lowest available rate.',
+          );
+          root.__wahpiRoom = null;
+          var withoutRoom = {};
+          for (var key in options) {
+            if (Object.prototype.hasOwnProperty.call(options, key)) withoutRoom[key] = options[key];
+          }
+          delete withoutRoom.roomTypeId;
+          mount(root, withoutRoom);
         } else if (code === 'HOTEL_NOT_FOUND' || code === 'ROOM_TYPE_NOT_FOUND') {
           // The commonest "it does nothing" report during integration, and the
           // one case where hiding is CORRECT: the embed is fine, the hotel is
@@ -1503,6 +1607,13 @@
     if (ds.model) config.model = ds.model;
     if (ds.currency) config.currency = ds.currency;
     if (ds.roomTypeId) config.roomTypeId = ds.roomTypeId;
+    // A category the guest picked outranks nothing in the template, but it
+    // must not be lost to an unrelated remount — the host page firing an input
+    // event should not silently reset the panel to the cheapest room. It is
+    // kept only while the STAY is unchanged: a room id priced for one set of
+    // dates says nothing about another.
+    var pinned = node.__wahpiRoom;
+    if (pinned && pinned.stay === staySignature(config)) config.roomTypeId = pinned.roomTypeId;
     if (ds.expanded === 'true') config.expanded = true;
     return config;
   }

@@ -44,6 +44,8 @@ const CHECK_IN = '2027-04-08';
 suite('integration · universal hotel support', () => {
   const hotelIds = new Map<string, number>();
   let sourceId = 0;
+  let entryRoomTypeId = 0;
+  let suiteRoomTypeId = 0;
 
   beforeAll(async () => {
     const pool = getPool();
@@ -88,12 +90,15 @@ suite('integration · universal hotel support', () => {
       [sourceId],
     );
 
+    // Unique per room: rate_plan is keyed (hotel, source, plan code), so a
+    // hotel with two rooms needs two plan codes rather than one reused.
+    let planSeq = 0;
     const plan = async (hotelId: number) => {
       const { rows } = await pool.query(
         `INSERT INTO rate_plan (hotel_id, source_id, source_plan_code, meal_plan,
                                 refund_policy, audience, comparability_class)
-         VALUES ($1,$2,'US-PLAN','ROOM_ONLY','REFUNDABLE','CONSORTIA',$3) RETURNING id`,
-        [hotelId, sourceId, `WAH:U${hotelId}|OFFER`],
+         VALUES ($1,$2,$4,'ROOM_ONLY','REFUNDABLE','CONSORTIA',$3) RETURNING id`,
+        [hotelId, sourceId, `WAH:U${hotelId}|OFFER`, `US-PLAN-${(planSeq += 1)}`],
       );
       return rows[0].id as number;
     };
@@ -131,7 +136,18 @@ suite('integration · universal hotel support', () => {
       [hotelIds.get(SUBJECT)],
     );
 
+    const { rows: rtSuite } = await pool.query(
+      `INSERT INTO room_type (hotel_id,canonical_name,normalized_name,room_class)
+       VALUES ($1,'US Suite','us suite','SUITE') RETURNING id`,
+      [hotelIds.get(SUBJECT)],
+    );
+    suiteRoomTypeId = rtSuite[0].id;
+    entryRoomTypeId = rt[0].id;
+
     await insert(hotelIds.get(SUBJECT)!, rt[0].id, 1600);
+    // Deliberately inserted AFTER, and dearer: the list must come back
+    // cheapest-first regardless of insertion order.
+    await insert(hotelIds.get(SUBJECT)!, rtSuite[0].id, 2600);
     await insert(hotelIds.get('US-NEAR')!, null, 1800);
     await insert(hotelIds.get('US-MID')!, null, 2000);
     await insert(hotelIds.get('US-FAR')!, null, 2200);
@@ -304,6 +320,57 @@ suite('integration · universal hotel support', () => {
     expect(comps.map((c) => c.hotelId).sort()).toEqual(['US-FAR', 'US-MID', 'US-NEAR']);
 
     await getPool().query(`DELETE FROM hotel_comparable WHERE hotel_id = $1`, [subjectId]);
+  });
+
+  it('lists every bookable room for the stay, cheapest first', async () => {
+    const loaded = await loadLiveIntelligence(
+      {
+        wahHotelId: SUBJECT,
+        checkIn: CHECK_IN,
+        nights: 2,
+        adults: 2,
+        children: 0,
+        currency: null,
+        now: new Date(),
+      },
+      DEFAULT_CONFIG,
+    );
+    if (isLiveLoadFailure(loaded)) throw new Error(`expected a rate, got ${loaded.kind}`);
+
+    expect(loaded.availableRooms.map((r) => r.name)).toEqual(['US King', 'US Suite']);
+    expect(loaded.availableRooms[0]?.nightlyMinor).toBe(160_000);
+    expect(loaded.availableRooms[1]?.nightlyMinor).toBe(260_000);
+    // The engine's pick with no room requested is the cheapest one.
+    expect(loaded.roomTypeId).toBe(entryRoomTypeId);
+    expect(loaded.roomSelectedBy).toBe('ENGINE');
+  });
+
+  it('scores the room the guest asked for, not the cheapest', async () => {
+    // The whole point of the picker: a different category is a different
+    // question. If this returned the entry room's price under the suite's
+    // name, the panel would be confidently describing the wrong product.
+    const loaded = await loadLiveIntelligence(
+      {
+        wahHotelId: SUBJECT,
+        checkIn: CHECK_IN,
+        nights: 2,
+        adults: 2,
+        children: 0,
+        currency: null,
+        roomTypeId: suiteRoomTypeId,
+        now: new Date(),
+      },
+      DEFAULT_CONFIG,
+    );
+    if (isLiveLoadFailure(loaded)) throw new Error(`expected a rate, got ${loaded.kind}`);
+
+    expect(loaded.roomTypeId).toBe(suiteRoomTypeId);
+    expect(loaded.roomName).toBe('US Suite');
+    expect(loaded.roomSelectedBy).toBe('USER');
+    expect(loaded.nightlyMinor).toBe(260_000);
+    // The room list is the same whichever room is selected — it describes the
+    // stay, not the selection, so the picker never loses its other options.
+    expect(loaded.availableRooms).toHaveLength(2);
   });
 
   it('counts recent attempts per stay, which is what bounds the comp-set top-up', async () => {
