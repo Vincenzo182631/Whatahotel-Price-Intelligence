@@ -67,7 +67,11 @@ npm run places -- --limit 500    # resolve and refresh
 
 Runs automatically at the end of every collection run
 (`.github/workflows/collect.yml`, batch of 200), after rates and unable to fail
-the run. A Google outage must never cost a collection window — this source has
+the run. To run it **on its own** — after adding the key, after a threshold
+change, or to see the match split before trusting it — dispatch the
+**Refresh guest reputation** workflow (`.github/workflows/reputation.yml`),
+which takes the same `--limit` and `--dry-run`. Doing it that way spends no
+WhataHotel API calls to get at a Google sweep. A Google outage must never cost a collection window — this source has
 no rate history, so a missed window is baseline that cannot be backfilled.
 
 ### The four outcomes, and what each means for next time
