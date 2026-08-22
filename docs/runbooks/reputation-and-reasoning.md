@@ -246,6 +246,33 @@ In the widget, the chips under "What matters most to you?" re-request with
 `preference=` — nothing is relabelled client-side — the choice survives room
 and date changes, and General value restores the un-personalized panel.
 
+## Why you might choose this hotel (Phase 6.X)
+
+Published as a top-level `hotel_value` block and rendered where the
+redundant verdict sub-copy used to sit: `{headline, summary,
+supporting_signals[], confidence, evidence_used, source}`. The evidence
+base is ONLY: the verified Google rating, review THEMES measured by the
+sweep over the <=5-review sample Google returns (positive reviews only,
+two mentions minimum — `themes.ts`), Google's own `editorialSummary`
+stored verbatim, and the hotel's perk inclusions by their curated names.
+Fame is not evidence: a famous name with none of those gets `null` and
+the section hides.
+
+The sweep now requests `editorialSummary` and `reviews` in its details
+field mask (Enterprise-tier fields — billed per refresh, never on a page
+view) and stores the summary plus extracted themes (migration 0014).
+Review text is never stored or displayed; themes are always phrased as
+"recent reviewers mention". The `refresh_hours` workflow input exists for
+deliberate backfills only.
+
+Model drafts pass `validateHotelValue`: numeric allowlist, no predictive
+language, a sales-language gate, a historical-pricing gate ("usually
+costs…" is a claim we cannot make), never "sold out", and
+`supporting_facts` restricted to the exact chip strings
+`supportingSignals()` builds — an invented amenity rejects the draft
+whole. Confidence is coded from evidence richness. Rejected or absent,
+the deterministic reading ships; too little evidence, the section hides.
+
 ## When the prose is not the model's
 
 `source: "TEMPLATE"` on a request you expected the model to answer means one of:

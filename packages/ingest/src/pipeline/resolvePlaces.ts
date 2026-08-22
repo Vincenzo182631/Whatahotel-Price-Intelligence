@@ -114,6 +114,8 @@ export async function sweepPlaces(options: PlaceSweepOptions = {}): Promise<Plac
         displayName: outcome.displayName,
         formattedAddress: outcome.formattedAddress,
         mapsUri: outcome.mapsUri,
+        editorialSummary: outcome.editorialSummary,
+        reviewThemes: outcome.reviewThemes,
       },
       options.q,
     );

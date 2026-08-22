@@ -37,6 +37,14 @@ const SEARCH_MASK = [
   'places.location',
 ].join(',');
 
+/**
+ * `editorialSummary` and `reviews` joined in Phase 6.X for the "why you
+ * might choose this hotel" evidence. They are Enterprise-tier fields, and
+ * they are affordable here for one reason: this mask is used ONLY by the
+ * sweep — once per hotel per refresh cycle — never on a page view. The
+ * serving function reads what the sweep stored. Reviews are fetched to be
+ * measured (theme extraction, themes.ts), not to be republished.
+ */
 const DETAILS_MASK = [
   'id',
   'displayName',
@@ -45,6 +53,8 @@ const DETAILS_MASK = [
   'rating',
   'userRatingCount',
   'googleMapsUri',
+  'editorialSummary',
+  'reviews',
 ].join(',');
 
 export interface PlaceReputation extends PlaceCandidate {
@@ -53,6 +63,13 @@ export interface PlaceReputation extends PlaceCandidate {
   /** How many reviews the rating rests on. Null when unknown. */
   readonly userRatingCount: number | null;
   readonly mapsUri: string | null;
+  /** Google's own one-line description of the place. Null when absent. */
+  readonly editorialSummary: string | null;
+  /**
+   * The review sample — AT MOST FIVE, which is all Google returns. Held
+   * only long enough to extract themes; never stored or displayed as text.
+   */
+  readonly reviews: readonly { rating: number | null; text: string }[];
 }
 
 export interface PlacesClientOptions {
@@ -86,6 +103,8 @@ interface RawPlace {
   rating?: number;
   userRatingCount?: number;
   googleMapsUri?: string;
+  editorialSummary?: { text?: string };
+  reviews?: Array<{ rating?: number; text?: { text?: string }; originalText?: { text?: string } }>;
 }
 
 const num = (value: unknown): number | null =>
@@ -116,6 +135,13 @@ function toReputation(raw: RawPlace): PlaceReputation | null {
     rating: rating !== null && rating >= 0 && rating <= 5 ? rating : null,
     userRatingCount: num(raw.userRatingCount),
     mapsUri: raw.googleMapsUri?.trim() || null,
+    editorialSummary: raw.editorialSummary?.text?.trim() || null,
+    reviews: (raw.reviews ?? [])
+      .map((r) => ({
+        rating: num(r.rating),
+        text: (r.text?.text ?? r.originalText?.text ?? '').trim(),
+      }))
+      .filter((r) => r.text.length > 0),
   };
 }
 

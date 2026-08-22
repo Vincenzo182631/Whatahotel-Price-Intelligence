@@ -354,6 +354,9 @@
       if (premium && premium.premium_pct !== null && premium.premium_pct !== undefined) {
         parts.push('about ' + formatPct(premium.premium_pct) + ' above comparable hotels');
       }
+      if (data.hotel_value && data.hotel_value.supporting_signals && data.hotel_value.supporting_signals.length > 0) {
+        parts.push('hotel strengths: ' + data.hotel_value.supporting_signals.join(', '));
+      }
       if (data.alternative && data.alternative.name) {
         parts.push(
           'suggested alternative: ' +
@@ -1022,20 +1025,6 @@
     NOT_ENOUGH_DATA: 'wahpi--neutral',
   };
 
-  /**
-   * The one-line reading under the verdict.
-   *
-   * Every string is present tense and describes the market as it stands. None
-   * of them may acquire a "before it goes up" — that is the whole point of the
-   * live model.
-   */
-  var LIVE_VERDICT_SUB = {
-    BOOK_NOW: 'A strong rate against the market as it stands today.',
-    BOOK_CONSIDER: 'A fair rate for this room against comparable hotels and dates.',
-    CONSIDER_ALTERNATIVES: 'Priced above comparable hotels, or above nearby dates.',
-    NOT_ENOUGH_DATA: 'We do not have enough live rates to assess this stay yet.',
-  };
-
   var LIVE_CONFIDENCE_NOTE = {
     HIGH: 'Based on a full comp set and nearby dates, all live-checked.',
     MEDIUM: 'Based on a partial comp set. Treat the figure as indicative.',
@@ -1335,12 +1324,42 @@
     confBox.appendChild(el('div', 'wahpi__metric-note', LIVE_CONFIDENCE_NOTE[v.confidence] || ''));
     grid.appendChild(confBox);
 
+    // No sub-line: the old one restated the explanation that renders just
+    // below. The space now belongs to WHY YOU MIGHT CHOOSE THIS HOTEL.
     var recBox = el('div', 'wahpi__recommendation ' + LIVE_VERDICT_TONE[v.verdict]);
     recBox.appendChild(el('div', 'wahpi__recommendation-label', v.verdict_label));
-    recBox.appendChild(el('div', 'wahpi__recommendation-sub', LIVE_VERDICT_SUB[v.verdict] || ''));
     grid.appendChild(recBox);
 
     wrap.appendChild(grid);
+    return wrap;
+  }
+
+  /**
+   * WHY YOU MIGHT CHOOSE THIS HOTEL (Phase 6.X).
+   *
+   * The other half of the decision, rendered verbatim from the validated
+   * server response: what is attractive about this property, from evidence
+   * only. The supporting chips are code-built signals — a rating, review
+   * themes, the source's own perks — never marketing badges. Absent
+   * evidence means the API sent null and nothing renders here.
+   */
+  function renderLiveWhyChoose(data) {
+    var hv = data.hotel_value;
+    if (!hv || !hv.summary) return null;
+
+    var wrap = section(null);
+    var box = el('div', 'wahpi__why');
+    box.appendChild(el('div', 'wahpi__premium-eyebrow', 'WHY YOU MIGHT CHOOSE THIS HOTEL'));
+    if (hv.headline) box.appendChild(el('div', 'wahpi__why-headline', hv.headline));
+    box.appendChild(el('div', 'wahpi__why-text', hv.summary));
+    if (hv.supporting_signals && hv.supporting_signals.length > 0) {
+      var chips = el('div', 'wahpi__why-signals');
+      hv.supporting_signals.forEach(function (signal) {
+        chips.appendChild(el('span', 'wahpi__why-signal', signal));
+      });
+      box.appendChild(chips);
+    }
+    wrap.appendChild(box);
     return wrap;
   }
 
@@ -1703,6 +1722,7 @@
     append(root, renderPreferencePicker(data, state));
     append(root, renderLivePrice(data));
     append(root, renderLiveVerdict(data));
+    append(root, renderLiveWhyChoose(data));
     append(root, renderLiveExplanation(data));
     append(root, renderLivePremium(data));
     append(root, renderLiveReputation(data));

@@ -172,6 +172,19 @@ export type {
   PremiumAssessment,
   PremiumPosition,
 } from './explanation/assessment.js';
+export {
+  HOTEL_VALUE_EVIDENCE,
+  deterministicHotelValue,
+  hotelValueConfidence,
+  hotelValueEvidencePresent,
+  supportingSignals,
+  validateHotelValue,
+} from './explanation/hotelValue.js';
+export type {
+  HotelValue,
+  HotelValueEvidence,
+  HotelValueValidation,
+} from './explanation/hotelValue.js';
 export { PREFERENCES, PREFERENCE_LABEL, parsePreference } from './explanation/preference.js';
 export type { Preference } from './explanation/preference.js';
 export {

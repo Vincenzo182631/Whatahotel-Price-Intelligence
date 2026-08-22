@@ -166,6 +166,13 @@ export interface LoadedLiveIntelligence {
   readonly compRoomMatch: CompRoomMatch;
   /** Is the price premium supported by what the rate includes? */
   readonly premium: PremiumJustificationResult;
+  /**
+   * The hotel's perk inclusions by their curated display names — the
+   * source's own preferred-partner benefits ("Breakfast for two", "Hotel
+   * credit"). Verified WhataHotel data, for the hotel-value evidence; the
+   * VALUES already feed premium justification above.
+   */
+  readonly benefitNames: readonly string[];
   readonly roomTypeId: number;
   readonly roomName: string;
   /**
@@ -524,6 +531,7 @@ export async function loadLiveIntelligence(
   return {
     hotel,
     availability,
+    benefitNames: subjectBenefits.map((b) => b.displayName),
     competitorRates: competitors.map((c) => ({
       wahHotelId: c.hotelId,
       name: c.name,
