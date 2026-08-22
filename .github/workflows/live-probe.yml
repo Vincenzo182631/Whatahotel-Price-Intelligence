@@ -90,6 +90,13 @@ jobs:
           set -o pipefail
           npm run probe -- --targets "${{ inputs.targets }}" 2>&1 | tee probe.log
 
+      - name: Reasoner rejections, if any
+        if: always()
+        run: |
+          # The one readable copy of WHY a model draft fell back. Grep, not
+          # cat: the full api.log is request noise.
+          grep -a "draft rejected\|fell back to TEMPLATE" api.log | tail -20 || echo "no rejections logged"
+
       - name: Summarise
         if: always()
         run: |
