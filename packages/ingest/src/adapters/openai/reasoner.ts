@@ -80,6 +80,14 @@ export interface LiveExplanation {
   readonly source: ExplanationSource;
   /** Why a draft was rejected, when one was. Empty on the happy path. */
   readonly violations: readonly string[];
+  /**
+   * Why the CALL failed, when it did. OpenAI's error type/code — enums like
+   * "invalid_api_key" or "insufficient_quota", never the key and never free
+   * text — or our own coarse markers. The first live deployment fell back to
+   * TEMPLATE on every request and nothing could say whether the key was
+   * wrong, the account dry, or the draft rejected; this is that answer.
+   */
+  readonly failure: string | null;
 }
 
 /** FNV-1a over the facts. Stable across runs, and not a credential. */
@@ -96,11 +104,13 @@ export function bundleKey(bundle: LiveExplanationBundle): string {
 const asTemplate = (
   rendered: RenderedLiveExplanation,
   violations: readonly string[] = [],
+  failure: string | null = null,
 ): LiveExplanation => ({
   text: rendered.text,
   sentences: rendered.sentences,
   source: 'TEMPLATE',
   violations,
+  failure,
 });
 
 export class OpenAiReasoner {
@@ -141,7 +151,9 @@ export class OpenAiReasoner {
     return { ...hit.value, source: 'CACHE' };
   }
 
-  private async draft(bundle: LiveExplanationBundle): Promise<string | null> {
+  private async draft(
+    bundle: LiveExplanationBundle,
+  ): Promise<{ summary: string } | { failure: string }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -177,17 +189,35 @@ export class OpenAiReasoner {
         }),
         signal: controller.signal,
       });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        // OpenAI's error type/code are enums ("invalid_api_key",
+        // "insufficient_quota", "model_not_found") — safe to surface, and
+        // each one names a different fix. The message text is deliberately
+        // not carried; the enums are the diagnosis.
+        let failure = `http_${response.status}`;
+        try {
+          const body = (await response.json()) as {
+            error?: { type?: string; code?: string };
+          };
+          const named = [body.error?.type, body.error?.code].filter(Boolean).join('/');
+          if (named) failure = `${failure} ${named}`;
+        } catch {
+          // Body was not JSON; the status alone will have to do.
+        }
+        return { failure };
+      }
       const payload = (await response.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
       };
       const content = payload.choices?.[0]?.message?.content;
-      if (!content) return null;
+      if (!content) return { failure: 'empty_completion' };
       const parsed = JSON.parse(content) as { summary?: unknown };
-      return typeof parsed.summary === 'string' ? parsed.summary.trim() : null;
+      if (typeof parsed.summary !== 'string') return { failure: 'malformed_completion' };
+      return { summary: parsed.summary.trim() };
     } catch {
-      // Timeout, transport failure or unparseable body. All the same outcome.
-      return null;
+      // Timeout or transport failure. Indistinguishable from out here, and
+      // both retryable, so one marker covers them.
+      return { failure: 'timeout_or_network' };
     } finally {
       clearTimeout(timer);
     }
@@ -204,12 +234,16 @@ export class OpenAiReasoner {
 
     const started = this.now();
     const draft = await this.draft(bundle);
-    if (draft === null) {
-      this.onResult?.({ source: 'TEMPLATE', ms: this.now() - started, violations: [] });
-      return asTemplate(rendered);
+    if ('failure' in draft) {
+      this.onResult?.({
+        source: 'TEMPLATE',
+        ms: this.now() - started,
+        violations: [draft.failure],
+      });
+      return asTemplate(rendered, [], draft.failure);
     }
 
-    const check = validateNarrative(draft, bundle.constraints);
+    const check = validateNarrative(draft.summary, bundle.constraints);
     if (!check.ok) {
       this.onResult?.({
         source: 'TEMPLATE',
@@ -220,10 +254,11 @@ export class OpenAiReasoner {
     }
 
     const value: LiveExplanation = {
-      text: draft,
-      sentences: draft.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0),
+      text: draft.summary,
+      sentences: draft.summary.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0),
       source: 'MODEL',
       violations: [],
+      failure: null,
     };
     this.cache.set(key, { at: this.now(), value });
     this.onResult?.({ source: 'MODEL', ms: this.now() - started, violations: [] });
@@ -241,6 +276,6 @@ export async function explainLive(
   reasoner: OpenAiReasoner | null,
   bundle: LiveExplanationBundle,
 ): Promise<LiveExplanation> {
-  if (!reasoner) return asTemplate(renderLiveExplanation(bundle));
+  if (!reasoner) return asTemplate(renderLiveExplanation(bundle), [], 'not_configured');
   return reasoner.explain(bundle);
 }

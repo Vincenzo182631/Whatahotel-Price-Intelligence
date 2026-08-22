@@ -396,6 +396,15 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
    * template or by a model that was then checked against the facts above.
    */
   const explanation = await explainLive(liveReasoner(), bundle);
+  if (explanation.source === 'TEMPLATE' && (explanation.failure || explanation.violations.length)) {
+    // Server log only — the violations name specific numbers and belong to
+    // our validator, not to the customer's stay. The response carries the
+    // coarse reason below.
+    console.error(
+      'explanation fell back to TEMPLATE:',
+      explanation.failure ?? `draft rejected: ${explanation.violations.join('; ')}`,
+    );
+  }
 
   const body = {
     generated_at: now.toISOString(),
@@ -541,6 +550,18 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       text: explanation.text,
       sentences: explanation.sentences,
       source: explanation.source,
+      /**
+       * Why the sentences are the template's, when they are. OpenAI's error
+       * enums ("http_401 invalid_api_key", "insufficient_quota") or our own
+       * markers ("not_configured", "draft_rejected", "timeout_or_network").
+       * Never the key, never free text. Null when a model answered — and
+       * null is the state worth reaching: the first live deployment fell
+       * back on every request and nothing anywhere could say why.
+       */
+      fallback_reason:
+        explanation.source === 'TEMPLATE'
+          ? (explanation.failure ?? (explanation.violations.length > 0 ? 'draft_rejected' : null))
+          : null,
     },
 
     signals: {

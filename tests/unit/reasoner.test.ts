@@ -104,6 +104,7 @@ describe('explainLive with no reasoner', () => {
     const out = await explainLive(null, b);
     expect(out.source).toBe('TEMPLATE');
     expect(out.text).toBe(renderLiveExplanation(b).text);
+    expect(out.failure).toBe('not_configured');
   });
 });
 
@@ -165,7 +166,9 @@ describe('OpenAiReasoner', () => {
       }),
     );
 
-    expect((await reasoner().explain(b)).source).toBe('TEMPLATE');
+    const out = await reasoner().explain(b);
+    expect(out.source).toBe('TEMPLATE');
+    expect(out.failure).toBe('timeout_or_network');
   });
 
   it('hands the model the bundle and nothing else, with the key in a header', async () => {
