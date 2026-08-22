@@ -51,23 +51,7 @@ export interface HotelValue {
   readonly source: 'MODEL' | 'DETERMINISTIC';
 }
 
-/** Customer-facing chip for each review-theme key the ingest side emits. */
-const THEME_CHIP: Readonly<Record<string, string>> = {
-  service: 'Praised service',
-  location: 'Location',
-  beach: 'Beach',
-  pool: 'Pool',
-  spa: 'Spa',
-  rooms: 'Rooms',
-  dining: 'Dining',
-  views: 'Views',
-  cleanliness: 'Cleanliness',
-  quiet: 'Quiet setting',
-  family: 'Family stays',
-  grounds: 'Grounds',
-};
-
-/** Prose for the same keys, used by the deterministic summary. */
+/** Prose for the theme keys, used by the deterministic summary. */
 const THEME_PROSE: Readonly<Record<string, string>> = {
   service: 'service',
   location: 'the location',
@@ -83,23 +67,14 @@ const THEME_PROSE: Readonly<Record<string, string>> = {
   grounds: 'the grounds',
 };
 
-const MAX_SIGNALS = 4;
-
 /**
- * The verified signal chips, strongest first, capped at four. This list is
- * ALSO the model's entire vocabulary for `supporting_facts`: rendering and
- * validation share one source of truth, so an invented badge cannot exist.
+ * The verified signal chips — built into the bundle itself (liveBundle.ts)
+ * so the model, this validator and the renderer share one vocabulary. The
+ * model cites these strings verbatim or its draft is rejected; it cannot
+ * invent a badge, and it cannot be failed for a string it was never shown.
  */
 export function supportingSignals(bundle: LiveExplanationBundle): string[] {
-  const out: string[] = [];
-  const rep = bundle.reputation.subject;
-  if (rep) out.push(`★ ${rep.rating} Google rating`);
-  for (const theme of bundle.hotel_facts.review_themes) {
-    const chip = THEME_CHIP[theme];
-    if (chip) out.push(chip);
-  }
-  for (const perk of bundle.hotel_facts.perks) out.push(perk);
-  return out.slice(0, MAX_SIGNALS);
+  return [...bundle.hotel_facts.supporting_signals];
 }
 
 /** Which evidence the bundle actually carries for this section. */
