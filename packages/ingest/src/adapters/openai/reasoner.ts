@@ -28,10 +28,13 @@
 
 import {
   deterministicAssessment,
+  deterministicPersonalization,
   renderLiveExplanation,
   validateAssessment,
   validateNarrative,
+  validatePersonalization,
   type LiveExplanationBundle,
+  type Personalization,
   type PremiumAssessment,
   type RenderedLiveExplanation,
 } from '@wahpi/core';
@@ -102,7 +105,32 @@ const SYSTEM_PROMPT = [
   '- reasoning: at most 4 sentences. recommendation: at most 2. Factors: at',
   '  most 5 each, one short sentence apiece. Same number rules as the summary.',
   '',
-  'Return JSON: {"summary": "<sentences>", "assessment": {...} | null}',
+  'Personalization: the bundle carries a `preference` — what this guest says',
+  'matters most to them. When it is GENERAL_VALUE, set personalization to',
+  'null. Otherwise fill the personalization object. This is an interpretation',
+  'of the SAME facts through that preference; the price intelligence itself',
+  'never changes, and neither do any of its numbers.',
+  '- personalized_insight: 1-3 sentences reading the supplied facts through',
+  '  the preference. "May be a better fit" is the register — a suggestion,',
+  '  never an instruction, never sales pressure.',
+  '- why_this_hotel_may_fit: at most 3 short reasons, EACH grounded in a fact',
+  '  the bundle states (rating, included value, position in the available',
+  '  inventory, room view). Fewer reasons — or none — is correct when the',
+  '  evidence is thin. NEVER invent amenities, beaches, pools, spas, family',
+  '  facilities, nightlife, quietness, or business facilities: the bundle',
+  '  carries no such data, and anything you know about the hotel from outside',
+  '  the bundle is forbidden here exactly as it is in the factors.',
+  '- If the bundle holds no evidence specific to the preference, say plainly',
+  '  that limited preference-specific information is available and interpret',
+  '  only the price evidence.',
+  '- what_to_consider: at most 3 neutral, factual considerations from the',
+  '  bundle. Balanced information, not warnings.',
+  '- alternative_reason: when the bundle carries an alternative, one sentence',
+  '  on why it suits THIS preference. Empty string when alternative is null.',
+  '- evidence_used: same rules and same keys as the assessment.',
+  '',
+  'Return JSON: {"summary": "<sentences>", "assessment": {...} | null,',
+  '"personalization": {...} | null}',
 ].join('\n');
 
 export interface ReasonerOptions {
@@ -132,6 +160,12 @@ export interface LiveExplanation {
    * when there is no premium to justify.
    */
   readonly assessment: PremiumAssessment | null;
+  /**
+   * The preference-personalized reading (Phase 6). MODEL when the model's
+   * structured personalization passed validation; the deterministic one
+   * otherwise; null when the bundle's preference is GENERAL_VALUE.
+   */
+  readonly personalization: Personalization | null;
   /** Why a draft was rejected, when one was. Empty on the happy path. */
   readonly violations: readonly string[];
   /**
@@ -165,6 +199,7 @@ const asTemplate = (
   sentences: rendered.sentences,
   source: 'TEMPLATE',
   assessment: deterministicAssessment(bundle),
+  personalization: deterministicPersonalization(bundle),
   violations,
   failure,
 });
@@ -209,7 +244,9 @@ export class OpenAiReasoner {
 
   private async draft(
     bundle: LiveExplanationBundle,
-  ): Promise<{ summary: string; assessment: unknown } | { failure: string }> {
+  ): Promise<
+    { summary: string; assessment: unknown; personalization: unknown } | { failure: string }
+  > {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -269,8 +306,30 @@ export class OpenAiReasoner {
                     ],
                     additionalProperties: false,
                   },
+                  personalization: {
+                    // Null when preference is GENERAL_VALUE. The enums and
+                    // shapes here are the first line; the real gate is
+                    // validatePersonalization, which checks every numeral
+                    // and every cited piece of evidence against the bundle.
+                    type: ['object', 'null'],
+                    properties: {
+                      personalized_insight: { type: 'string' },
+                      why_this_hotel_may_fit: { type: 'array', items: { type: 'string' } },
+                      what_to_consider: { type: 'array', items: { type: 'string' } },
+                      alternative_reason: { type: 'string' },
+                      evidence_used: { type: 'array', items: { type: 'string' } },
+                    },
+                    required: [
+                      'personalized_insight',
+                      'why_this_hotel_may_fit',
+                      'what_to_consider',
+                      'alternative_reason',
+                      'evidence_used',
+                    ],
+                    additionalProperties: false,
+                  },
                 },
-                required: ['summary', 'assessment'],
+                required: ['summary', 'assessment', 'personalization'],
                 additionalProperties: false,
               },
             },
@@ -304,9 +363,17 @@ export class OpenAiReasoner {
       };
       const content = payload.choices?.[0]?.message?.content;
       if (!content) return { failure: 'empty_completion' };
-      const parsed = JSON.parse(content) as { summary?: unknown; assessment?: unknown };
+      const parsed = JSON.parse(content) as {
+        summary?: unknown;
+        assessment?: unknown;
+        personalization?: unknown;
+      };
       if (typeof parsed.summary !== 'string') return { failure: 'malformed_completion' };
-      return { summary: parsed.summary.trim(), assessment: parsed.assessment ?? null };
+      return {
+        summary: parsed.summary.trim(),
+        assessment: parsed.assessment ?? null,
+        personalization: parsed.personalization ?? null,
+      };
     } catch {
       // Timeout or transport failure. Indistinguishable from out here, and
       // both retryable, so one marker covers them.
@@ -363,11 +430,29 @@ export class OpenAiReasoner {
       }
     }
 
+    // Same independence rule as the assessment: the model's personalization
+    // passes validation or the deterministic one ships, and neither outcome
+    // touches the summary or the assessment.
+    const deterministicP = deterministicPersonalization(bundle);
+    let personalization = deterministicP;
+    if (deterministicP !== null) {
+      const pCheck = validatePersonalization(draft.personalization, bundle);
+      if (pCheck.ok) personalization = pCheck.value;
+      else if (pCheck.violations.length > 0) {
+        this.onResult?.({
+          source: 'MODEL',
+          ms: this.now() - started,
+          violations: pCheck.violations.map((v) => `personalization: ${v}`),
+        });
+      }
+    }
+
     const value: LiveExplanation = {
       text: draft.summary,
       sentences: draft.summary.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0),
       source: 'MODEL',
       assessment,
+      personalization,
       violations: [],
       failure: null,
     };

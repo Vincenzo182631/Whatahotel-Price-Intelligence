@@ -172,6 +172,13 @@ export type {
   PremiumAssessment,
   PremiumPosition,
 } from './explanation/assessment.js';
+export { PREFERENCES, PREFERENCE_LABEL, parsePreference } from './explanation/preference.js';
+export type { Preference } from './explanation/preference.js';
+export {
+  deterministicPersonalization,
+  validatePersonalization,
+} from './explanation/personalization.js';
+export type { Personalization, PersonalizationValidation } from './explanation/personalization.js';
 export { assessAvailabilityPosition, chooseAlternative } from './scoring/valueAlternative.js';
 export type {
   AlternativeCandidate,

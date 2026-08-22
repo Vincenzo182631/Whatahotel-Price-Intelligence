@@ -64,6 +64,46 @@ describe('assessAvailabilityPosition', () => {
   });
 });
 
+describe('chooseAlternative with a stated preference (Phase 6)', () => {
+  const subject = 100_000;
+  const candidates = [
+    // Big saving, unrated.
+    { wahHotelId: 'deep', name: 'Deep Saver', nightlyMinor: 60_000, isAvailable: true },
+    // Modest saving, superb verified reputation.
+    {
+      wahHotelId: 'loved',
+      name: 'Beloved Hotel',
+      nightlyMinor: 88_000,
+      isAvailable: true,
+      rating: 4.8,
+      reviewCount: 5_000,
+    },
+  ];
+
+  it('BEST_VALUE tilts the ranking toward the saving', () => {
+    expect(chooseAlternative(subject, candidates, 'BEST_VALUE')?.wahHotelId).toBe('deep');
+  });
+
+  it('LUXURY_EXPERIENCE tilts it toward verified reputation', () => {
+    expect(chooseAlternative(subject, candidates, 'LUXURY_EXPERIENCE')?.wahHotelId).toBe('loved');
+  });
+
+  it('any other preference uses the default blend, same as no preference', () => {
+    const noPref = chooseAlternative(subject, candidates);
+    expect(chooseAlternative(subject, candidates, 'FAMILY')?.wahHotelId).toBe(noPref?.wahHotelId);
+    expect(chooseAlternative(subject, candidates, 'GENERAL_VALUE')?.wahHotelId).toBe(
+      noPref?.wahHotelId,
+    );
+  });
+
+  it('a preference never widens eligibility — no candidate within 10% qualifies', () => {
+    const nearPrice = [
+      { wahHotelId: 'near', name: 'Nearly Same Price', nightlyMinor: 95_000, isAvailable: true },
+    ];
+    expect(chooseAlternative(subject, nearPrice, 'BEST_VALUE')).toBeNull();
+  });
+});
+
 describe('chooseAlternative', () => {
   const subject = 85_000;
 

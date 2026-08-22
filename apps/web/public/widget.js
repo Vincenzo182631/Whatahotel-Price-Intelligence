@@ -140,6 +140,32 @@
     LIMITED_DATA: 'wahpi--neutral',
   };
 
+  /**
+   * The preference selector (Phase 6). Values are the API's enum; labels are
+   * the guest's words. GENERAL_VALUE is the default and means "no
+   * personalization" — the widget renders exactly what it rendered before
+   * the selector existed.
+   */
+  var PREFERENCE_OPTIONS = [
+    { value: 'GENERAL_VALUE', label: 'General value' },
+    { value: 'BEST_VALUE', label: 'Best value' },
+    { value: 'LUXURY_EXPERIENCE', label: 'Luxury & experience' },
+    { value: 'LOCATION', label: 'Location' },
+    { value: 'AMENITIES', label: 'Amenities' },
+    { value: 'BEACH_RESORT', label: 'Beach & resort' },
+    { value: 'FAMILY', label: 'Family' },
+    { value: 'NIGHTLIFE', label: 'Nightlife' },
+    { value: 'QUIET_RELAXATION', label: 'Quiet & relaxation' },
+    { value: 'BUSINESS_TRAVEL', label: 'Business travel' },
+  ];
+
+  function preferenceLabel(value) {
+    for (var i = 0; i < PREFERENCE_OPTIONS.length; i++) {
+      if (PREFERENCE_OPTIONS[i].value === value) return PREFERENCE_OPTIONS[i].label;
+    }
+    return null;
+  }
+
   var SCORE_TONE = {
     EXCELLENT: 'wahpi--good',
     GOOD: 'wahpi--good',
@@ -823,6 +849,99 @@
     return wrap;
   }
 
+  /**
+   * "What matters most to you?" — the preference chips.
+   *
+   * Picking one RE-REQUESTS with `preference` rather than re-labelling
+   * what is on screen, exactly like the room picker: the personalized
+   * sections are written and validated server-side, and the widget never
+   * assembles personalized prose from numbers. The choice is fully
+   * reversible — General value restores the un-personalized answer — and
+   * it survives a room-category change, because a preference belongs to
+   * the guest, not to the room.
+   */
+  function renderPreferencePicker(data, state) {
+    if (typeof state.onPreferenceChange !== 'function') return null;
+    var current = state.options.preference || 'GENERAL_VALUE';
+
+    var wrap = el('div', 'wahpi__pref');
+    wrap.appendChild(el('div', 'wahpi__pref-label', 'What matters most to you?'));
+
+    var row = el('div', 'wahpi__pref-chips');
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', 'What matters most to you?');
+    PREFERENCE_OPTIONS.forEach(function (option) {
+      var chip = el(
+        'button',
+        'wahpi__pref-chip' + (option.value === current ? ' wahpi__pref-chip--active' : ''),
+        option.label,
+      );
+      chip.type = 'button';
+      chip.setAttribute('aria-pressed', String(option.value === current));
+      chip.addEventListener('click', function () {
+        if (option.value !== current) state.onPreferenceChange(option.value);
+      });
+      row.appendChild(chip);
+    });
+    wrap.appendChild(row);
+    return wrap;
+  }
+
+  /**
+   * The personalized reading — the SAME facts, through the guest's stated
+   * preference. Absent (General value, or the API produced none), nothing
+   * renders and the panel is exactly its un-personalized self.
+   *
+   * Every sentence here was written and validated server-side. The widget
+   * renders it verbatim: no assembly, no additions, no reordering.
+   */
+  function renderLivePersonalization(data) {
+    var p = data.personalization;
+    if (!p || !p.personalized_insight) return null;
+
+    var wrap = section(null);
+    var box = el('div', 'wahpi__personal');
+    var label = preferenceLabel(p.preference);
+    box.appendChild(
+      el('div', 'wahpi__premium-eyebrow', 'FOR YOUR PRIORITIES' + (label ? ' — ' + label : '')),
+    );
+    box.appendChild(el('div', 'wahpi__personal-insight', p.personalized_insight));
+
+    if (p.why_this_hotel_may_fit && p.why_this_hotel_may_fit.length > 0) {
+      box.appendChild(el('div', 'wahpi__premium-subhead', 'WHY THIS HOTEL MAY FIT YOU'));
+      var fit = el('ul', 'wahpi__personal-list');
+      p.why_this_hotel_may_fit.forEach(function (text) {
+        var item = el('li', 'wahpi__personal-item');
+        item.appendChild(el('span', 'wahpi__personal-mark wahpi--good', '✓'));
+        item.appendChild(el('span', 'wahpi__personal-text', text));
+        fit.appendChild(item);
+      });
+      box.appendChild(fit);
+    }
+
+    if (p.what_to_consider && p.what_to_consider.length > 0) {
+      box.appendChild(el('div', 'wahpi__premium-subhead', 'WHAT TO CONSIDER'));
+      var consider = el('ul', 'wahpi__personal-list');
+      p.what_to_consider.forEach(function (text) {
+        var item = el('li', 'wahpi__personal-item');
+        item.appendChild(el('span', 'wahpi__personal-mark wahpi--neutral', '•'));
+        item.appendChild(el('span', 'wahpi__personal-text', text));
+        consider.appendChild(item);
+      });
+      box.appendChild(consider);
+    }
+
+    box.appendChild(
+      el(
+        'div',
+        'wahpi__premium-confidence',
+        'Tailored view — the score and prices above do not change with your preference.',
+      ),
+    );
+    wrap.appendChild(box);
+    return wrap;
+  }
+
   function renderLiveSubject(data) {
     var wrap = section(null);
     wrap.appendChild(el('h2', null, data.subject.hotel.name));
@@ -1257,10 +1376,12 @@
 
     append(root, renderLiveSubject(data));
     append(root, renderRoomPicker(data, state));
+    append(root, renderPreferencePicker(data, state));
     append(root, renderLivePrice(data));
     append(root, renderLiveVerdict(data));
     append(root, renderLiveExplanation(data));
     append(root, renderLivePremium(data));
+    append(root, renderLivePersonalization(data));
     append(root, renderLiveAlternative(data));
     append(root, renderLiveReputation(data));
     append(root, renderLiveReasons(data));
@@ -1398,6 +1519,11 @@
     if (!live) params.set('include', 'explanation,history,comparables');
     if (options.roomTypeId) params.set('room_type_id', String(options.roomTypeId));
     if (options.currency) params.set('currency', options.currency);
+    // GENERAL_VALUE is the server default; sending nothing keeps the URL —
+    // and any CDN cache entry — identical to the pre-Phase-6 one.
+    if (live && options.preference && options.preference !== 'GENERAL_VALUE') {
+      params.set('preference', options.preference);
+    }
     return (
       base +
       (live ? '/api/v1/live-intelligence?' : '/api/v1/price-intelligence?') +
@@ -1491,6 +1617,21 @@
       // it away — and a REAL stay change does, because a room id belongs to
       // the dates it was priced for. See autoConfig.
       root.__wahpiRoom = { stay: staySignature(next), roomTypeId: roomTypeId };
+      mount(root, next);
+    };
+
+    // Picking a preference re-mounts with it, same shape as the room picker.
+    // Unlike a room id, a preference is the GUEST's property, not the stay's:
+    // it survives room changes and date changes alike, so it is remembered
+    // unconditionally (see autoConfig) until the guest picks another.
+    state.onPreferenceChange = function (preference) {
+      var next = {};
+      for (var key in options) {
+        if (Object.prototype.hasOwnProperty.call(options, key)) next[key] = options[key];
+      }
+      next.preference = preference;
+      next.expanded = state.expanded;
+      root.__wahpiPref = preference;
       mount(root, next);
     };
 
@@ -1806,6 +1947,11 @@
     // dates says nothing about another.
     var pinned = node.__wahpiRoom;
     if (pinned && pinned.stay === staySignature(config)) config.roomTypeId = pinned.roomTypeId;
+    // The preference the guest picked in the panel, or the host template's
+    // default. Guest choice wins, and unlike the room it is NOT keyed to the
+    // stay — what matters to a guest does not change with their dates.
+    if (ds.preference) config.preference = ds.preference;
+    if (node.__wahpiPref) config.preference = node.__wahpiPref;
     if (ds.expanded === 'true') config.expanded = true;
     return config;
   }
@@ -1998,6 +2144,7 @@
         'data-room-type-id',
         'data-model',
         'data-currency',
+        'data-preference',
       ],
     });
   }
