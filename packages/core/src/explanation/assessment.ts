@@ -207,7 +207,7 @@ export function premiumJustificationSummary(level: string): string {
     case 'MODERATE':
       return 'Premium pricing appears partly justified. This room costs more than comparable hotels, and some of that difference is covered by what the rate includes.';
     case 'LOW':
-      return 'Premium pricing may not be justified. This room costs more than comparable hotels without a matching advantage in what the rate includes.';
+      return 'This room is priced above comparable hotels, and the available data does not show additional included value that accounts for the difference.';
     case 'NOT_PREMIUM':
       return 'This room is not priced above comparable hotels, so there is no premium to justify.';
     default:
