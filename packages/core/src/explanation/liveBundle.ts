@@ -43,7 +43,7 @@ import { liveBandLabel, liveVerdictLabel } from '../scoring/liveScore.js';
 import { numeralsIn } from './bundle.js';
 import type { Preference } from './preference.js';
 
-export const LIVE_BUNDLE_VERSION = 4;
+export const LIVE_BUNDLE_VERSION = 5;
 
 /** A rating that survived matching. Rating and count travel together. */
 export interface ReputationFact {
@@ -199,6 +199,14 @@ export interface LiveExplanationBundle {
     readonly perks: readonly string[];
     readonly editorial_summary: string | null;
     readonly review_themes: readonly string[];
+    /**
+     * The verified signal chips, built HERE so the model, the validator
+     * and the renderer share one vocabulary. A model cites these strings
+     * verbatim or its hotel-value draft is rejected — it cannot invent a
+     * badge, and it cannot be failed for not guessing a string it was
+     * never shown.
+     */
+    readonly supporting_signals: readonly string[];
   };
   readonly reputation: {
     /** Null when unmatched, doubtfully matched, or unrated. Never zero. */
@@ -264,6 +272,24 @@ export interface LiveBundleInput {
   } | null;
   readonly maxSentences?: number;
 }
+
+/** Customer-facing chip for each review-theme key the ingest side emits. */
+const THEME_CHIP: Readonly<Record<string, string>> = {
+  service: 'Praised service',
+  location: 'Location',
+  beach: 'Beach',
+  pool: 'Pool',
+  spa: 'Spa',
+  rooms: 'Rooms',
+  dining: 'Dining',
+  views: 'Views',
+  cleanliness: 'Cleanliness',
+  quiet: 'Quiet setting',
+  family: 'Family stays',
+  grounds: 'Grounds',
+};
+
+const MAX_SIGNALS = 4;
 
 const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
   USD: '$',
@@ -489,11 +515,23 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
         unavailable_reason: compression.signal.unavailableReason,
       },
     },
-    hotel_facts: {
-      perks: (input.perks ?? []).slice(0, 6),
-      editorial_summary: input.editorialSummary ?? null,
-      review_themes: (input.reviewThemes ?? []).slice(0, 5),
-    },
+    hotel_facts: (() => {
+      const perks = (input.perks ?? []).slice(0, 6);
+      const themes = (input.reviewThemes ?? []).slice(0, 5);
+      const signals: string[] = [];
+      if (input.reputation) signals.push(`★ ${input.reputation.rating} Google rating`);
+      for (const theme of themes) {
+        const chip = THEME_CHIP[theme];
+        if (chip) signals.push(chip);
+      }
+      for (const perk of perks) signals.push(perk);
+      return {
+        perks,
+        editorial_summary: input.editorialSummary ?? null,
+        review_themes: themes,
+        supporting_signals: signals.slice(0, MAX_SIGNALS),
+      };
+    })(),
     reputation: {
       subject: input.reputation ?? null,
       comparable_median_rating: compMedian === null ? null : round1(compMedian),
