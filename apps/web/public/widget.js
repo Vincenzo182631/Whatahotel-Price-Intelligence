@@ -106,10 +106,10 @@
   }
 
   var PREMIUM_LABEL = {
-    HIGH: 'Premium looks justified',
-    MODERATE: 'Premium partly justified',
-    LOW: 'Premium hard to justify',
-    LIMITED_DATA: 'Priced above the comparable set',
+    HIGH: 'Premium appears supported',
+    MODERATE: 'Premium may be reasonable',
+    LOW: 'Higher-priced option',
+    LIMITED_DATA: 'Limited data',
   };
 
   var PREMIUM_TONE = {
