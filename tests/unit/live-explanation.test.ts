@@ -205,6 +205,34 @@ describe('reputation is context, not a term', () => {
   });
 });
 
+describe('money reaches the model in display form only', () => {
+  it('rejects a draft that presents minor units as a price', () => {
+    // The failure this guards is not hypothetical: the first model-written
+    // explanation in production read total_minor 232676 and wrote "a total
+    // of $232,676" — cents as dollars, a hundredfold overstatement — and
+    // the old allowlist passed it.
+    const bundle = bundleFor({ subjectNightly: 44_200 });
+    const minor = bundle.price.total_minor;
+    const check = validateNarrative(
+      `The stay costs $${minor.toLocaleString('en-US')} in total.`,
+      bundle.constraints,
+    );
+    expect(check.ok).toBe(false);
+    expect(check.violations.join(' ')).toContain(String(minor));
+  });
+
+  it('carries the display forms the prose should copy', () => {
+    const bundle = bundleFor({ subjectNightly: 44_200 });
+    expect(bundle.price.nightly_display).toBe('$442');
+    expect(bundle.price.total_display).toBe('$1,326');
+    // And the major amounts inside them are on the allowlist.
+    const allowed = new Set(bundle.constraints.allowed_numbers);
+    expect(allowed.has(442)).toBe(true);
+    expect(allowed.has(1326)).toBe(true);
+    expect(allowed.has(bundle.price.total_minor)).toBe(false);
+  });
+});
+
 describe('validateNarrative', () => {
   const constraints = { allowed_numbers: [3, 10, 442, 7.2], max_sentences: 3 };
 
