@@ -43,7 +43,7 @@ import { liveBandLabel, liveVerdictLabel } from '../scoring/liveScore.js';
 import { numeralsIn } from './bundle.js';
 import type { Preference } from './preference.js';
 
-export const LIVE_BUNDLE_VERSION = 3;
+export const LIVE_BUNDLE_VERSION = 4;
 
 /** A rating that survived matching. Rating and count travel together. */
 export interface ReputationFact {
@@ -185,6 +185,21 @@ export interface LiveExplanationBundle {
       readonly unavailable_reason: string | null;
     };
   };
+  /**
+   * Verified facts about the PROPERTY itself — the evidence base for "why
+   * you might choose this hotel". Nothing here is inferred: perks are the
+   * source's own preferred-partner inclusions by their curated names, the
+   * editorial summary is Google's own sentence stored verbatim by the
+   * sweep, and review themes are measured over the <=5-review sample
+   * Google returns (positive reviews only — see the ingest themes module).
+   * The sample caveat is part of the fact: themes describe what RECENT
+   * REVIEWERS mention, never what all guests think.
+   */
+  readonly hotel_facts: {
+    readonly perks: readonly string[];
+    readonly editorial_summary: string | null;
+    readonly review_themes: readonly string[];
+  };
   readonly reputation: {
     /** Null when unmatched, doubtfully matched, or unrated. Never zero. */
     readonly subject: ReputationFact | null;
@@ -228,6 +243,10 @@ export interface LiveBundleInput {
   readonly compBasis?: string | null;
   readonly compRoomMatch?: string | null;
   readonly reputation?: ReputationFact | null;
+  /** Perk display names for this hotel, the source's own inclusions. */
+  readonly perks?: readonly string[];
+  readonly editorialSummary?: string | null;
+  readonly reviewThemes?: readonly string[];
   readonly comparableRatings?: readonly number[];
   readonly availability?: {
     readonly position: 'ENTRY' | 'MID' | 'TOP' | null;
@@ -363,6 +382,10 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
   // Dates are numerals too, and a sentence naming the stay would otherwise
   // fail its own validator.
   for (const n of numeralsIn(`${input.checkIn} ${input.checkOut}`)) addNumber(allowed, n);
+  // Numerals inside verified source text ("A 100 hotel credit", Google's
+  // editorial sentence) are quotable facts, not computations.
+  for (const perk of input.perks ?? []) for (const n of numeralsIn(perk)) addNumber(allowed, n);
+  for (const n of numeralsIn(input.editorialSummary ?? '')) addNumber(allowed, n);
   for (const reason of result.reasons) for (const n of numeralsIn(reason)) addNumber(allowed, n);
 
   return {
@@ -465,6 +488,11 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
         sold_out: compression.soldOut,
         unavailable_reason: compression.signal.unavailableReason,
       },
+    },
+    hotel_facts: {
+      perks: (input.perks ?? []).slice(0, 6),
+      editorial_summary: input.editorialSummary ?? null,
+      review_themes: (input.reviewThemes ?? []).slice(0, 5),
     },
     reputation: {
       subject: input.reputation ?? null,

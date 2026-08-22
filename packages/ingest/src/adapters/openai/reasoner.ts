@@ -28,11 +28,14 @@
 
 import {
   deterministicAssessment,
+  deterministicHotelValue,
   deterministicPersonalization,
   renderLiveExplanation,
   validateAssessment,
+  validateHotelValue,
   validateNarrative,
   validatePersonalization,
+  type HotelValue,
   type LiveExplanationBundle,
   type Personalization,
   type PremiumAssessment,
@@ -129,8 +132,31 @@ const SYSTEM_PROMPT = [
   '  on why it suits THIS preference. Empty string when alternative is null.',
   '- evidence_used: same rules and same keys as the assessment.',
   '',
+  'Hotel value: fill the hotel_value object — WHY a guest might choose THIS',
+  "hotel — from the bundle's hotel_facts and reputation ONLY. This is a",
+  'decision aid, never an advertisement.',
+  '- headline: a short phrase (not a sentence about price).',
+  '- summary: 1-3 sentences, at most 80 words, in the consultative register',
+  '  ("may appeal to travelers who…", "recent reviewers mention…"). Explain',
+  '  what is attractive about the property and who it might suit — do NOT',
+  '  restate the premium verdict, do NOT merely repeat the rating number,',
+  '  and do NOT copy the editorial summary verbatim; interpret it.',
+  '- Review themes come from a sample of at most five reviews: say "recent',
+  '  reviewers mention", never "guests say" or "everyone".',
+  '- NEVER invent amenities, awards, restaurants, spas, views, beach access,',
+  '  distances, history, or brand reputation. A fact not in hotel_facts or',
+  '  reputation does not exist. Fame is not evidence: a luxury brand name',
+  '  justifies nothing by itself.',
+  '- No sales language ("book now", "perfect", "guaranteed", "won\'t',
+  '  regret"). No historical pricing ("usually costs", trends). Never "sold',
+  '  out".',
+  '- supporting_facts: choose ONLY from the exact strings the bundle could',
+  '  support — the rating chip, theme chips, perk names. Anything else',
+  '  rejects the draft.',
+  '- Set hotel_value to null when hotel_facts and reputation are both empty.',
+  '',
   'Return JSON: {"summary": "<sentences>", "assessment": {...} | null,',
-  '"personalization": {...} | null}',
+  '"personalization": {...} | null, "hotel_value": {...} | null}',
 ].join('\n');
 
 export interface ReasonerOptions {
@@ -166,6 +192,12 @@ export interface LiveExplanation {
    * otherwise; null when the bundle's preference is GENERAL_VALUE.
    */
   readonly personalization: Personalization | null;
+  /**
+   * "Why you might choose this hotel" (Phase 6.X). MODEL when the draft
+   * passed validation; DETERMINISTIC otherwise; null when the evidence is
+   * too thin to say anything — the section then hides.
+   */
+  readonly hotelValue: HotelValue | null;
   /** Why a draft was rejected, when one was. Empty on the happy path. */
   readonly violations: readonly string[];
   /**
@@ -200,6 +232,7 @@ const asTemplate = (
   source: 'TEMPLATE',
   assessment: deterministicAssessment(bundle),
   personalization: deterministicPersonalization(bundle),
+  hotelValue: deterministicHotelValue(bundle),
   violations,
   failure,
 });
@@ -245,7 +278,8 @@ export class OpenAiReasoner {
   private async draft(
     bundle: LiveExplanationBundle,
   ): Promise<
-    { summary: string; assessment: unknown; personalization: unknown } | { failure: string }
+    | { summary: string; assessment: unknown; personalization: unknown; hotel_value: unknown }
+    | { failure: string }
   > {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -328,8 +362,24 @@ export class OpenAiReasoner {
                     ],
                     additionalProperties: false,
                   },
+                  hotel_value: {
+                    // Null when the bundle carries no property evidence.
+                    // The real gate is validateHotelValue: allowlisted
+                    // numerals, no sales or historical-pricing language,
+                    // and supporting_facts restricted to the exact signal
+                    // strings the code itself builds from the facts.
+                    type: ['object', 'null'],
+                    properties: {
+                      headline: { type: 'string' },
+                      summary: { type: 'string' },
+                      supporting_facts: { type: 'array', items: { type: 'string' } },
+                      evidence_used: { type: 'array', items: { type: 'string' } },
+                    },
+                    required: ['headline', 'summary', 'supporting_facts', 'evidence_used'],
+                    additionalProperties: false,
+                  },
                 },
-                required: ['summary', 'assessment', 'personalization'],
+                required: ['summary', 'assessment', 'personalization', 'hotel_value'],
                 additionalProperties: false,
               },
             },
@@ -367,12 +417,14 @@ export class OpenAiReasoner {
         summary?: unknown;
         assessment?: unknown;
         personalization?: unknown;
+        hotel_value?: unknown;
       };
       if (typeof parsed.summary !== 'string') return { failure: 'malformed_completion' };
       return {
         summary: parsed.summary.trim(),
         assessment: parsed.assessment ?? null,
         personalization: parsed.personalization ?? null,
+        hotel_value: parsed.hotel_value ?? null,
       };
     } catch {
       // Timeout or transport failure. Indistinguishable from out here, and
@@ -447,12 +499,30 @@ export class OpenAiReasoner {
       }
     }
 
+    // And again for the hotel-value reading: the model draft passes the
+    // gate or the deterministic reading ships; too little evidence means
+    // null on both paths and the section hides.
+    const deterministicHV = deterministicHotelValue(bundle);
+    let hotelValue = deterministicHV;
+    if (deterministicHV !== null) {
+      const hvCheck = validateHotelValue(draft.hotel_value, bundle);
+      if (hvCheck.ok) hotelValue = hvCheck.value;
+      else if (hvCheck.violations.length > 0) {
+        this.onResult?.({
+          source: 'MODEL',
+          ms: this.now() - started,
+          violations: hvCheck.violations.map((v) => `hotel_value: ${v}`),
+        });
+      }
+    }
+
     const value: LiveExplanation = {
       text: draft.summary,
       sentences: draft.summary.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0),
       source: 'MODEL',
       assessment,
       personalization,
+      hotelValue,
       violations: [],
       failure: null,
     };

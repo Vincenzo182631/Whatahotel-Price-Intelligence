@@ -17,6 +17,13 @@ export interface HotelReputation {
   readonly displayName: string | null;
   readonly formattedAddress: string | null;
   readonly mapsUri: string | null;
+  /** Google's own short description of the place. Never our words. */
+  readonly editorialSummary: string | null;
+  /**
+   * Theme tags measured over the review SAMPLE Google returns (<=5 reviews,
+   * positive ones only). "Recent reviewers mention", never "guests say".
+   */
+  readonly reviewThemes: readonly string[];
   readonly fetchedAt: string | null;
 }
 
@@ -39,6 +46,8 @@ export interface ResolutionResult {
   readonly displayName?: string | null;
   readonly formattedAddress?: string | null;
   readonly mapsUri?: string | null;
+  readonly editorialSummary?: string | null;
+  readonly reviewThemes?: readonly string[] | null;
 }
 
 const toReputation = (row: Record<string, unknown>): HotelReputation => ({
@@ -52,6 +61,8 @@ const toReputation = (row: Record<string, unknown>): HotelReputation => ({
   displayName: (row.google_display_name as string) ?? null,
   formattedAddress: (row.google_formatted_address as string) ?? null,
   mapsUri: (row.google_maps_uri as string) ?? null,
+  editorialSummary: (row.google_editorial_summary as string) ?? null,
+  reviewThemes: (row.google_review_themes as string[]) ?? [],
   fetchedAt: row.google_fetched_at ? (row.google_fetched_at as Date).toISOString() : null,
 });
 
@@ -72,7 +83,7 @@ export async function findVerifiedReputations(
   const { rows } = await db(q).query(
     `SELECT id, google_place_id, google_rating, google_user_rating_count,
             google_display_name, google_formatted_address, google_maps_uri,
-            google_fetched_at
+            google_editorial_summary, google_review_themes, google_fetched_at
        FROM hotel
       WHERE id = ANY($1::int[])
         AND google_match_status = 'VERIFIED'
@@ -101,7 +112,7 @@ export async function findVerifiedReputationsByWahIds(
   const { rows } = await db(q).query(
     `SELECT id, wah_hotel_id, google_place_id, google_rating, google_user_rating_count,
             google_display_name, google_formatted_address, google_maps_uri,
-            google_fetched_at
+            google_editorial_summary, google_review_themes, google_fetched_at
        FROM hotel
       WHERE wah_hotel_id = ANY($1::text[])
         AND google_match_status = 'VERIFIED'
@@ -182,6 +193,8 @@ export async function saveResolution(
             google_display_name      = $7,
             google_formatted_address = $8,
             google_maps_uri          = $9,
+            google_editorial_summary = $10,
+            google_review_themes     = $11,
             google_fetched_at        = now()
       WHERE id = $1`,
     [
@@ -194,6 +207,8 @@ export async function saveResolution(
       verified ? (result.displayName ?? null) : null,
       verified ? (result.formattedAddress ?? null) : null,
       verified ? (result.mapsUri ?? null) : null,
+      verified ? (result.editorialSummary ?? null) : null,
+      verified ? (result.reviewThemes ?? null) : null,
     ],
   );
 }

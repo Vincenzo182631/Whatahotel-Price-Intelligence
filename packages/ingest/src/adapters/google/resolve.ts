@@ -18,6 +18,7 @@
 import type { PlaceCandidate } from './match.js';
 import { bestMatch } from './match.js';
 import type { PlacesClient, PlaceReputation } from './places.js';
+import { extractReviewThemes } from './themes.js';
 
 export interface ResolvableHotel {
   readonly hotelId: number;
@@ -38,6 +39,10 @@ export interface ResolutionOutcome {
   readonly displayName: string | null;
   readonly formattedAddress: string | null;
   readonly mapsUri: string | null;
+  /** Google's own short description of the place, verbatim. */
+  readonly editorialSummary: string | null;
+  /** Themes measured over the review sample. See themes.ts for the rules. */
+  readonly reviewThemes: readonly string[];
   /** Why we landed here — for the sweep log, never for the guest. */
   readonly reasons: readonly string[];
 }
@@ -60,13 +65,21 @@ const reputationOf = (
   fallback: PlaceCandidate,
 ): Pick<
   ResolutionOutcome,
-  'rating' | 'userRatingCount' | 'displayName' | 'formattedAddress' | 'mapsUri'
+  | 'rating'
+  | 'userRatingCount'
+  | 'displayName'
+  | 'formattedAddress'
+  | 'mapsUri'
+  | 'editorialSummary'
+  | 'reviewThemes'
 > => ({
   rating: place?.rating ?? null,
   userRatingCount: place?.userRatingCount ?? null,
   displayName: place?.displayName ?? fallback.displayName,
   formattedAddress: place?.formattedAddress ?? fallback.formattedAddress,
   mapsUri: place?.mapsUri ?? null,
+  editorialSummary: place?.editorialSummary ?? null,
+  reviewThemes: place ? extractReviewThemes(place.reviews) : [],
 });
 
 export async function resolveHotel(
@@ -91,6 +104,8 @@ export async function resolveHotel(
       displayName: place.displayName,
       formattedAddress: place.formattedAddress,
       mapsUri: place.mapsUri,
+      editorialSummary: place.editorialSummary,
+      reviewThemes: extractReviewThemes(place.reviews),
       reasons: ['refresh of an existing mapping'],
     };
   }
@@ -123,6 +138,8 @@ export async function resolveHotel(
       displayName: null,
       formattedAddress: null,
       mapsUri: null,
+      editorialSummary: null,
+      reviewThemes: [],
       reasons: ['Google returned no lodging for this query'],
     };
   }
@@ -141,6 +158,8 @@ export async function resolveHotel(
       displayName: null,
       formattedAddress: null,
       mapsUri: null,
+      editorialSummary: null,
+      reviewThemes: [],
       reasons: [`best candidate below ${minConfidence}`],
     };
   }

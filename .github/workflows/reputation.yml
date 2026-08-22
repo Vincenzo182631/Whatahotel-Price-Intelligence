@@ -35,6 +35,13 @@ on:
         type: boolean
         required: false
         default: false
+      refresh_hours:
+        description: >-
+          Refresh VERIFIED hotels older than this many hours (default 168).
+          Set low (e.g. 1) ONLY for a deliberate backfill — every refreshed
+          hotel is a billed Place Details call.
+        required: false
+        default: ''
 
 # One sweep at a time. Two overlapping runs would pay twice for the same
 # lookups and race on the same hotel rows.
@@ -50,6 +57,8 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+      # Empty means the code default (168h). See the input description.
+      GOOGLE_PLACES_REFRESH_HOURS: ${{ inputs.refresh_hours }}
 
     steps:
       - uses: actions/checkout@v4

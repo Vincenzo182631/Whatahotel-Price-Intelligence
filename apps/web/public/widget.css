@@ -918,3 +918,41 @@
     white-space: normal;
   }
 }
+
+/* ── why you might choose this hotel (Phase 6.X) ────────────────────────
+   The decision's other half, in the space the redundant verdict sub-copy
+   used to fill. Evidence chips only — never marketing badges. */
+
+.wahpi__why {
+  border: 1px solid var(--wahpi-line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--wahpi-bg-soft);
+}
+
+.wahpi__why-headline {
+  font-size: 0.95rem;
+  font-weight: 650;
+  margin-top: 2px;
+}
+
+.wahpi__why-text {
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+.wahpi__why-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.wahpi__why-signal {
+  font-size: 0.76rem;
+  padding: 3px 9px;
+  border: 1px solid var(--wahpi-line);
+  border-radius: 999px;
+  background: var(--wahpi-bg);
+  color: var(--wahpi-fg);
+}

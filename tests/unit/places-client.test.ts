@@ -114,7 +114,7 @@ describe('details', () => {
     const place = await client().details('p1');
     const [, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
     expect((init.headers as Record<string, string>)['X-Goog-FieldMask']).toBe(
-      'id,displayName,formattedAddress,location,rating,userRatingCount,googleMapsUri',
+      'id,displayName,formattedAddress,location,rating,userRatingCount,googleMapsUri,editorialSummary,reviews',
     );
     expect(place?.rating).toBe(4.6);
     expect(place?.userRatingCount).toBe(3200);

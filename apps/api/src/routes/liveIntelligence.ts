@@ -358,6 +358,8 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
    * basis for.
    */
   let subjectReputation: ReputationFact | null = null;
+  let subjectEditorialSummary: string | null = null;
+  let subjectReviewThemes: readonly string[] = [];
   let comparableRatings: number[] = [];
   let competitorReputations = new Map<
     string,
@@ -377,6 +379,12 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         review_count: mine.userRatingCount,
         display_name: mine.displayName,
       };
+    }
+    // Property evidence for the hotel-value reading — VERIFIED rows only,
+    // same guarantee as the rating itself.
+    if (mine) {
+      subjectEditorialSummary = mine.editorialSummary;
+      subjectReviewThemes = mine.reviewThemes;
     }
     comparableRatings = [...comps.values()]
       .map((r) => r.rating)
@@ -434,6 +442,9 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     compBasis: loaded.compBasis,
     compRoomMatch: loaded.compRoomMatch,
     reputation: subjectReputation,
+    perks: loaded.benefitNames,
+    editorialSummary: subjectEditorialSummary,
+    reviewThemes: subjectReviewThemes,
     comparableRatings,
     availability: loaded.availability,
     alternative: alternative
@@ -609,6 +620,27 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
           }
         : null,
     },
+
+    /**
+     * WHY YOU MIGHT CHOOSE THIS HOTEL (Phase 6.X) — the other half of the
+     * decision. Price Intelligence says how the price compares; this says
+     * what is attractive about the property, from evidence only: the
+     * verified rating, themes measured over Google's review sample, the
+     * source's own perk inclusions, and Google's editorial sentence. The
+     * supporting signals are code-built chips a model can cite but never
+     * invent. Null when the evidence is too thin — the widget then hides
+     * the section rather than stretching (hide, don't break).
+     */
+    hotel_value: explanation.hotelValue
+      ? {
+          headline: explanation.hotelValue.headline,
+          summary: explanation.hotelValue.summary,
+          supporting_signals: explanation.hotelValue.supporting_facts,
+          confidence: explanation.hotelValue.confidence,
+          evidence_used: explanation.hotelValue.evidence_used,
+          source: explanation.hotelValue.source,
+        }
+      : null,
 
     /**
      * Where the selected rate sits in the hotel's currently available
