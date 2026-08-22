@@ -60,6 +60,11 @@ jobs:
       - name: Start the API
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # With the key, the probe exercises the full reasoning chain and
+          # api.log carries any draft-rejection reasons — the one place we
+          # can read them, since the probe prints the log and Vercel's are
+          # out of reach. redact() and the reasoner never log the key.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           npm run api > api.log 2>&1 &
           echo $! > api.pid

@@ -99,6 +99,15 @@ function liveReasoner(): OpenAiReasoner | null {
       model: settings.model,
       timeoutMs: settings.timeoutMs,
       cacheMinutes: settings.cacheMinutes,
+      // Server log only. A component draft (assessment, personalization,
+      // hotel_value) that fails validation falls back silently in the
+      // response; without this line nothing anywhere says WHY, and the
+      // first deployment of each component has needed exactly that answer.
+      onResult: (info) => {
+        if (info.violations.length > 0) {
+          console.error('reasoner draft rejected:', info.violations.slice(0, 6).join('; '));
+        }
+      },
     });
   }
   return reasoner;
