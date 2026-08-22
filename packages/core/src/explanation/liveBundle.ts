@@ -289,7 +289,12 @@ const THEME_CHIP: Readonly<Record<string, string>> = {
   grounds: 'Grounds',
 };
 
-const MAX_SIGNALS = 4;
+/**
+ * The CITABLE vocabulary is wider than the DISPLAYED chips: a model citing
+ * a genuine perk that didn't fit the four-chip display is not inventing
+ * anything. Display capping happens at render time (hotelValue.ts).
+ */
+const MAX_SIGNALS = 8;
 
 const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
   USD: '$',

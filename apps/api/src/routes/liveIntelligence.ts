@@ -644,7 +644,9 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       ? {
           headline: explanation.hotelValue.headline,
           summary: explanation.hotelValue.summary,
-          supporting_signals: explanation.hotelValue.supporting_facts,
+          // Display cap: the validator accepts the full citable vocabulary,
+          // the widget shows at most four chips.
+          supporting_signals: explanation.hotelValue.supporting_facts.slice(0, 4),
           confidence: explanation.hotelValue.confidence,
           evidence_used: explanation.hotelValue.evidence_used,
           source: explanation.hotelValue.source,

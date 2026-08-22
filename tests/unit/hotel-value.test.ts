@@ -114,12 +114,20 @@ describe('extractReviewThemes (ingest)', () => {
 });
 
 describe('supportingSignals', () => {
-  it('builds chips from facts, rating first, capped at four', () => {
+  it('builds the citable vocabulary from facts, rating first', () => {
     const signals = supportingSignals(bundle());
     expect(signals[0]).toBe('★ 4.6 Google rating');
     expect(signals).toContain('Praised service');
     expect(signals).toContain('Beach');
-    expect(signals.length).toBeLessThanOrEqual(4);
+    // Every genuine perk is citable, even ones beyond the display cap.
+    expect(signals).toContain('Breakfast for two');
+    expect(signals).toContain('Hotel credit');
+    expect(signals.length).toBeLessThanOrEqual(8);
+  });
+
+  it('displays at most four chips', () => {
+    const hv = deterministicHotelValue(bundle());
+    expect(hv?.supporting_facts.length).toBeLessThanOrEqual(4);
   });
 
   it('is empty when there is nothing verified to show', () => {
@@ -207,6 +215,12 @@ describe('validateHotelValue', () => {
       'Guests rate this property 4.6 out of 5, and recent reviewers mention service and the beach. Booking here also carries breakfast for two.',
     supporting_facts: ['★ 4.6 Google rating', 'Beach'],
     evidence_used: ['google_rating', 'google_review_themes', 'hotel_perks'],
+  });
+
+  it('accepts a draft citing a perk beyond the display cap', () => {
+    const draft = { ...valid(), supporting_facts: ['★ 4.6 Google rating', 'Hotel credit'] };
+    const check = validateHotelValue(draft, bundle());
+    expect(check.ok).toBe(true);
   });
 
   it('accepts a grounded draft, computing confidence itself', () => {

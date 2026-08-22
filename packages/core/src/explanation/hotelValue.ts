@@ -28,6 +28,9 @@ import type { LiveExplanationBundle } from './liveBundle.js';
 import { validateNarrative } from './validate.js';
 import type { AssessmentConfidence } from './assessment.js';
 
+/** At most this many chips are DISPLAYED; the citable list is wider. */
+export const MAX_DISPLAY_SIGNALS = 4;
+
 export const HOTEL_VALUE_EVIDENCE = [
   'google_rating',
   'google_review_themes',
@@ -179,7 +182,7 @@ export function deterministicHotelValue(bundle: LiveExplanationBundle): HotelVal
   return {
     headline,
     summary: sentences.slice(0, 3).join(' '),
-    supporting_facts: supportingSignals(bundle),
+    supporting_facts: supportingSignals(bundle).slice(0, MAX_DISPLAY_SIGNALS),
     confidence: hotelValueConfidence(bundle),
     evidence_used: [...evidence],
     source: 'DETERMINISTIC',

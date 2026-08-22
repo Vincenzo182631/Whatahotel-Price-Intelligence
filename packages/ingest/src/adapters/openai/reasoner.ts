@@ -377,7 +377,24 @@ export class OpenAiReasoner {
                       headline: { type: 'string' },
                       summary: { type: 'string' },
                       supporting_facts: { type: 'array', items: { type: 'string' } },
-                      evidence_used: { type: 'array', items: { type: 'string' } },
+                      evidence_used: {
+                        type: 'array',
+                        // Enforced by the SCHEMA, not by hoping the model
+                        // read the prompt: the first live drafts invented
+                        // keys like "hotel_facts".
+                        items: {
+                          type: 'string',
+                          enum: [
+                            'google_rating',
+                            'google_review_themes',
+                            'google_editorial_summary',
+                            'hotel_perks',
+                            'hotel_location',
+                            'room_category',
+                            'availability',
+                          ],
+                        },
+                      },
                     },
                     required: ['headline', 'summary', 'supporting_facts', 'evidence_used'],
                     additionalProperties: false,
