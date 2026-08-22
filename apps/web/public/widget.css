@@ -225,6 +225,58 @@
   font-size: 0.86rem;
   color: var(--wahpi-muted);
 }
+.wahpi__premium-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--wahpi-muted);
+  margin-bottom: 4px;
+}
+.wahpi__premium-subhead {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--wahpi-muted);
+  margin-top: 10px;
+}
+.wahpi__premium-availability {
+  font-size: 0.84rem;
+  color: var(--wahpi-fg);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed currentColor;
+}
+
+/* An option laid beside the choice, never a pitch over it. */
+.wahpi__alternative {
+  border: 1px solid var(--wahpi-border, #ddd);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.wahpi__alternative-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.wahpi__alternative-name {
+  font-weight: 650;
+}
+.wahpi__alternative-price {
+  font-weight: 650;
+  white-space: nowrap;
+}
+.wahpi__alternative-save {
+  font-size: 0.86rem;
+  margin-top: 2px;
+}
+.wahpi__alternative-rating,
+.wahpi__alternative-reason {
+  font-size: 0.82rem;
+  color: var(--wahpi-muted);
+  margin-top: 4px;
+}
+
 /* Stated, not implied: a rating sitting beside a score reads as part of it. */
 .wahpi__reputation-note {
   font-size: 0.76rem;

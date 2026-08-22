@@ -34,6 +34,23 @@ export type AssessmentLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT_DATA';
 export type AssessmentConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
 
 /**
+ * The customer-facing framing of the verdict. Computed HERE, never by the
+ * model: which frame a customer sees is a policy decision, and Phase 5's
+ * policy is consultative — the intelligence stays exactly as sharp, the
+ * language stops sounding like a hotel critic. LIMITED_AVAILABILITY is the
+ * frame for the case the price ratio cannot see: the premium is real, but
+ * the hotel's lower-priced categories are currently unavailable, so the
+ * available rate represents a higher room category.
+ */
+export type PremiumPosition =
+  | 'PREMIUM_APPEARS_SUPPORTED'
+  | 'PREMIUM_MAY_BE_REASONABLE'
+  | 'HIGHER_PRICED_OPTION'
+  | 'SIGNIFICANT_PREMIUM'
+  | 'SIGNIFICANT_PREMIUM_LIMITED_AVAILABILITY'
+  | 'LIMITED_DATA';
+
+/**
  * The only evidence the assessment may cite, each key backed by a presence
  * test against the bundle. Citing evidence the bundle does not carry is the
  * text form of inventing data, and it rejects the whole draft.
@@ -49,12 +66,25 @@ export const ASSESSMENT_EVIDENCE = [
   'room_match',
   'calendar_position',
   'market_availability',
+  'availability_position',
 ] as const;
 export type AssessmentEvidence = (typeof ASSESSMENT_EVIDENCE)[number];
 
 export interface PremiumAssessment {
   readonly level: AssessmentLevel;
+  /** The customer-facing frame. Always computed, never model-chosen. */
+  readonly position: PremiumPosition;
   readonly reasoning: string;
+  /**
+   * "What you're paying more for" — names only supplied evidence, or says
+   * plainly that the data does not identify what accounts for the
+   * difference. Empty string when there is nothing to say.
+   */
+  readonly paying_more_for: string;
+  /** The inventory situation, when it bears on the comparison. */
+  readonly availability_context: string;
+  /** Why the chosen alternative is relevant. Empty when there is none. */
+  readonly alternative_reason: string;
   readonly key_positive_factors: readonly string[];
   readonly key_negative_factors: readonly string[];
   readonly confidence: AssessmentConfidence;
@@ -109,6 +139,7 @@ export function evidencePresent(bundle: LiveExplanationBundle): Set<AssessmentEv
   if (comps.room_match !== null) present.add('room_match');
   if (bundle.market.calendar.available) present.add('calendar_position');
   if (bundle.market.compression.available) present.add('market_availability');
+  if (bundle.availability.available_categories > 0) present.add('availability_position');
   return present;
 }
 
@@ -119,6 +150,54 @@ const DETERMINISTIC_LEVEL: Record<string, AssessmentLevel | null> = {
   LIMITED_DATA: 'INSUFFICIENT_DATA',
   NOT_PREMIUM: null,
 };
+
+/**
+ * The customer-facing frame for a verdict, from the facts alone.
+ *
+ * The availability-influenced frame outranks the plain ones: when the
+ * hotel's lower categories are provably unavailable, describing the premium
+ * without saying so would be accurate arithmetic and a wrong impression.
+ */
+export function premiumPosition(
+  level: AssessmentLevel,
+  premiumPct: number | null,
+  availabilityInfluenced: boolean,
+): PremiumPosition {
+  if (level === 'INSUFFICIENT_DATA' && !availabilityInfluenced) return 'LIMITED_DATA';
+  if (availabilityInfluenced && premiumPct !== null && premiumPct >= 25) {
+    return 'SIGNIFICANT_PREMIUM_LIMITED_AVAILABILITY';
+  }
+  switch (level) {
+    case 'HIGH':
+      return 'PREMIUM_APPEARS_SUPPORTED';
+    case 'MEDIUM':
+      return 'PREMIUM_MAY_BE_REASONABLE';
+    case 'LOW':
+      return premiumPct !== null && premiumPct >= 50
+        ? 'SIGNIFICANT_PREMIUM'
+        : 'HIGHER_PRICED_OPTION';
+    default:
+      return 'LIMITED_DATA';
+  }
+}
+
+/**
+ * The availability sentence the system can stand behind with no model.
+ *
+ * Says "currently unavailable", never "sold out": the source reports a whole
+ * stay as sold out, never an individual category, and this system does not
+ * put words in its mouth.
+ */
+export function availabilityContextSentence(bundle: LiveExplanationBundle): string {
+  const a = bundle.availability;
+  if (a.availability_influenced) {
+    return 'Lower-priced room categories at this property are currently unavailable, so the available rate represents a higher room category. That availability difference is influencing this comparison.';
+  }
+  if (bundle.market.comp_set.room_match === 'ANY') {
+    return 'Room-category availability may be influencing this comparison: the comparable rates are for whatever categories those hotels currently offer, which may differ from the selected category.';
+  }
+  return '';
+}
 
 /** Plain language for each deterministic level, shared with the API summary. */
 export function premiumJustificationSummary(level: string): string {
@@ -153,9 +232,25 @@ export function deterministicAssessment(bundle: LiveExplanationBundle): PremiumA
       : 'INSUFFICIENT_DATA';
   if (level === null || level === undefined) return null;
   const comps = bundle.market.comp_set;
+  const diff = bundle.premium.price_difference_display;
   return {
     level,
+    position: premiumPosition(
+      level,
+      bundle.premium.premium_pct,
+      bundle.availability.availability_influenced,
+    ),
     reasoning: premiumJustificationSummary(bundle.premium.level),
+    paying_more_for:
+      diff !== null &&
+      bundle.premium.price_difference_nightly_minor !== null &&
+      bundle.premium.price_difference_nightly_minor > 0
+        ? `You're paying about ${diff} more per night than the comparable median. The available data does not clearly identify what accounts for the full difference.`
+        : '',
+    availability_context: availabilityContextSentence(bundle),
+    alternative_reason: bundle.alternative
+      ? 'A comparable stay is currently available at a lower rate.'
+      : '',
     key_positive_factors: [],
     key_negative_factors: [],
     confidence: evidenceConfidence(
@@ -206,17 +301,31 @@ export function validateAssessment(
   }
 
   const textConstraints = { ...bundle.constraints, max_sentences: 4 };
-  const texts: Array<[string, unknown, number]> = [
-    ['reasoning', a.reasoning, 4],
-    ['recommendation', a.recommendation, 2],
+  const texts: Array<[string, unknown, number, boolean]> = [
+    ['reasoning', a.reasoning, 4, true],
+    ['recommendation', a.recommendation, 2, true],
+    ['paying_more_for', a.paying_more_for, 2, false],
+    ['availability_context', a.availability_context, 2, false],
+    ['alternative_reason', a.alternative_reason, 2, false],
   ];
-  for (const [name, value, maxSentences] of texts) {
+  for (const [name, value, maxSentences, required] of texts) {
     if (typeof value !== 'string' || value.trim().length === 0) {
-      violations.push(`${name}: empty`);
+      if (required) violations.push(`${name}: empty`);
       continue;
     }
     const check = validateNarrative(value, { ...textConstraints, max_sentences: maxSentences });
     for (const v of check.violations) violations.push(`${name}: ${v}`);
+  }
+
+  // The model may not claim an alternative that was not chosen, and may not
+  // describe inventory the availability signal does not show. Text about
+  // absent things is invention wearing prose.
+  if (
+    typeof a.alternative_reason === 'string' &&
+    a.alternative_reason.trim().length > 0 &&
+    bundle.alternative === null
+  ) {
+    violations.push('alternative_reason: no alternative was chosen');
   }
 
   const factors: Array<[string, unknown]> = [
@@ -266,12 +375,25 @@ export function validateAssessment(
   if (violations.length > 0) return fail();
 
   const comps = bundle.market.comp_set;
+  const level = a.level as AssessmentLevel;
   return {
     ok: true,
     violations: [],
     value: {
-      level: a.level as AssessmentLevel,
+      level,
+      position: premiumPosition(
+        level,
+        bundle.premium.premium_pct,
+        bundle.availability.availability_influenced,
+      ),
       reasoning: (a.reasoning as string).trim(),
+      paying_more_for: typeof a.paying_more_for === 'string' ? a.paying_more_for.trim() : '',
+      availability_context:
+        typeof a.availability_context === 'string' && a.availability_context.trim().length > 0
+          ? a.availability_context.trim()
+          : availabilityContextSentence(bundle),
+      alternative_reason:
+        typeof a.alternative_reason === 'string' ? a.alternative_reason.trim() : '',
       key_positive_factors: (a.key_positive_factors as string[]).map((s) => s.trim()),
       key_negative_factors: (a.key_negative_factors as string[]).map((s) => s.trim()),
       confidence: evidenceConfidence(

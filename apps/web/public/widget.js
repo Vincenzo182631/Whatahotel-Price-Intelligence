@@ -119,18 +119,25 @@
     LIMITED_DATA: 'wahpi--neutral',
   };
 
-  var ASSESSMENT_LABEL = {
-    HIGH: 'Premium justification: HIGH',
-    MEDIUM: 'Premium justification: MEDIUM',
-    LOW: 'Premium justification: LOW',
-    INSUFFICIENT_DATA: 'Premium justification: not enough evidence',
+  // Consultative frames, keyed on the API's `position`. The intelligence
+  // underneath is unchanged; the customer-facing register is an advisor's,
+  // not a critic's — no "LOW", no "bad", no verdict on the guest's choice.
+  var POSITION_LABEL = {
+    PREMIUM_APPEARS_SUPPORTED: 'Premium appears supported',
+    PREMIUM_MAY_BE_REASONABLE: 'Premium may be reasonable',
+    HIGHER_PRICED_OPTION: 'Higher-priced option',
+    SIGNIFICANT_PREMIUM: 'Significant premium',
+    SIGNIFICANT_PREMIUM_LIMITED_AVAILABILITY: 'Significant premium — limited availability',
+    LIMITED_DATA: 'Limited data',
   };
 
-  var ASSESSMENT_TONE = {
-    HIGH: 'wahpi--good',
-    MEDIUM: 'wahpi--neutral',
-    LOW: 'wahpi--bad',
-    INSUFFICIENT_DATA: 'wahpi--neutral',
+  var POSITION_TONE = {
+    PREMIUM_APPEARS_SUPPORTED: 'wahpi--good',
+    PREMIUM_MAY_BE_REASONABLE: 'wahpi--neutral',
+    HIGHER_PRICED_OPTION: 'wahpi--neutral',
+    SIGNIFICANT_PREMIUM: 'wahpi--warn',
+    SIGNIFICANT_PREMIUM_LIMITED_AVAILABILITY: 'wahpi--warn',
+    LIMITED_DATA: 'wahpi--neutral',
   };
 
   var SCORE_TONE = {
@@ -968,11 +975,20 @@
     var wrap = section(null);
     var box;
     if (assessment) {
-      box = el('div', 'wahpi__premium ' + (ASSESSMENT_TONE[assessment.level] || 'wahpi--neutral'));
+      var frame = assessment.position;
+      box = el('div', 'wahpi__premium ' + (POSITION_TONE[frame] || 'wahpi--neutral'));
+      box.appendChild(el('div', 'wahpi__premium-eyebrow', 'PREMIUM INSIGHT'));
       box.appendChild(
-        el('div', 'wahpi__premium-label', ASSESSMENT_LABEL[assessment.level] || 'Premium pricing'),
+        el('div', 'wahpi__premium-label', POSITION_LABEL[frame] || 'Premium pricing'),
       );
       box.appendChild(el('div', 'wahpi__premium-text', assessment.reasoning));
+      if (assessment.availability_context) {
+        box.appendChild(el('div', 'wahpi__premium-availability', assessment.availability_context));
+      }
+      if (assessment.paying_more_for) {
+        box.appendChild(el('div', 'wahpi__premium-subhead', "WHAT YOU'RE PAYING MORE FOR"));
+        box.appendChild(el('div', 'wahpi__premium-text', assessment.paying_more_for));
+      }
       box.appendChild(
         el(
           'div',
@@ -992,6 +1008,48 @@
       );
       box.appendChild(el('div', 'wahpi__premium-text', premium.summary));
     }
+    wrap.appendChild(box);
+    return wrap;
+  }
+
+  /**
+   * The better-value alternative — information, not a pitch.
+   *
+   * One comparable at a meaningfully lower current rate, chosen server-side
+   * by saving AND verified reputation. Absent, nothing renders: the widget
+   * never stretches for an alternative that is not really one, and it never
+   * tells the guest what to book.
+   */
+  function renderLiveAlternative(data) {
+    var alt = data.alternative;
+    if (!alt) return null;
+
+    var wrap = section(null);
+    var box = el('div', 'wahpi__alternative');
+    box.appendChild(el('div', 'wahpi__premium-eyebrow', 'BETTER VALUE ALTERNATIVE'));
+    var head = el('div', 'wahpi__alternative-head');
+    head.appendChild(el('span', 'wahpi__alternative-name', alt.name));
+    head.appendChild(el('span', 'wahpi__alternative-price', formatMoney(alt.nightly) + '/night'));
+    box.appendChild(head);
+    box.appendChild(
+      el(
+        'div',
+        'wahpi__alternative-save',
+        'Save about ' + formatMoney(alt.save_nightly) + '/night',
+      ),
+    );
+    if (alt.rating !== null && alt.rating !== undefined) {
+      box.appendChild(
+        el(
+          'div',
+          'wahpi__alternative-rating',
+          alt.rating.toFixed(1) +
+            ' / 5 on Google' +
+            (alt.review_count ? ' · ' + alt.review_count.toLocaleString() + ' reviews' : ''),
+        ),
+      );
+    }
+    if (alt.reason) box.appendChild(el('div', 'wahpi__alternative-reason', alt.reason));
     wrap.appendChild(box);
     return wrap;
   }
@@ -1203,6 +1261,7 @@
     append(root, renderLiveVerdict(data));
     append(root, renderLiveExplanation(data));
     append(root, renderLivePremium(data));
+    append(root, renderLiveAlternative(data));
     append(root, renderLiveReputation(data));
     append(root, renderLiveReasons(data));
     append(root, renderLiveDetails(data, state));

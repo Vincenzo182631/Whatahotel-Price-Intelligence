@@ -42,7 +42,7 @@ import type { LiveScoreResult } from '../scoring/liveScore.js';
 import { liveBandLabel, liveVerdictLabel } from '../scoring/liveScore.js';
 import { numeralsIn } from './bundle.js';
 
-export const LIVE_BUNDLE_VERSION = 1;
+export const LIVE_BUNDLE_VERSION = 2;
 
 /** A rating that survived matching. Rating and count travel together. */
 export interface ReputationFact {
@@ -103,7 +103,42 @@ export interface LiveExplanationBundle {
     readonly included_value_nightly_minor: number | null;
     readonly comparable_included_value_nightly_minor: number | null;
     readonly comparables_with_included_value: number;
+    /** Subject nightly minus the comparable median, when both are known. */
+    readonly price_difference_nightly_minor: number | null;
+    /** The same figure as prose should carry it ("$230"). */
+    readonly price_difference_display: string | null;
   };
+  /**
+   * Where the selected rate sits in the hotel's currently available
+   * inventory. This is what separates "an expensive hotel" from "a hotel
+   * whose lower-priced categories are currently unavailable" — two
+   * situations a price ratio cannot tell apart. Nothing here is inferred:
+   * `lower_categories_unavailable` is true only when the catalogue provably
+   * carries an entry class and none of it is available today, and no field
+   * ever claims a category is sold out.
+   */
+  readonly availability: {
+    readonly selected_position: 'ENTRY' | 'MID' | 'TOP' | null;
+    readonly available_categories: number;
+    readonly cheaper_categories_available: number;
+    readonly entry_class_available: boolean;
+    readonly lower_categories_unavailable: boolean;
+    readonly availability_influenced: boolean;
+  };
+  /**
+   * The most relevant lower-priced comparable, chosen deterministically
+   * (chooseAlternative). Null when nothing genuinely qualifies. The model
+   * may explain it; it may not choose it or invent one.
+   */
+  readonly alternative: {
+    readonly name: string;
+    readonly nightly_minor: number;
+    readonly nightly_display: string;
+    readonly save_nightly_minor: number;
+    readonly save_display: string;
+    readonly rating: number | null;
+    readonly review_count: number | null;
+  } | null;
   readonly market: {
     readonly comp_set: {
       readonly available: boolean;
@@ -176,6 +211,20 @@ export interface LiveBundleInput {
   readonly compRoomMatch?: string | null;
   readonly reputation?: ReputationFact | null;
   readonly comparableRatings?: readonly number[];
+  readonly availability?: {
+    readonly position: 'ENTRY' | 'MID' | 'TOP' | null;
+    readonly availableCategories: number;
+    readonly cheaperCategoriesAvailable: number;
+    readonly entryClassAvailable: boolean;
+    readonly lowerCategoriesUnavailable: boolean;
+    readonly availabilityInfluenced: boolean;
+  } | null;
+  readonly alternative?: {
+    readonly name: string;
+    readonly nightlyMinor: number;
+    readonly rating: number | null;
+    readonly reviewCount: number | null;
+  } | null;
   readonly maxSentences?: number;
 }
 
@@ -234,6 +283,11 @@ function median(values: readonly number[]): number | null {
 export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanationBundle {
   const { result, compSet, calendar, compression, premium } = input;
 
+  const priceDiffMinor =
+    compSet.medianCompetitorNightlyMinor === null
+      ? null
+      : input.nightlyMinor - compSet.medianCompetitorNightlyMinor;
+
   const compRatings = (input.comparableRatings ?? []).filter(
     (r) => Number.isFinite(r) && r > 0 && r <= 5,
   );
@@ -268,6 +322,17 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
   addMoney(allowed, premium.medianCompBenefitPerNightMinor);
   addNumber(allowed, premium.compsWithBenefits);
   addNumber(allowed, premium.effectiveCsi);
+  addMoney(allowed, priceDiffMinor);
+  if (input.alternative) {
+    addMoney(allowed, input.alternative.nightlyMinor);
+    addMoney(allowed, input.nightlyMinor - input.alternative.nightlyMinor);
+    addNumber(allowed, input.alternative.rating);
+    addNumber(allowed, input.alternative.reviewCount);
+  }
+  if (input.availability) {
+    addNumber(allowed, input.availability.availableCategories);
+    addNumber(allowed, input.availability.cheaperCategoriesAvailable);
+  }
   // Denominators the deterministic renderer itself writes — "7.2 out of 10",
   // "4.6 out of 5". Same principle as the reason-code numerals below: a
   // sentence the engine authored must not fail the engine's own validator.
@@ -324,7 +389,32 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
       included_value_nightly_minor: premium.subjectBenefitPerNightMinor,
       comparable_included_value_nightly_minor: premium.medianCompBenefitPerNightMinor,
       comparables_with_included_value: premium.compsWithBenefits,
+      price_difference_nightly_minor: priceDiffMinor,
+      price_difference_display:
+        priceDiffMinor === null ? null : displayMoney(input.currency, Math.abs(priceDiffMinor)),
     },
+    availability: {
+      selected_position: input.availability?.position ?? null,
+      available_categories: input.availability?.availableCategories ?? 0,
+      cheaper_categories_available: input.availability?.cheaperCategoriesAvailable ?? 0,
+      entry_class_available: input.availability?.entryClassAvailable ?? false,
+      lower_categories_unavailable: input.availability?.lowerCategoriesUnavailable ?? false,
+      availability_influenced: input.availability?.availabilityInfluenced ?? false,
+    },
+    alternative: input.alternative
+      ? {
+          name: input.alternative.name,
+          nightly_minor: input.alternative.nightlyMinor,
+          nightly_display: displayMoney(input.currency, input.alternative.nightlyMinor),
+          save_nightly_minor: input.nightlyMinor - input.alternative.nightlyMinor,
+          save_display: displayMoney(
+            input.currency,
+            input.nightlyMinor - input.alternative.nightlyMinor,
+          ),
+          rating: input.alternative.rating,
+          review_count: input.alternative.reviewCount,
+        }
+      : null,
     market: {
       comp_set: {
         available: compSet.signal.available,

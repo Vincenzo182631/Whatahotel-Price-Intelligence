@@ -156,10 +156,12 @@ export type { RenderedLiveExplanation } from './explanation/liveTemplate.js';
 export { validateNarrative } from './explanation/validate.js';
 export {
   ASSESSMENT_EVIDENCE,
+  availabilityContextSentence,
   deterministicAssessment,
   evidenceConfidence,
   evidencePresent,
   premiumJustificationSummary,
+  premiumPosition,
   validateAssessment,
 } from './explanation/assessment.js';
 export type {
@@ -168,7 +170,15 @@ export type {
   AssessmentLevel,
   AssessmentValidation,
   PremiumAssessment,
+  PremiumPosition,
 } from './explanation/assessment.js';
+export { assessAvailabilityPosition, chooseAlternative } from './scoring/valueAlternative.js';
+export type {
+  AlternativeCandidate,
+  AvailabilityPosition,
+  AvailableCategory,
+  ValueAlternative,
+} from './scoring/valueAlternative.js';
 export type { NarrativeConstraints, ValidationResult } from './explanation/validate.js';
 
 export { analyze } from './analyze.js';
