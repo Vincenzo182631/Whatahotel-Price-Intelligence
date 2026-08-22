@@ -73,6 +73,13 @@ export interface LiveExplanationBundle {
     readonly nightly_minor: number;
     /** The whole stay, taxes and fees included. */
     readonly total_minor: number;
+    /**
+     * The same two amounts as the customer reads them ("$776", "$2,327").
+     * Present so the model never has to convert units — converting is
+     * computing, and the one time it tried it shipped cents as dollars.
+     */
+    readonly nightly_display: string;
+    readonly total_display: string;
     readonly observed_at: string;
   };
   readonly verdict: {
@@ -179,6 +186,13 @@ const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
 
 const round1 = (v: number): number => Math.round(v * 10) / 10;
 
+/** "$2,327" — the major-unit form, the only form prose may carry. */
+function displayMoney(currency: string, minor: number): string {
+  const symbol = CURRENCY_SYMBOLS[currency] ?? '';
+  const major = Math.round(minor / 100).toLocaleString('en-US');
+  return symbol ? `${symbol}${major}` : `${major} ${currency}`;
+}
+
 function addNumber(set: Set<number>, value: number | null | undefined): void {
   if (value === null || value === undefined || !Number.isFinite(value)) return;
   set.add(round1(value));
@@ -186,9 +200,21 @@ function addNumber(set: Set<number>, value: number | null | undefined): void {
   if (value < 0) set.add(round1(-value));
 }
 
+/**
+ * Money enters the allowlist as its MAJOR-unit display form only.
+ *
+ * The minor value used to be allowed too, and the first model-written
+ * explanation in production exploited exactly that: it read a
+ * `total_minor` of 232676 from the bundle and wrote "a total of $232,676"
+ * — cents presented as dollars, a hundredfold overstatement of a real
+ * hotel's price — and the validator PASSED it, because 232676 was on the
+ * list. The deterministic renderer only ever writes major amounts, so
+ * allowing the minor form protected nothing and permitted the one misuse a
+ * price is actually vulnerable to. Now a draft quoting a minor value fails
+ * validation and the template ships instead.
+ */
 function addMoney(set: Set<number>, minor: number | null | undefined): void {
   if (minor === null || minor === undefined || !Number.isFinite(minor)) return;
-  addNumber(set, minor);
   addNumber(set, Math.round(minor / 100));
 }
 
@@ -271,6 +297,8 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
       currency: input.currency,
       nightly_minor: input.nightlyMinor,
       total_minor: input.totalMinor,
+      nightly_display: displayMoney(input.currency, input.nightlyMinor),
+      total_display: displayMoney(input.currency, input.totalMinor),
       observed_at: input.observedAt,
     },
     verdict: {
