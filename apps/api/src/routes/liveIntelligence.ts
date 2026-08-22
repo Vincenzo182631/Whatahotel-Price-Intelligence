@@ -21,6 +21,7 @@
 
 import {
   buildLiveExplanationBundle,
+  chooseAlternative,
   liveBandLabel,
   liveVerdictLabel,
   premiumJustificationSummary,
@@ -327,11 +328,16 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
    */
   let subjectReputation: ReputationFact | null = null;
   let comparableRatings: number[] = [];
+  let competitorReputations = new Map<
+    string,
+    { rating: number | null; userRatingCount: number | null }
+  >();
   try {
     const [subject, comps] = await Promise.all([
       findVerifiedReputations([loaded.hotel.id]),
       findVerifiedReputationsByWahIds(loaded.competitorWahIds),
     ]);
+    competitorReputations = comps;
     const mine = subject.get(loaded.hotel.id);
     if (mine && mine.rating !== null) {
       subjectReputation = {
@@ -349,6 +355,24 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     // fails costs the reader a sentence, not the response.
     console.error('reputation lookup failed:', (err as Error).message);
   }
+
+  /**
+   * The better-value alternative, chosen deterministically from the same
+   * comp set the score used — never the cheapest for its own sake, and null
+   * when nothing genuinely qualifies. The full priced comp roster stays
+   * unpublished; ONE relevant alternative is the product feature.
+   */
+  const alternative = chooseAlternative(
+    loaded.nightlyMinor,
+    loaded.competitorRates.map((c) => ({
+      wahHotelId: c.wahHotelId,
+      name: c.name,
+      nightlyMinor: c.nightlyMinor,
+      isAvailable: c.isAvailable,
+      rating: competitorReputations.get(c.wahHotelId)?.rating ?? null,
+      reviewCount: competitorReputations.get(c.wahHotelId)?.userRatingCount ?? null,
+    })),
+  );
 
   const bundle = buildLiveExplanationBundle({
     configVersion: config.version,
@@ -375,6 +399,15 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     compRoomMatch: loaded.compRoomMatch,
     reputation: subjectReputation,
     comparableRatings,
+    availability: loaded.availability,
+    alternative: alternative
+      ? {
+          name: alternative.name,
+          nightlyMinor: alternative.nightlyMinor,
+          rating: alternative.rating,
+          reviewCount: alternative.reviewCount,
+        }
+      : null,
   });
 
   /**
@@ -509,7 +542,12 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       assessment: explanation.assessment
         ? {
             level: explanation.assessment.level,
+            // The customer-facing frame — consultative by policy. Clients
+            // should label from THIS, not from `level`.
+            position: explanation.assessment.position,
             reasoning: explanation.assessment.reasoning,
+            paying_more_for: explanation.assessment.paying_more_for || null,
+            availability_context: explanation.assessment.availability_context || null,
             key_positive_factors: explanation.assessment.key_positive_factors,
             key_negative_factors: explanation.assessment.key_negative_factors,
             confidence: explanation.assessment.confidence,
@@ -519,6 +557,42 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
           }
         : null,
     },
+
+    /**
+     * Where the selected rate sits in the hotel's currently available
+     * inventory. `lower_categories_unavailable` is asserted only when the
+     * catalogue provably carries an entry class none of which is available
+     * today — and it means exactly "currently unavailable", never "sold
+     * out", which the source only ever states for a whole stay.
+     */
+    availability: {
+      selected_position: bundle.availability.selected_position,
+      available_categories: bundle.availability.available_categories,
+      cheaper_categories_available: bundle.availability.cheaper_categories_available,
+      entry_class_available: bundle.availability.entry_class_available,
+      lower_categories_unavailable: bundle.availability.lower_categories_unavailable,
+      availability_influenced: bundle.availability.availability_influenced,
+    },
+
+    /**
+     * The better-value alternative — information, not a pitch. One relevant
+     * comparable at a meaningfully lower current rate, ranked by saving AND
+     * verified reputation, never merely the cheapest. Null when nothing
+     * qualifies, and rendered as nothing.
+     */
+    alternative: alternative
+      ? {
+          hotel_id: alternative.wahHotelId,
+          name: alternative.name,
+          nightly: money(alternative.nightlyMinor, currency),
+          save_nightly: money(alternative.saveNightlyMinor, currency),
+          rating: alternative.rating,
+          review_count: alternative.reviewCount,
+          reason:
+            explanation.assessment?.alternative_reason ||
+            'A comparable stay is currently available at a lower rate.',
+        }
+      : null,
 
     /**
      * What other guests say about the property.

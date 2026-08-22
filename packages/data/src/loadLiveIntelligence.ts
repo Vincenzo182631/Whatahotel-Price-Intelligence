@@ -29,11 +29,17 @@ import {
   type RefundPolicy,
   type ScoringConfig,
   type TaxBasis,
+  assessAvailabilityPosition,
 } from '@wahpi/core';
 
 import type { Queryable } from './client.js';
 import { findBenefits } from './repositories/context.js';
-import { findHotelByWahId, hasCuratedComparables, type HotelRow } from './repositories/hotels.js';
+import {
+  findHotelByWahId,
+  hasCuratedComparables,
+  listRoomTypes,
+  type HotelRow,
+} from './repositories/hotels.js';
 import {
   findAvailableRoomTypes,
   findCurrentRate,
@@ -116,6 +122,26 @@ export interface LoadedLiveIntelligence {
    * about them, such as a guest rating.
    */
   readonly competitorWahIds: readonly string[];
+  /**
+   * The comparables' current rates, for the alternative chooser ONLY. The
+   * API never publishes this list — one chosen alternative is a product
+   * feature, the full priced roster is other hotels' commercial data.
+   */
+  readonly competitorRates: readonly {
+    readonly wahHotelId: string;
+    readonly name: string;
+    readonly nightlyMinor: number;
+    readonly isAvailable: boolean;
+  }[];
+  /** Where the selected rate sits in currently available inventory. */
+  readonly availability: {
+    readonly position: 'ENTRY' | 'MID' | 'TOP' | null;
+    readonly availableCategories: number;
+    readonly cheaperCategoriesAvailable: number;
+    readonly entryClassAvailable: boolean;
+    readonly lowerCategoriesUnavailable: boolean;
+    readonly availabilityInfluenced: boolean;
+  };
   readonly compRoomMatch: CompRoomMatch;
   /** Is the price premium supported by what the rate includes? */
   readonly premium: PremiumJustificationResult;
@@ -417,8 +443,26 @@ export async function loadLiveIntelligence(
   const calendar = computeCalendarDelta(current.nightlyMinor, neighbours, config);
   const compression = computeCompression(compressionInput, config);
 
+  // Availability position: the catalogued classes are the proof side of
+  // "lower categories currently unavailable" — without them the claim is
+  // never made (rule: absence of evidence is not evidence of sold-out).
+  const cataloguedClasses = (await listRoomTypes(hotel.id, q)).map((t) => t.roomClass);
+  const availability = assessAvailabilityPosition(
+    current.nightlyMinor,
+    chosen.roomClass,
+    available.map((r) => ({ roomClass: r.roomClass, nightlyMinor: r.nightlyMinor })),
+    cataloguedClasses,
+  );
+
   return {
     hotel,
+    availability,
+    competitorRates: competitors.map((c) => ({
+      wahHotelId: c.hotelId,
+      name: c.name,
+      nightlyMinor: c.nightlyMinor,
+      isAvailable: c.isAvailable,
+    })),
     availableRooms: available.map((r) => ({
       roomTypeId: r.roomTypeId,
       name: r.canonicalName,
