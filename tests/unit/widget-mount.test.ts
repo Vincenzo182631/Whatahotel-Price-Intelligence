@@ -108,10 +108,26 @@ describe('Get Help (Phase 7)', () => {
     expect(WIDGET).toMatch(/if \(vibssContainer\(chatId\)\) return done\(true\)/);
   });
 
+  it('reuses the page bot WHATEVER id the host installed it under', () => {
+    // Verified live: whatahotel.com runs Vibss under its own bot id, not the
+    // one this widget is configured with. Keying detection on our id would
+    // stand up a second bot beside the real one.
+    expect(WIDGET).toContain('[id^="vibss-webchat-"]');
+  });
+
+  it('prefill targets only a message composer, never a contact field', () => {
+    // Verified live: the real bot opens with a Name/Email/Phone pre-chat
+    // form, and "first text input" was the NAME field.
+    expect(WIDGET).toMatch(/name\|email\|phone\|subject\|company/);
+    expect(WIDGET).toMatch(/message\|chat\|type\|write\|ask/);
+  });
+
   it('prefill is best-effort and never sends on the guest behalf', () => {
     // The guest sees the text in the box and chooses to send it.
     expect(WIDGET).toMatch(/dispatchEvent\(new Event\('input'/);
     expect(WIDGET).not.toMatch(/sendMessage|submit\(\)/);
+    // And a box the guest already typed into is never overwritten.
+    expect(WIDGET).toMatch(/never overwrite the guest/);
   });
 });
 

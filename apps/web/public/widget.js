@@ -183,8 +183,19 @@
   var VIBSS_PLUGIN_URL = 'https://vibss.io/plugin.js?v=2026-01-26';
   var VIBSS_DEFAULT_ID = '4e75aaa1-3c96-4200-bcdb-86f4a3596e2e';
 
+  /**
+   * The chatbot already on the page, WHATEVER id the host installed it
+   * under. whatahotel.com's own pages run Vibss with their own bot id, and
+   * "use the existing WhataHotel chatbot" means that one — keying on our
+   * configured id here would miss it and stand up a second bot beside it,
+   * which is the one thing the integration must never do. The configured
+   * id matters only on pages with no chatbot at all (the demo harness).
+   */
   function vibssContainer(chatId) {
-    return document.getElementById('vibss-webchat-' + chatId);
+    return (
+      document.querySelector('[id^="vibss-webchat-"]') ||
+      document.getElementById('vibss-webchat-' + chatId)
+    );
   }
 
   function ensureVibss(chatId, done) {
@@ -205,6 +216,7 @@
     }
     var tries = 0;
     (function poll() {
+      if (vibssContainer(chatId)) return done(true);
       if (global.vibssWebChat && typeof global.vibssWebChat.setup === 'function') {
         try {
           if (!vibssContainer(chatId)) global.vibssWebChat.setup({ id: chatId });
@@ -234,34 +246,66 @@
   }
 
   /**
+   * The chat's MESSAGE COMPOSER, and nothing else.
+   *
+   * Verified on the live whatahotel.com install: the bot opens with a
+   * pre-chat form (Name / Email / Phone) before any conversation exists,
+   * and "the first text input in the container" was the NAME field — the
+   * context prefill landed in it. So an element qualifies only when it is
+   * a textarea, or an input whose own labelling says it takes a message;
+   * anything labelled like a contact field is explicitly refused. No
+   * composer found means no prefill, never a guess.
+   */
+  function vibssComposer(container) {
+    var ta = container.querySelector('textarea');
+    if (ta) return ta;
+    var inputs = container.querySelectorAll('input[type="text"], input:not([type])');
+    for (var i = 0; i < inputs.length; i++) {
+      var input = inputs[i];
+      var hint = (
+        (input.placeholder || '') +
+        ' ' +
+        (input.getAttribute('aria-label') || '') +
+        ' ' +
+        (input.name || '') +
+        ' ' +
+        (input.id || '')
+      ).toLowerCase();
+      if (/name|email|phone|subject|company/.test(hint)) continue;
+      if (/message|chat|type|write|ask/.test(hint)) return input;
+    }
+    return null;
+  }
+
+  /**
    * Best-effort context prefill. The plugin's chat input is React-controlled,
    * so the value is set through the native setter and announced with an
    * input event — the supported pattern for controlled inputs. The guest
    * sees the text in the box and chooses to send it; nothing is sent on
-   * their behalf. Every step is guarded: if the input is not found, the
-   * chat is simply open without a prefill.
+   * their behalf. Polling is patient because the live bot shows a pre-chat
+   * form first: the composer only exists once the guest starts the chat,
+   * and the context should still be waiting for them when it does. Every
+   * step is guarded; no composer simply means the chat opens without a
+   * prefill.
    */
   function prefillVibss(container, text) {
     var tries = 0;
     (function poll() {
-      var input =
-        container.querySelector('textarea') ||
-        container.querySelector('input[type="text"]') ||
-        document.querySelector('#' + container.id + ' textarea');
+      var input = vibssComposer(container);
       if (input) {
+        if (input.value && input.value.trim() !== '') return; // never overwrite the guest
         try {
           var proto = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement : HTMLInputElement;
           var setter = Object.getOwnPropertyDescriptor(proto.prototype, 'value');
           if (setter && setter.set) setter.set.call(input, text);
           else input.value = text;
           input.dispatchEvent(new Event('input', { bubbles: true }));
-          input.focus();
         } catch (e) {
           /* the open chat is the deliverable; the prefill is a bonus */
         }
         return;
       }
-      if ((tries += 1) <= 25) setTimeout(poll, 200);
+      if ((tries += 1) <= 240) setTimeout(poll, 500);
     })();
   }
 
