@@ -13,13 +13,19 @@ export {
 export type { HotelRow, HotelSearchResult, RoomTypeRow } from './repositories/hotels.js';
 
 export {
+  findAvailableRates,
   findAvailableRoomTypes,
   findCurrentRate,
   findQuotedCurrency,
   findSameStaySeries,
   findSeriesGaps,
 } from './repositories/observations.js';
-export type { CurrentRateRow, SeriesGap, StayKey } from './repositories/observations.js';
+export type {
+  AvailableRateRow,
+  CurrentRateRow,
+  SeriesGap,
+  StayKey,
+} from './repositories/observations.js';
 
 export {
   baselineMedianFor,
@@ -68,6 +74,7 @@ export type {
   LiveLoadFailure,
   LiveRequest,
   LoadedLiveIntelligence,
+  RateOption,
   RoomOption,
 } from './loadLiveIntelligence.js';
 
