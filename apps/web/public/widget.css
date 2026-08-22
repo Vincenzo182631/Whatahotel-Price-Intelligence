@@ -203,6 +203,12 @@
   color: var(--wahpi-muted);
   margin-top: 3px;
 }
+/* Stated beside the verdict so a thin dataset can never wear a firm claim. */
+.wahpi__premium-confidence {
+  font-size: 0.76rem;
+  color: var(--wahpi-muted);
+  margin-top: 6px;
+}
 
 .wahpi__reputation {
   display: flex;

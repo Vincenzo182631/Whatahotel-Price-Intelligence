@@ -119,6 +119,20 @@
     LIMITED_DATA: 'wahpi--neutral',
   };
 
+  var ASSESSMENT_LABEL = {
+    HIGH: 'Premium justification: HIGH',
+    MEDIUM: 'Premium justification: MEDIUM',
+    LOW: 'Premium justification: LOW',
+    INSUFFICIENT_DATA: 'Premium justification: not enough evidence',
+  };
+
+  var ASSESSMENT_TONE = {
+    HIGH: 'wahpi--good',
+    MEDIUM: 'wahpi--neutral',
+    LOW: 'wahpi--bad',
+    INSUFFICIENT_DATA: 'wahpi--neutral',
+  };
+
   var SCORE_TONE = {
     EXCELLENT: 'wahpi--good',
     GOOD: 'wahpi--good',
@@ -947,10 +961,37 @@
     var premium = data.premium_justification;
     if (!premium || premium.level === 'NOT_PREMIUM') return null;
 
+    // The reasoned verdict, when the API produced one. Everything shown here
+    // was validated server-side — the widget renders it verbatim and adds
+    // nothing. Without an assessment, the deterministic summary stands.
+    var assessment = premium.assessment;
     var wrap = section(null);
-    var box = el('div', 'wahpi__premium ' + (PREMIUM_TONE[premium.level] || 'wahpi--neutral'));
-    box.appendChild(el('div', 'wahpi__premium-label', PREMIUM_LABEL[premium.level] || 'Premium pricing'));
-    box.appendChild(el('div', 'wahpi__premium-text', premium.summary));
+    var box;
+    if (assessment) {
+      box = el('div', 'wahpi__premium ' + (ASSESSMENT_TONE[assessment.level] || 'wahpi--neutral'));
+      box.appendChild(
+        el('div', 'wahpi__premium-label', ASSESSMENT_LABEL[assessment.level] || 'Premium pricing'),
+      );
+      box.appendChild(el('div', 'wahpi__premium-text', assessment.reasoning));
+      box.appendChild(
+        el(
+          'div',
+          'wahpi__premium-confidence',
+          'Confidence: ' +
+            assessment.confidence +
+            ' · based on ' +
+            (data.signals && data.signals.comp_set ? data.signals.comp_set.comps_used : 0) +
+            ' comparable hotel(s)' +
+            (data.reputation ? ' and verified guest ratings' : ', no verified guest rating'),
+        ),
+      );
+    } else {
+      box = el('div', 'wahpi__premium ' + (PREMIUM_TONE[premium.level] || 'wahpi--neutral'));
+      box.appendChild(
+        el('div', 'wahpi__premium-label', PREMIUM_LABEL[premium.level] || 'Premium pricing'),
+      );
+      box.appendChild(el('div', 'wahpi__premium-text', premium.summary));
+    }
     wrap.appendChild(box);
     return wrap;
   }
@@ -1044,9 +1085,7 @@
           formatMoney(comp.median_competitor_nightly) +
           ' per night.' +
           (comp.comps_excluded > 0
-            ? ' ' +
-              comp.comps_excluded +
-              ' excluded for having no live rate — never estimated.'
+            ? ' ' + comp.comps_excluded + ' excluded for having no live rate — never estimated.'
             : ''),
       ),
     );
@@ -1077,12 +1116,12 @@
         avail,
         avail.sold_out === 0
           ? 'All ' +
-            avail.checked +
-            ' comparable hotels we checked still have availability for these dates.'
+              avail.checked +
+              ' comparable hotels we checked still have availability for these dates.'
           : avail.sold_out +
-            ' of ' +
-            avail.checked +
-            ' comparable hotels we checked are sold out for these dates.',
+              ' of ' +
+              avail.checked +
+              ' comparable hotels we checked are sold out for these dates.',
       ),
     );
 
@@ -1301,7 +1340,8 @@
     if (options.roomTypeId) params.set('room_type_id', String(options.roomTypeId));
     if (options.currency) params.set('currency', options.currency);
     return (
-      base + (live ? '/api/v1/live-intelligence?' : '/api/v1/price-intelligence?') +
+      base +
+      (live ? '/api/v1/live-intelligence?' : '/api/v1/price-intelligence?') +
       params.toString()
     );
   }
@@ -1469,7 +1509,9 @@
           // has rates: the room went away, the hotel did not.
           explain(
             'info',
-            'room category ' + options.roomTypeId + ' is no longer available for this stay — ' +
+            'room category ' +
+              options.roomTypeId +
+              ' is no longer available for this stay — ' +
               'falling back to the lowest available rate.',
           );
           root.__wahpiRoom = null;
@@ -1682,7 +1724,8 @@
       ds.checkOut ||
       formValue(CHECK_OUT_SELECTORS) ||
       urlParam(['checkOut', 'checkout', 'check_out', 'depart']);
-    var adults = ds.adults || formValue(GUEST_SELECTORS) || urlParam(['adults', 'guests', 'numAdults']);
+    var adults =
+      ds.adults || formValue(GUEST_SELECTORS) || urlParam(['adults', 'guests', 'numAdults']);
     var children = ds.children || urlParam(['children', 'numChildren', 'kids']);
 
     var config = {
@@ -1803,10 +1846,10 @@
           var t = e && e.target;
           if (!t || !t.matches) return;
           var watched = CHECK_IN_SELECTORS.concat(
-        CHECK_OUT_SELECTORS,
-        GUEST_SELECTORS,
-        ROOM_COUNT_SELECTORS,
-      ).join(',');
+            CHECK_OUT_SELECTORS,
+            GUEST_SELECTORS,
+            ROOM_COUNT_SELECTORS,
+          ).join(',');
           try {
             if (t.matches(watched)) scheduleRemount();
           } catch (err) {
@@ -1854,11 +1897,12 @@
           for (var j = 0; j < m.addedNodes.length; j++) {
             var added = m.addedNodes[j];
             if (added.nodeType !== 1) continue;
-            var found = added.matches && added.matches(MOUNT_SELECTOR)
-              ? [added]
-              : added.querySelectorAll
-                ? added.querySelectorAll(MOUNT_SELECTOR)
-                : [];
+            var found =
+              added.matches && added.matches(MOUNT_SELECTOR)
+                ? [added]
+                : added.querySelectorAll
+                  ? added.querySelectorAll(MOUNT_SELECTOR)
+                  : [];
             for (var k = 0; k < found.length; k++) {
               if (!found[k].__wahpiWatched) {
                 watchNode(found[k]);

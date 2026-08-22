@@ -27,9 +27,12 @@
  */
 
 import {
+  deterministicAssessment,
   renderLiveExplanation,
+  validateAssessment,
   validateNarrative,
   type LiveExplanationBundle,
+  type PremiumAssessment,
   type RenderedLiveExplanation,
 } from '@wahpi/core';
 
@@ -57,7 +60,26 @@ const SYSTEM_PROMPT = [
   '- Stay within constraints.max_sentences sentences. No lists, no headings,',
   '  no emoji, no marketing language.',
   '',
-  'Return JSON: {"summary": "<your sentences>"}',
+  'You also produce an assessment: is the price premium reasonably supported',
+  'by the evidence supplied? Judge only from the bundle. Weigh the premium',
+  'percentage against what the rate includes, the guest rating AND its review',
+  'count together, how the comparables rate, and how equivalent the compared',
+  'rooms are. An expensive room with strong supporting evidence is not a bad',
+  'deal, and a famous name is not evidence. If premium.level is NOT_PREMIUM,',
+  'set assessment to null. If there is no quality evidence either way, use',
+  'INSUFFICIENT_DATA rather than guessing.',
+  '',
+  'Assessment rules:',
+  '- evidence_used lists ONLY the evidence keys you actually relied on, from:',
+  '  live_rate, comparable_rates, premium_pct, included_value, google_rating,',
+  '  google_review_count, comparable_google_ratings, room_match,',
+  '  calendar_position, market_availability. Never cite evidence the bundle',
+  '  does not contain.',
+  '- confidence: copy constraints.evidence_confidence exactly.',
+  '- reasoning: at most 4 sentences. recommendation: at most 2. Factors: at',
+  '  most 5 each, one short sentence apiece. Same number rules as the summary.',
+  '',
+  'Return JSON: {"summary": "<sentences>", "assessment": {...} | null}',
 ].join('\n');
 
 export interface ReasonerOptions {
@@ -81,6 +103,12 @@ export interface LiveExplanation {
   readonly text: string;
   readonly sentences: readonly string[];
   readonly source: ExplanationSource;
+  /**
+   * The premium-justification verdict. MODEL when the model's structured
+   * assessment passed validation; the deterministic mapping otherwise; null
+   * when there is no premium to justify.
+   */
+  readonly assessment: PremiumAssessment | null;
   /** Why a draft was rejected, when one was. Empty on the happy path. */
   readonly violations: readonly string[];
   /**
@@ -105,6 +133,7 @@ export function bundleKey(bundle: LiveExplanationBundle): string {
 }
 
 const asTemplate = (
+  bundle: LiveExplanationBundle,
   rendered: RenderedLiveExplanation,
   violations: readonly string[] = [],
   failure: string | null = null,
@@ -112,6 +141,7 @@ const asTemplate = (
   text: rendered.text,
   sentences: rendered.sentences,
   source: 'TEMPLATE',
+  assessment: deterministicAssessment(bundle),
   violations,
   failure,
 });
@@ -156,7 +186,7 @@ export class OpenAiReasoner {
 
   private async draft(
     bundle: LiveExplanationBundle,
-  ): Promise<{ summary: string } | { failure: string }> {
+  ): Promise<{ summary: string; assessment: unknown } | { failure: string }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -179,8 +209,39 @@ export class OpenAiReasoner {
               strict: true,
               schema: {
                 type: 'object',
-                properties: { summary: { type: 'string' } },
-                required: ['summary'],
+                properties: {
+                  summary: { type: 'string' },
+                  assessment: {
+                    // Null when there is no premium to justify. The enums
+                    // here are the first line of validation; the real gate
+                    // is validateAssessment, which also checks every numeral
+                    // and every cited piece of evidence against the bundle.
+                    type: ['object', 'null'],
+                    properties: {
+                      level: {
+                        type: 'string',
+                        enum: ['HIGH', 'MEDIUM', 'LOW', 'INSUFFICIENT_DATA'],
+                      },
+                      reasoning: { type: 'string' },
+                      key_positive_factors: { type: 'array', items: { type: 'string' } },
+                      key_negative_factors: { type: 'array', items: { type: 'string' } },
+                      confidence: { type: 'string', enum: ['HIGH', 'MEDIUM', 'LOW'] },
+                      recommendation: { type: 'string' },
+                      evidence_used: { type: 'array', items: { type: 'string' } },
+                    },
+                    required: [
+                      'level',
+                      'reasoning',
+                      'key_positive_factors',
+                      'key_negative_factors',
+                      'confidence',
+                      'recommendation',
+                      'evidence_used',
+                    ],
+                    additionalProperties: false,
+                  },
+                },
+                required: ['summary', 'assessment'],
                 additionalProperties: false,
               },
             },
@@ -214,9 +275,9 @@ export class OpenAiReasoner {
       };
       const content = payload.choices?.[0]?.message?.content;
       if (!content) return { failure: 'empty_completion' };
-      const parsed = JSON.parse(content) as { summary?: unknown };
+      const parsed = JSON.parse(content) as { summary?: unknown; assessment?: unknown };
       if (typeof parsed.summary !== 'string') return { failure: 'malformed_completion' };
-      return { summary: parsed.summary.trim() };
+      return { summary: parsed.summary.trim(), assessment: parsed.assessment ?? null };
     } catch {
       // Timeout or transport failure. Indistinguishable from out here, and
       // both retryable, so one marker covers them.
@@ -243,7 +304,7 @@ export class OpenAiReasoner {
         ms: this.now() - started,
         violations: [draft.failure],
       });
-      return asTemplate(rendered, [], draft.failure);
+      return asTemplate(bundle, rendered, [], draft.failure);
     }
 
     const check = validateNarrative(draft.summary, bundle.constraints);
@@ -253,13 +314,31 @@ export class OpenAiReasoner {
         ms: this.now() - started,
         violations: check.violations,
       });
-      return asTemplate(rendered, check.violations);
+      return asTemplate(bundle, rendered, check.violations);
+    }
+
+    // The summary and the assessment pass or fail INDEPENDENTLY. A perfect
+    // summary should not be discarded for a bad verdict, nor the reverse —
+    // each falls back to its own deterministic floor and nothing else moves.
+    const deterministic = deterministicAssessment(bundle);
+    let assessment = deterministic;
+    if (deterministic !== null) {
+      const verdictCheck = validateAssessment(draft.assessment, bundle);
+      if (verdictCheck.ok) assessment = verdictCheck.value;
+      else if (verdictCheck.violations.length > 0) {
+        this.onResult?.({
+          source: 'MODEL',
+          ms: this.now() - started,
+          violations: verdictCheck.violations.map((v) => `assessment: ${v}`),
+        });
+      }
     }
 
     const value: LiveExplanation = {
       text: draft.summary,
       sentences: draft.summary.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0),
       source: 'MODEL',
+      assessment,
       violations: [],
       failure: null,
     };
@@ -279,6 +358,6 @@ export async function explainLive(
   reasoner: OpenAiReasoner | null,
   bundle: LiveExplanationBundle,
 ): Promise<LiveExplanation> {
-  if (!reasoner) return asTemplate(renderLiveExplanation(bundle), [], 'not_configured');
+  if (!reasoner) return asTemplate(bundle, renderLiveExplanation(bundle), [], 'not_configured');
   return reasoner.explain(bundle);
 }

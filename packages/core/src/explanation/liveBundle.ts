@@ -59,6 +59,8 @@ export interface LiveExplanationBundle {
   readonly model: 'LIVE_MARKET';
   readonly subject: {
     readonly hotel_name: string;
+    /** The destination, for location context. Null when uncatalogued. */
+    readonly city: string | null;
     readonly room_type_name: string;
     readonly room_class: string | null;
     readonly check_in: string;
@@ -153,6 +155,7 @@ export interface LiveExplanationBundle {
 export interface LiveBundleInput {
   readonly configVersion: number;
   readonly hotelName: string;
+  readonly city?: string | null;
   readonly roomTypeName: string;
   readonly roomClass?: string | null;
   readonly checkIn: string;
@@ -285,6 +288,7 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
     model: 'LIVE_MARKET',
     subject: {
       hotel_name: input.hotelName,
+      city: input.city ?? null,
       room_type_name: input.roomTypeName,
       room_class: input.roomClass ?? null,
       check_in: input.checkIn,

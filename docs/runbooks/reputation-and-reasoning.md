@@ -162,6 +162,39 @@ checked against the facts.
 
 ---
 
+## The Premium Justification assessment (Phase 4)
+
+On top of the deterministic money-vs-money premium justification, the model
+produces a structured verdict — is the premium supported by the evidence? —
+published as `premium_justification.assessment`:
+
+```jsonc
+{
+  "level": "HIGH | MEDIUM | LOW | INSUFFICIENT_DATA",
+  "reasoning": "…",
+  "key_positive_factors": [],
+  "key_negative_factors": [],
+  "confidence": "HIGH | MEDIUM | LOW", // computed by CODE, never the model
+  "recommendation": "…",
+  "evidence_used": ["google_rating", "…"], // every key checked against the bundle
+  "source": "MODEL | DETERMINISTIC",
+}
+```
+
+This is the one place verified Google reputation may SUPPORT a judgement —
+and it still moves no number: `premium_justification.level` and the Deal
+Score are unchanged beside it. The gate (`validateAssessment`) rejects a
+verdict whole for: an invented numeral, predictive language, citing evidence
+the bundle does not carry, a HIGH with neither reputation nor included-value
+evidence, or malformed structure. Rejected or absent, the deterministic
+mapping ships (`source: "DETERMINISTIC"`), and `NOT_PREMIUM` stays honestly
+`null`. Confidence follows a coded ladder — 6+ comparables can reach HIGH, 3
+reach MEDIUM, fewer is LOW, capped by room-match quality and by whether a
+verified reputation exists at all.
+
+No brand is named anywhere in this logic. An expensive hotel earns HIGH only
+from evidence: what the rate includes, and what verified guests say.
+
 ## When the prose is not the model's
 
 `source: "TEMPLATE"` on a request you expected the model to answer means one of:
