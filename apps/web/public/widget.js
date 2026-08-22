@@ -140,6 +140,195 @@
     LIMITED_DATA: 'wahpi--neutral',
   };
 
+  // ── WhataRate! Check branding ──────────────────────────────────────────
+
+  /**
+   * The product header. "WhataRate! Check / Live Rate Comparison" is the
+   * official name — exact words, not a slot for the host page to restyle
+   * into something else. The LIVE marker is honest: everything below it is
+   * measured from rates that are live right now (no historical pricing
+   * exists for this source), so the badge states the product's actual basis.
+   */
+  function renderBrand() {
+    var wrap = el('header', 'wahpi__brand');
+    var row = el('div', 'wahpi__brand-row');
+    var name = el('div', 'wahpi__brand-name');
+    name.appendChild(el('span', 'wahpi__brand-what', 'WhataRate!'));
+    name.appendChild(el('span', 'wahpi__brand-check', ' Check'));
+    row.appendChild(name);
+    var live = el('span', 'wahpi__brand-live');
+    live.appendChild(el('span', 'wahpi__brand-live-dot', ''));
+    live.appendChild(el('span', null, 'LIVE'));
+    row.appendChild(live);
+    wrap.appendChild(row);
+    wrap.appendChild(el('div', 'wahpi__brand-sub', 'Live Rate Comparison'));
+    return wrap;
+  }
+
+  /**
+   * The Vibss chat widget WhataHotel already runs, loaded on demand.
+   *
+   * Inspected (plugin.js, v=2026-01-26): the public API is exactly
+   * `setup({ id, color, agentName })` plus `reload`/`setAllowedDomains` —
+   * there is no documented option for programmatic opening, an initial
+   * message, or context injection. So the handoff uses what IS supported:
+   * setup() renders a launcher inside `#vibss-webchat-<id>`, and Get Help
+   * clicks that launcher. Prefilling the visible chat input with the stay
+   * context is attempted best-effort and abandoned silently if the DOM
+   * isn't where the current plugin build puts it — the chat still opens.
+   *
+   * One instance only: if the host page already ran the official snippet,
+   * that instance is reused and no second script is injected.
+   */
+  var VIBSS_PLUGIN_URL = 'https://vibss.io/plugin.js?v=2026-01-26';
+  var VIBSS_DEFAULT_ID = '4e75aaa1-3c96-4200-bcdb-86f4a3596e2e';
+
+  function vibssContainer(chatId) {
+    return document.getElementById('vibss-webchat-' + chatId);
+  }
+
+  function ensureVibss(chatId, done) {
+    if (vibssContainer(chatId)) return done(true);
+    if (global.vibssWebChat && typeof global.vibssWebChat.setup === 'function') {
+      try {
+        global.vibssWebChat.setup({ id: chatId });
+      } catch (e) {
+        return done(false);
+      }
+      return done(true);
+    }
+    var existing = document.querySelector('script[src^="https://vibss.io/plugin.js"]');
+    if (!existing) {
+      existing = document.createElement('script');
+      existing.src = VIBSS_PLUGIN_URL;
+      document.body.appendChild(existing);
+    }
+    var tries = 0;
+    (function poll() {
+      if (global.vibssWebChat && typeof global.vibssWebChat.setup === 'function') {
+        try {
+          if (!vibssContainer(chatId)) global.vibssWebChat.setup({ id: chatId });
+        } catch (e) {
+          return done(false);
+        }
+        return done(true);
+      }
+      if ((tries += 1) > 50) return done(false);
+      setTimeout(poll, 200);
+    })();
+  }
+
+  /** The launcher is the first button the plugin renders in its container. */
+  function openVibss(chatId, contextText) {
+    var tries = 0;
+    (function poll() {
+      var container = vibssContainer(chatId);
+      var launcher = container && container.querySelector('button');
+      if (launcher) {
+        launcher.click();
+        if (contextText) prefillVibss(container, contextText);
+        return;
+      }
+      if ((tries += 1) <= 50) setTimeout(poll, 200);
+    })();
+  }
+
+  /**
+   * Best-effort context prefill. The plugin's chat input is React-controlled,
+   * so the value is set through the native setter and announced with an
+   * input event — the supported pattern for controlled inputs. The guest
+   * sees the text in the box and chooses to send it; nothing is sent on
+   * their behalf. Every step is guarded: if the input is not found, the
+   * chat is simply open without a prefill.
+   */
+  function prefillVibss(container, text) {
+    var tries = 0;
+    (function poll() {
+      var input =
+        container.querySelector('textarea') ||
+        container.querySelector('input[type="text"]') ||
+        document.querySelector('#' + container.id + ' textarea');
+      if (input) {
+        try {
+          var proto = input.tagName === 'TEXTAREA' ? HTMLTextAreaElement : HTMLInputElement;
+          var setter = Object.getOwnPropertyDescriptor(proto.prototype, 'value');
+          if (setter && setter.set) setter.set.call(input, text);
+          else input.value = text;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.focus();
+        } catch (e) {
+          /* the open chat is the deliverable; the prefill is a bonus */
+        }
+        return;
+      }
+      if ((tries += 1) <= 25) setTimeout(poll, 200);
+    })();
+  }
+
+  /**
+   * The stay, as one plain sentence the guest can send to an advisor.
+   * Built ONLY from values actually on screen — nothing invented, nothing
+   * padded. Absent facts are simply not mentioned.
+   */
+  function helpContext(data, options) {
+    if (!data) return '';
+    try {
+      var parts = [];
+      var hotel = data.subject && data.subject.hotel;
+      var stay = data.subject && data.subject.stay;
+      var room = data.subject && data.subject.room_type;
+      if (hotel && hotel.name) {
+        parts.push(
+          "I'm looking at " +
+            hotel.name +
+            (hotel.destination ? ' in ' + hotel.destination : '') +
+            (hotel.hotel_id ? ' (hotel ' + hotel.hotel_id + ')' : ''),
+        );
+      }
+      if (stay) {
+        parts.push(
+          stay.check_in +
+            ' to ' +
+            stay.check_out +
+            ', ' +
+            stay.nights +
+            (stay.nights === 1 ? ' night' : ' nights') +
+            ', ' +
+            stay.adults +
+            (stay.adults === 1 ? ' guest' : ' guests') +
+            (stay.children ? ' + ' + stay.children + ' children' : ''),
+        );
+      }
+      if (room && room.name) {
+        var price = data.price && data.price.nightly ? formatMoney(data.price.nightly) : null;
+        parts.push('viewing ' + room.name + (price ? ' at ' + price + '/night' : ''));
+      }
+      if (data.verdict && data.verdict.out_of_ten !== null && data.verdict.out_of_ten !== undefined) {
+        parts.push('WhataRate! Check scores it ' + formatOutOfTen(data.verdict.out_of_ten) + '/10');
+      }
+      var premium = data.premium_justification;
+      if (premium && premium.premium_pct !== null && premium.premium_pct !== undefined) {
+        parts.push('about ' + formatPct(premium.premium_pct) + ' above comparable hotels');
+      }
+      if (data.alternative && data.alternative.name) {
+        parts.push(
+          'suggested alternative: ' +
+            data.alternative.name +
+            ' at ' +
+            formatMoney(data.alternative.nightly) +
+            '/night',
+        );
+      }
+      if (options && options.preference && options.preference !== 'GENERAL_VALUE') {
+        parts.push('what matters most to me: ' + (preferenceLabel(options.preference) || options.preference));
+      }
+      if (parts.length === 0) return '';
+      return parts.join('; ') + '. Can you help me with this stay?';
+    } catch (e) {
+      return '';
+    }
+  }
+
   /**
    * The preference selector (Phase 6). Values are the API's enum; labels are
    * the guest's words. GENERAL_VALUE is the default and means "no
@@ -722,36 +911,54 @@
     return wrap;
   }
 
+  /**
+   * The two calls to action, in deliberate hierarchy: BOOK THIS RATE is the
+   * primary act, GET HELP the safety net beside it.
+   *
+   * The booking link comes from the API's `booking` block — the source's own
+   * room and rate codes for the EXACT rate on screen — so the booking page
+   * opens on the rate the widget scored. A host-page `bookingUrl` option
+   * still wins when supplied. With neither, the button is disabled and says
+   * so; a guessed URL is never built.
+   */
   function renderActions(data, options) {
     var wrap = section(null);
     var actions = el('div', 'wahpi__actions');
 
+    var bookUrl = options.bookingUrl || (data.booking && data.booking.url) || null;
     var book = el('a', 'wahpi__btn wahpi__btn--primary', 'Book this rate');
-    book.href = options.bookingUrl || '#';
-    if (!options.bookingUrl) {
+    if (bookUrl) {
+      book.href = bookUrl;
+    } else {
+      book.href = '#';
       book.className = 'wahpi__btn wahpi__btn--disabled';
       book.setAttribute('aria-disabled', 'true');
-      book.title = 'Booking link is supplied by the host page';
+      book.addEventListener('click', function (e) {
+        e.preventDefault();
+      });
+      book.title = 'Booking information is temporarily unavailable.';
     }
     actions.appendChild(book);
 
-    var advisor = el('a', 'wahpi__btn wahpi__btn--secondary', 'Talk to a Lorraine Travel advisor');
-    // Carry the analysis context so the advisor opens already knowing the stay.
-    // The live model stores nothing, so it has no id to carry — appending
-    // `analysis_id=undefined` would send the advisor chasing a record that does
-    // not exist.
-    var carry = options.advisorUrl && data.analysis_id;
-    advisor.href =
-      (options.advisorUrl || '#') +
-      (carry ? (options.advisorUrl.indexOf('?') === -1 ? '?' : '&') : '') +
-      (carry ? 'analysis_id=' + encodeURIComponent(data.analysis_id) : '');
-    if (!options.advisorUrl) {
-      advisor.className = 'wahpi__btn wahpi__btn--disabled';
-      advisor.setAttribute('aria-disabled', 'true');
-    }
-    actions.appendChild(advisor);
+    var help = el('button', 'wahpi__btn wahpi__btn--secondary', 'Get help');
+    help.type = 'button';
+    help.addEventListener('click', function () {
+      var chatId = options.helpChatId || VIBSS_DEFAULT_ID;
+      help.disabled = true;
+      ensureVibss(chatId, function (ok) {
+        help.disabled = false;
+        if (ok) openVibss(chatId, helpContext(data, options));
+        else explain('warn', 'the chat widget could not be loaded');
+      });
+    });
+    actions.appendChild(help);
 
     wrap.appendChild(actions);
+    if (!bookUrl) {
+      wrap.appendChild(
+        el('div', 'wahpi__actions-note', 'Booking information is temporarily unavailable.'),
+      );
+    }
     return wrap;
   }
 
@@ -939,6 +1146,42 @@
       ),
     );
     wrap.appendChild(box);
+    return wrap;
+  }
+
+  /**
+   * The rate-plan chooser, rendered only when the chosen room genuinely has
+   * more than one bookable offer. Same contract as the room picker: picking
+   * a rate RE-REQUESTS with `rate_id` — the terms match, the comp set, the
+   * score and the booking link all key on the chosen plan, so a different
+   * offer is a different question with a different answer.
+   */
+  function renderRatePicker(data, state) {
+    var options = data.subject.rate_options || [];
+    if (options.length < 2 || typeof state.onRateChange !== 'function') return null;
+
+    var wrap = el('div', 'wahpi__rate-picker');
+    wrap.appendChild(el('div', 'wahpi__room-label', 'Rate'));
+    var group = el('div', 'wahpi__rate-options');
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-label', 'Rate');
+
+    options.forEach(function (option) {
+      var active = option.rate_id === data.subject.selected_rate_id;
+      var row = el('button', 'wahpi__rate-option' + (active ? ' wahpi__rate-option--active' : ''));
+      row.type = 'button';
+      row.setAttribute('role', 'radio');
+      row.setAttribute('aria-checked', String(active));
+      var label = el('span', 'wahpi__rate-name', option.name);
+      row.appendChild(label);
+      row.appendChild(el('span', 'wahpi__rate-price', formatMoney(option.nightly) + '/night'));
+      row.addEventListener('click', function () {
+        if (!active) state.onRateChange(option.rate_id);
+      });
+      group.appendChild(row);
+    });
+
+    wrap.appendChild(group);
     return wrap;
   }
 
@@ -1374,16 +1617,18 @@
     root.className = 'wahpi';
     root.setAttribute('aria-busy', 'false');
 
+    append(root, renderBrand());
     append(root, renderLiveSubject(data));
     append(root, renderRoomPicker(data, state));
+    append(root, renderRatePicker(data, state));
     append(root, renderPreferencePicker(data, state));
     append(root, renderLivePrice(data));
     append(root, renderLiveVerdict(data));
     append(root, renderLiveExplanation(data));
     append(root, renderLivePremium(data));
-    append(root, renderLivePersonalization(data));
-    append(root, renderLiveAlternative(data));
     append(root, renderLiveReputation(data));
+    append(root, renderLiveAlternative(data));
+    append(root, renderLivePersonalization(data));
     append(root, renderLiveReasons(data));
     append(root, renderLiveDetails(data, state));
     append(root, renderLiveProvenance(data));
@@ -1488,6 +1733,7 @@
 
     data.gate_hint = data.verdict.recommendation === 'INSUFFICIENT_DATA' ? 'G0' : data.gate_hint;
 
+    append(root, renderBrand());
     append(root, renderSubject(data));
     append(root, renderPrice(data));
     append(root, renderVerdict(data));
@@ -1518,6 +1764,7 @@
     });
     if (!live) params.set('include', 'explanation,history,comparables');
     if (options.roomTypeId) params.set('room_type_id', String(options.roomTypeId));
+    if (live && options.rateId) params.set('rate_id', String(options.rateId));
     if (options.currency) params.set('currency', options.currency);
     // GENERAL_VALUE is the server default; sending nothing keeps the URL —
     // and any CDN cache entry — identical to the pre-Phase-6 one.
@@ -1612,11 +1859,32 @@
       }
       next.roomTypeId = roomTypeId;
       next.expanded = state.expanded;
+      // A rate id belongs to the room it priced: a different room has
+      // different offers, so the rate pin is dropped with the room change.
+      delete next.rateId;
+      root.__wahpiRate = null;
       // Remember the choice against the stay it was made for, so an unrelated
       // remount (the host page firing an input event) does not silently throw
       // it away — and a REAL stay change does, because a room id belongs to
       // the dates it was priced for. See autoConfig.
       root.__wahpiRoom = { stay: staySignature(next), roomTypeId: roomTypeId };
+      mount(root, next);
+    };
+
+    // Picking a rate re-mounts with that plan pinned, keyed to the stay AND
+    // the room it was chosen for — a plan for one room says nothing about
+    // another room's offers.
+    state.onRateChange = function (rateId) {
+      var next = {};
+      for (var key in options) {
+        if (Object.prototype.hasOwnProperty.call(options, key)) next[key] = options[key];
+      }
+      next.rateId = rateId;
+      next.expanded = state.expanded;
+      root.__wahpiRate = {
+        stay: staySignature(next) + '|' + (next.roomTypeId || ''),
+        rateId: rateId,
+      };
       mount(root, next);
     };
 
@@ -1651,8 +1919,11 @@
       if (fresh()) status.textContent = 'Comparing live rates at similar hotels…';
     }, 2500);
     var stage3 = setTimeout(function () {
-      if (fresh()) status.textContent = 'Validating the latest availability…';
+      if (fresh()) status.textContent = 'Analyzing price intelligence…';
     }, 7000);
+    var stage4 = setTimeout(function () {
+      if (fresh()) status.textContent = 'Preparing your recommendation…';
+    }, 14000);
 
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var deadline = setTimeout(function () {
@@ -1662,6 +1933,7 @@
     function settle() {
       clearTimeout(stage2);
       clearTimeout(stage3);
+      clearTimeout(stage4);
       clearTimeout(deadline);
     }
 
@@ -1702,6 +1974,22 @@
             'Not available for these dates',
             'We could not verify enough live data to score this stay. Try nearby dates, or ask an advisor.',
           );
+        } else if (code === 'RATE_NOT_FOUND' && options.rateId) {
+          // The pinned offer went away — sold out, withdrawn, or the guest
+          // moved the dates. Fall back to the room's current cheapest plan
+          // rather than reporting failure for a room that plainly has rates.
+          explain(
+            'info',
+            'rate ' + options.rateId + ' is no longer bookable for this stay — ' +
+              'falling back to the lowest available rate for the room.',
+          );
+          root.__wahpiRate = null;
+          var withoutRate = {};
+          for (var rk in options) {
+            if (Object.prototype.hasOwnProperty.call(options, rk)) withoutRate[rk] = options[rk];
+          }
+          delete withoutRate.rateId;
+          mount(root, withoutRate);
         } else if (code === 'ROOM_TYPE_NOT_FOUND' && options.roomTypeId) {
           // A pinned room category is not bookable for this stay any more —
           // sold out, or the guest moved the dates. Fall back to the engine's
@@ -1940,6 +2228,7 @@
     if (ds.model) config.model = ds.model;
     if (ds.currency) config.currency = ds.currency;
     if (ds.roomTypeId) config.roomTypeId = ds.roomTypeId;
+    if (ds.rateId) config.rateId = ds.rateId;
     // A category the guest picked outranks nothing in the template, but it
     // must not be lost to an unrelated remount — the host page firing an input
     // event should not silently reset the panel to the cheapest room. It is
@@ -1947,6 +2236,13 @@
     // dates says nothing about another.
     var pinned = node.__wahpiRoom;
     if (pinned && pinned.stay === staySignature(config)) config.roomTypeId = pinned.roomTypeId;
+    // A pinned rate survives only for the exact stay AND room it was chosen
+    // for; anything else falls back to the room's cheapest plan.
+    var pinnedRate = node.__wahpiRate;
+    if (pinnedRate && pinnedRate.stay === staySignature(config) + '|' + (config.roomTypeId || '')) {
+      config.rateId = pinnedRate.rateId;
+    }
+    if (ds.helpChatId) config.helpChatId = ds.helpChatId;
     // The preference the guest picked in the panel, or the host template's
     // default. Guest choice wins, and unlike the room it is NOT keyed to the
     // stay — what matters to a guest does not change with their dates.
@@ -2142,6 +2438,7 @@
         'data-adults',
         'data-children',
         'data-room-type-id',
+        'data-rate-id',
         'data-model',
         'data-currency',
         'data-preference',

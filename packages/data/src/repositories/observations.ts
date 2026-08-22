@@ -34,6 +34,89 @@ export interface CurrentRateRow {
   readonly onlyNonRefundableAvailable: boolean;
 }
 
+/** One bookable rate plan for a room, with what booking it needs. */
+export interface AvailableRateRow {
+  /** The plan identity — `WAH:<rateCode>|<offer>` in production. */
+  readonly comparabilityClass: string;
+  /** The offer's own name where the source stated one ("Hotel Credit Offer"). */
+  readonly planName: string | null;
+  readonly mealPlan: string;
+  readonly refundPolicy: string;
+  readonly audience: string;
+  /** ADR: base room rate per night, before taxes and fees. */
+  readonly nightlyMinor: number;
+  readonly totalMinor: number;
+  readonly taxesFeesMinor: number | null;
+  readonly observedAt: string;
+  /**
+   * The source's booking identifiers, read from the capture itself — the
+   * room's `bookCode` and the offer's `rateCode`, the exact parameters the
+   * source's own booking URLs carry. Null when the capture did not state
+   * them (synthetic data, older captures): a booking link is then simply
+   * not offered, never fabricated.
+   */
+  readonly sourceRoomCode: string | null;
+  readonly sourceRateCode: string | null;
+}
+
+/**
+ * Every rate plan currently bookable for ONE room on this exact stay,
+ * cheapest first.
+ *
+ * One room type carries several priced offers for the same stay (the
+ * rateCode|offer identity — see the whatahotel adapter), and
+ * findAvailableRoomTypes deliberately surfaces only the cheapest of them per
+ * room. This lists the rest, so a guest can choose the flexible rate over
+ * the cheapest one and have everything — price, score, comparison, booking
+ * link — recomputed for the offer they actually want.
+ *
+ * Freshest capture slot per plan, same rule as everywhere else: a stale
+ * cheap price must never outrank the current snapshot.
+ */
+export async function findAvailableRates(
+  hotelId: number,
+  roomTypeId: number,
+  checkIn: string,
+  nights: number,
+  adults: number,
+  children: number,
+  currency: string,
+  q?: Queryable,
+): Promise<AvailableRateRow[]> {
+  const { rows } = await db(q).query(
+    `SELECT DISTINCT ON (o.comparability_class)
+            o.comparability_class, o.nightly_amount_minor, o.total_amount_minor,
+            o.taxes_fees_minor, o.observed_at,
+            rp.display_name, rp.meal_plan, rp.refund_policy, rp.audience,
+            o.raw #>> '{room,bookCode}' AS source_room_code,
+            o.raw #>> '{room,rateCode}' AS source_rate_code
+       FROM rate_observation o
+       JOIN rate_plan rp ON rp.id = o.rate_plan_id
+      WHERE o.hotel_id = $1 AND o.room_type_id = $2
+        AND o.check_in = $3 AND o.nights = $4
+        AND o.adults = $5 AND o.children = $6
+        AND o.currency = $7 AND o.is_available
+      ORDER BY o.comparability_class, o.observation_slot DESC, o.nightly_amount_minor`,
+    [hotelId, roomTypeId, checkIn, nights, adults, children, currency],
+  );
+
+  return rows
+    .map((row) => ({
+      comparabilityClass: row.comparability_class as string,
+      planName: (row.display_name as string | null) ?? null,
+      mealPlan: row.meal_plan as string,
+      refundPolicy: row.refund_policy as string,
+      audience: row.audience as string,
+      nightlyMinor: row.nightly_amount_minor as number,
+      totalMinor: row.total_amount_minor as number,
+      taxesFeesMinor: (row.taxes_fees_minor as number | null) ?? null,
+      observedAt: (row.observed_at as Date).toISOString(),
+      sourceRoomCode: (row.source_room_code as string | null) ?? null,
+      sourceRateCode: (row.source_rate_code as string | null) ?? null,
+    }))
+    .sort((a, b) => a.nightlyMinor - b.nightlyMinor);
+}
+
 /**
  * The newest observation for an exact stay tuple.
  *

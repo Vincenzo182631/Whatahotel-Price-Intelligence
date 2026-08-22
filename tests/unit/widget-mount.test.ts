@@ -56,6 +56,65 @@ describe('room-category picker', () => {
   });
 });
 
+describe('WhataRate! Check branding (Phase 7)', () => {
+  it('carries the official name and subtitle, exact words', () => {
+    expect(WIDGET).toContain("'WhataRate!'");
+    expect(WIDGET).toContain("' Check'");
+    expect(WIDGET).toContain("'Live Rate Comparison'");
+  });
+});
+
+describe('rate-plan picker (Phase 7)', () => {
+  it('renders only when the room genuinely has more than one bookable offer', () => {
+    expect(WIDGET).toMatch(/rate_options \|\| \[\];\s*\n\s*if \(options\.length < 2/);
+  });
+
+  it('re-requests with rate_id instead of repricing what is on screen', () => {
+    expect(WIDGET).toMatch(/params\.set\('rate_id', String\(options\.rateId\)\)/);
+    expect(WIDGET).toMatch(/next\.rateId = rateId/);
+  });
+
+  it('drops the rate pin when the room changes — a plan belongs to its room', () => {
+    expect(WIDGET).toMatch(/delete next\.rateId/);
+  });
+
+  it('falls back to the cheapest plan when a pinned rate disappears', () => {
+    expect(WIDGET).toMatch(/RATE_NOT_FOUND' && options\.rateId/);
+    expect(WIDGET).toMatch(/delete withoutRate\.rateId/);
+  });
+});
+
+describe('booking hand-off (Phase 7)', () => {
+  it('uses the API booking URL and never fabricates one', () => {
+    expect(WIDGET).toMatch(/options\.bookingUrl \|\| \(data\.booking && data\.booking\.url\)/);
+    expect(WIDGET).toContain('Booking information is temporarily unavailable.');
+  });
+
+  it('never carries the source session tokens', () => {
+    // cfid/cftoken are per-session credentials on the source's own links.
+    expect(WIDGET).not.toMatch(/cfid|cftoken/);
+  });
+});
+
+describe('Get Help (Phase 7)', () => {
+  it('the advisor button is gone', () => {
+    expect(WIDGET).not.toContain('Lorraine Travel advisor');
+    expect(WIDGET).not.toContain('advisorUrl');
+  });
+
+  it('reuses the existing WhataHotel chatbot, one instance only', () => {
+    expect(WIDGET).toContain("'https://vibss.io/plugin.js?v=2026-01-26'");
+    // An already-rendered container short-circuits before any setup call.
+    expect(WIDGET).toMatch(/if \(vibssContainer\(chatId\)\) return done\(true\)/);
+  });
+
+  it('prefill is best-effort and never sends on the guest behalf', () => {
+    // The guest sees the text in the box and chooses to send it.
+    expect(WIDGET).toMatch(/dispatchEvent\(new Event\('input'/);
+    expect(WIDGET).not.toMatch(/sendMessage|submit\(\)/);
+  });
+});
+
 describe('widget mount selector', () => {
   it('accepts the documented marker attribute', () => {
     expect(mountSelector().split(',')).toContain('[data-wah-pi]');

@@ -41,6 +41,7 @@ import {
   type HotelRow,
 } from './repositories/hotels.js';
 import {
+  findAvailableRates,
   findAvailableRoomTypes,
   findCurrentRate,
   findQuotedCurrency,
@@ -65,11 +66,20 @@ export interface LiveRequest {
    */
   readonly currency: string | null;
   readonly roomTypeId?: number | null;
+  /**
+   * A specific rate plan for the chosen room — the `rate_id` a client read
+   * from `rate_options`. Null/absent means the cheapest plan, which is the
+   * behaviour every request had before rate selection existed.
+   */
+  readonly rateId?: string | null;
   readonly now?: Date;
 }
 
 export type LiveLoadFailure =
-  { kind: 'HOTEL_NOT_FOUND' } | { kind: 'ROOM_TYPE_NOT_FOUND' } | { kind: 'NO_CURRENT_RATE' };
+  | { kind: 'HOTEL_NOT_FOUND' }
+  | { kind: 'ROOM_TYPE_NOT_FOUND' }
+  | { kind: 'RATE_NOT_FOUND' }
+  | { kind: 'NO_CURRENT_RATE' };
 
 /**
  * Where the comp set came from. `CURATED` is the ranked peer set built from
@@ -97,6 +107,17 @@ export interface RoomOption {
   readonly name: string;
   readonly roomClass: string;
   readonly nightlyMinor: number;
+}
+
+/** One rate plan a guest could pick for the chosen room. */
+export interface RateOption {
+  /** Opaque to clients; pass back as `rate_id` to select this plan. */
+  readonly rateId: string;
+  /** The offer's name, or a description built from its stated terms. */
+  readonly name: string;
+  readonly refundPolicy: string;
+  readonly nightlyMinor: number;
+  readonly totalMinor: number;
 }
 
 export interface LoadedLiveIntelligence {
@@ -155,6 +176,21 @@ export interface LoadedLiveIntelligence {
    */
   readonly roomViewType: string | null;
   readonly roomSelectedBy: 'USER' | 'ENGINE';
+  /**
+   * Every rate plan bookable for the CHOSEN room on this stay, cheapest
+   * first. The room list surfaces each room's cheapest plan; this is how a
+   * guest picks the flexible offer over the cheapest one and gets the whole
+   * answer — price, score, comparison, booking link — recomputed for it.
+   */
+  readonly rateOptions: readonly RateOption[];
+  readonly selectedRateId: string;
+  readonly rateSelectedBy: 'USER' | 'ENGINE';
+  /**
+   * The source's booking identifiers for the SELECTED rate, read from the
+   * capture itself. Null when the capture did not state them — a booking
+   * link is then not offered rather than guessed.
+   */
+  readonly booking: { readonly roomCode: string; readonly rateCode: string } | null;
   readonly comparabilityClass: string;
   /**
    * Human-readable rate terms. Mandatory in the UI, not optional detail: a
@@ -223,10 +259,32 @@ export async function loadLiveIntelligence(
       : { kind: 'NO_CURRENT_RATE' };
   }
 
+  // Every plan bookable for the chosen room. The room list surfaced the
+  // cheapest; a rate_id request picks another, and everything downstream —
+  // the stay key, the terms match, the score — keys on the plan the guest
+  // actually selected rather than on the cheapest one.
+  const rateRows = await findAvailableRates(
+    hotel.id,
+    chosen.roomTypeId,
+    request.checkIn,
+    request.nights,
+    request.adults,
+    request.children,
+    currency,
+    q,
+  );
+  const selectedRate =
+    request.rateId != null
+      ? rateRows.find((r) => r.comparabilityClass === request.rateId)
+      : (rateRows.find((r) => r.comparabilityClass === chosen.comparabilityClass) ?? rateRows[0]);
+  if (!selectedRate) {
+    return request.rateId != null ? { kind: 'RATE_NOT_FOUND' } : { kind: 'NO_CURRENT_RATE' };
+  }
+
   const stayKey = {
     hotelId: hotel.id,
     roomTypeId: chosen.roomTypeId,
-    comparabilityClass: chosen.comparabilityClass,
+    comparabilityClass: selectedRate.comparabilityClass,
     checkIn: request.checkIn,
     nights: request.nights,
     adults: request.adults,
@@ -247,15 +305,17 @@ export async function loadLiveIntelligence(
   // The comparison key, and how much of it the source actually stated. Both
   // derive from the chosen rate's own terms, so a caller cannot get a strength
   // that disagrees with the match that produced it.
+  // The SELECTED rate's terms, not the room list's cheapest-plan terms: a
+  // guest who picked the flexible offer must be compared on that offer.
   const subjectTerms = {
-    mealPlan: chosen.mealPlan,
-    refundPolicy: chosen.refundPolicy,
-    audience: chosen.audience,
+    mealPlan: current.mealPlan,
+    refundPolicy: current.refundPolicy,
+    audience: current.audience,
   };
   const matchTerms = {
-    mealPlan: chosen.mealPlan as MealPlan,
-    refundPolicy: chosen.refundPolicy as RefundPolicy,
-    audience: chosen.audience as RateAudience,
+    mealPlan: current.mealPlan as MealPlan,
+    refundPolicy: current.refundPolicy as RefundPolicy,
+    audience: current.audience as RateAudience,
   };
 
   const compLimit = Math.max(live.csi.minComps + 3, 8);
@@ -487,7 +547,26 @@ export async function loadLiveIntelligence(
     // "null is unknown — say nothing about it", so it maps to null here.
     roomViewType: chosen.viewType && chosen.viewType !== 'UNKNOWN' ? chosen.viewType : null,
     roomSelectedBy: request.roomTypeId != null ? 'USER' : 'ENGINE',
-    comparabilityClass: chosen.comparabilityClass,
+    rateOptions: rateRows.map((r) => ({
+      rateId: r.comparabilityClass,
+      name:
+        r.planName ??
+        describeRateTerms({
+          mealPlan: r.mealPlan as MealPlan,
+          refundPolicy: r.refundPolicy as RefundPolicy,
+          audience: r.audience as RateAudience,
+        }),
+      refundPolicy: r.refundPolicy,
+      nightlyMinor: r.nightlyMinor,
+      totalMinor: r.totalMinor,
+    })),
+    selectedRateId: selectedRate.comparabilityClass,
+    rateSelectedBy: request.rateId != null ? 'USER' : 'ENGINE',
+    booking:
+      selectedRate.sourceRoomCode && selectedRate.sourceRateCode
+        ? { roomCode: selectedRate.sourceRoomCode, rateCode: selectedRate.sourceRateCode }
+        : null,
+    comparabilityClass: selectedRate.comparabilityClass,
     rateTerms: describeRateTerms({
       mealPlan: current.mealPlan as MealPlan,
       refundPolicy: current.refundPolicy as RefundPolicy,

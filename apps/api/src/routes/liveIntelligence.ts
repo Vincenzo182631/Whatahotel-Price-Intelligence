@@ -140,6 +140,11 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     });
   }
 
+  // A specific rate plan for the chosen room — the `rate_id` a client read
+  // from `subject.rate_options`. Absent means the cheapest plan, which is
+  // what every request got before rate selection existed.
+  const rateId = url.searchParams.get('rate_id');
+
   // The guest's stated preference (Phase 6). Absent means GENERAL_VALUE —
   // the un-personalized answer, byte-for-byte what it was before the
   // preference existed. An unrecognised value is a 400 rather than a silent
@@ -166,6 +171,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     children,
     currency: requestedCurrency,
     roomTypeId,
+    rateId,
     now,
   };
   let loaded = await loadLiveIntelligence(request, config);
@@ -255,6 +261,14 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       case 'ROOM_TYPE_NOT_FOUND':
         throw new ApiError('ROOM_TYPE_NOT_FOUND', 'No such room type for this hotel.', {
           room_type_id: roomTypeParam,
+        });
+      case 'RATE_NOT_FOUND':
+        // The pinned rate plan is no longer bookable for this stay — the
+        // offer went away, or the guest moved the dates. Distinct from
+        // ROOM_TYPE_NOT_FOUND so a client can drop the rate pin and retry
+        // with the room's current cheapest plan.
+        throw new ApiError('RATE_NOT_FOUND', 'That rate is no longer available for this stay.', {
+          rate_id: rateId,
         });
       case 'NO_CURRENT_RATE':
         throw new ApiError('NO_CURRENT_RATE', 'No available rate for these dates.', {
@@ -473,6 +487,22 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         name: loaded.roomName,
         selected_by: loaded.roomSelectedBy,
       },
+      /**
+       * Every rate plan bookable for the CHOSEN room, cheapest first, and
+       * which of them this answer describes. Re-request with `rate_id` to
+       * score another: the terms match, the comp set and the booking link
+       * all key on the selected plan, so the answer is recomputed rather
+       * than repriced.
+       */
+      rate_options: loaded.rateOptions.map((r) => ({
+        rate_id: r.rateId,
+        name: r.name,
+        refund_policy: r.refundPolicy,
+        nightly: money(r.nightlyMinor, currency),
+        total: money(r.totalMinor, currency),
+      })),
+      selected_rate_id: loaded.selectedRateId,
+      rate_selected_by: loaded.rateSelectedBy,
       // Every room bookable for THIS stay, cheapest first, so a client can
       // offer the choice rather than only ever showing the engine's pick.
       // Re-request with `room_type_id` to score any of them: the comp set, the
@@ -650,6 +680,37 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
           confidence: explanation.personalization.confidence,
           evidence_used: explanation.personalization.evidence_used,
           source: explanation.personalization.source,
+        }
+      : null,
+
+    /**
+     * Everything a client needs to book THIS exact rate on whatahotel.com.
+     *
+     * The room and rate codes are the source's own booking identifiers,
+     * read from the same capture the displayed price came from — so the
+     * booking page opens on the rate the widget scored, never a relative
+     * of it. Null when the capture did not state the codes: the button is
+     * then disabled rather than pointed at a guessed URL. The session
+     * tokens (`cfid`/`cftoken`) the source's own links carry are
+     * deliberately absent — they are per-session credentials, and the
+     * booking page issues fresh ones.
+     */
+    booking: loaded.booking
+      ? {
+          room_code: loaded.booking.roomCode,
+          rate_code: loaded.booking.rateCode,
+          url:
+            'https://whatahotel.com/booking/booking_info.cfm?' +
+            new URLSearchParams({
+              room: loaded.booking.roomCode,
+              rate: loaded.booking.rateCode,
+              hotel: loaded.hotel.wahHotelId,
+              checkin: checkIn,
+              checkout: checkOut,
+              guests: String(adults),
+              children: String(children),
+              rooms: '1',
+            }).toString(),
         }
       : null,
 
