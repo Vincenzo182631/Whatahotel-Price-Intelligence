@@ -20,10 +20,12 @@
  */
 
 import {
+  PREFERENCES,
   buildLiveExplanationBundle,
   chooseAlternative,
   liveBandLabel,
   liveVerdictLabel,
+  parsePreference,
   premiumJustificationSummary,
   type ReputationFact,
 } from '@wahpi/core';
@@ -137,6 +139,21 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       value: roomTypeParam,
     });
   }
+
+  // The guest's stated preference (Phase 6). Absent means GENERAL_VALUE —
+  // the un-personalized answer, byte-for-byte what it was before the
+  // preference existed. An unrecognised value is a 400 rather than a silent
+  // default: a guest who picked "family" and silently got the generic answer
+  // would be reading a personalization that was never made.
+  const preferenceParam = url.searchParams.get('preference');
+  const parsedPreference = parsePreference(preferenceParam);
+  if (preferenceParam !== null && preferenceParam !== '' && parsedPreference === null) {
+    throw new ApiError('INVALID_PARAMETER', 'preference is not recognised', {
+      value: preferenceParam,
+      allowed: PREFERENCES,
+    });
+  }
+  const preference = parsedPreference ?? 'GENERAL_VALUE';
 
   const { config } = await loadActiveConfig();
   const now = new Date();
@@ -372,15 +389,20 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       rating: competitorReputations.get(c.wahHotelId)?.rating ?? null,
       reviewCount: competitorReputations.get(c.wahHotelId)?.userRatingCount ?? null,
     })),
+    // Tilts the RANKING among eligible candidates only — a preference can
+    // never conjure an alternative the eligibility rule would not allow.
+    preference,
   );
 
   const bundle = buildLiveExplanationBundle({
     configVersion: config.version,
+    preference,
     hotelName: loaded.hotel.name,
     city: loaded.hotel.destination,
     roomTypeName: loaded.roomName,
     roomClass:
       loaded.availableRooms.find((r) => r.roomTypeId === loaded.roomTypeId)?.roomClass ?? null,
+    roomViewType: loaded.roomViewType,
     checkIn,
     checkOut,
     nights,
@@ -588,9 +610,46 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
           save_nightly: money(alternative.saveNightlyMinor, currency),
           rating: alternative.rating,
           review_count: alternative.reviewCount,
+          // With a stated preference, the personalization's reason names why
+          // this candidate suits THAT preference; otherwise the assessment's.
           reason:
+            explanation.personalization?.alternative_reason ||
             explanation.assessment?.alternative_reason ||
             'A comparable stay is currently available at a lower rate.',
+        }
+      : null,
+
+    /**
+     * The personalization layer (Phase 6) — the SAME facts, read through the
+     * guest's stated preference. Null when the preference is GENERAL_VALUE
+     * (the default), so an un-personalized response is exactly the response
+     * this endpoint returned before preferences existed.
+     *
+     * Nothing above this block moves with the preference: the score, the
+     * prices, the premium, the availability read and the reputation are
+     * identical for every preference by construction — personalization is
+     * built from the finished fact bundle, after every number is decided.
+     * The only other preference-sensitive field is the alternative's
+     * RANKING (never its eligibility) and its reason sentence.
+     *
+     * `source` says who wrote it: MODEL passed the full validation gate
+     * (numeric allowlist, no predictions, no citing evidence the bundle
+     * does not hold); DETERMINISTIC is the code-written reading that ships
+     * when the model is unavailable or its draft was rejected. A preference
+     * for which we hold no specific evidence — amenities, family,
+     * nightlife, quiet, business — says so plainly rather than inventing a
+     * fit.
+     */
+    personalization: explanation.personalization
+      ? {
+          preference: explanation.personalization.preference,
+          personalized_insight: explanation.personalization.personalized_insight,
+          why_this_hotel_may_fit: explanation.personalization.why_this_hotel_may_fit,
+          what_to_consider: explanation.personalization.what_to_consider,
+          alternative_reason: explanation.personalization.alternative_reason || null,
+          confidence: explanation.personalization.confidence,
+          evidence_used: explanation.personalization.evidence_used,
+          source: explanation.personalization.source,
         }
       : null,
 

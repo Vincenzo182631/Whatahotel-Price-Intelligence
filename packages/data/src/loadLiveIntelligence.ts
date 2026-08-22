@@ -147,6 +147,13 @@ export interface LoadedLiveIntelligence {
   readonly premium: PremiumJustificationResult;
   readonly roomTypeId: number;
   readonly roomName: string;
+  /**
+   * The chosen room's view category ('OCEAN', 'CITY', …), or null when the
+   * normalizer resolved none. The only physical room attribute the source
+   * states, published for the personalization layer — nothing in scoring
+   * reads it from here.
+   */
+  readonly roomViewType: string | null;
   readonly roomSelectedBy: 'USER' | 'ENGINE';
   readonly comparabilityClass: string;
   /**
@@ -476,6 +483,9 @@ export async function loadLiveIntelligence(
     premium,
     roomTypeId: chosen.roomTypeId,
     roomName: chosen.canonicalName,
+    // UNKNOWN means the source did not state a view; in bundle semantics
+    // "null is unknown — say nothing about it", so it maps to null here.
+    roomViewType: chosen.viewType && chosen.viewType !== 'UNKNOWN' ? chosen.viewType : null,
     roomSelectedBy: request.roomTypeId != null ? 'USER' : 'ENGINE',
     comparabilityClass: chosen.comparabilityClass,
     rateTerms: describeRateTerms({

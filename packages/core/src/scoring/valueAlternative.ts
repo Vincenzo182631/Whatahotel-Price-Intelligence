@@ -126,6 +126,21 @@ export interface ValueAlternative {
 }
 
 /**
+ * How the saving/reputation blend tilts for a stated preference (Phase 6).
+ *
+ * The eligibility rule NEVER moves — a preference cannot conjure an
+ * alternative that is not genuinely cheaper — only the ranking among
+ * already-eligible candidates does. A value-focused guest weighs the saving
+ * harder; an experience-focused guest weighs verified reputation harder;
+ * everyone else gets the Phase 5 default unchanged.
+ */
+const ALTERNATIVE_WEIGHTS: Readonly<Record<string, { saving: number; reputation: number }>> = {
+  BEST_VALUE: { saving: 0.7, reputation: 0.3 },
+  LUXURY_EXPERIENCE: { saving: 0.3, reputation: 0.7 },
+};
+const DEFAULT_ALTERNATIVE_WEIGHTS = { saving: 0.55, reputation: 0.45 };
+
+/**
  * The most RELEVANT lower-priced comparable, which is deliberately not the
  * cheapest one.
  *
@@ -142,11 +157,16 @@ export interface ValueAlternative {
 export function chooseAlternative(
   subjectNightlyMinor: Minor,
   candidates: readonly AlternativeCandidate[],
+  preference?: string,
 ): ValueAlternative | null {
   const eligible = candidates.filter(
     (c) => c.isAvailable && c.nightlyMinor <= subjectNightlyMinor * 0.9 && c.nightlyMinor > 0,
   );
   if (eligible.length === 0) return null;
+
+  const weights =
+    (preference !== undefined ? ALTERNATIVE_WEIGHTS[preference] : undefined) ??
+    DEFAULT_ALTERNATIVE_WEIGHTS;
 
   const score = (c: AlternativeCandidate): number => {
     const savingShare = (subjectNightlyMinor - c.nightlyMinor) / subjectNightlyMinor;
@@ -155,7 +175,7 @@ export function chooseAlternative(
       const volume = Math.min(1, Math.log10(Math.max(1, c.reviewCount ?? 1)) / 3.5);
       reputation = (c.rating / 5) * (0.5 + 0.5 * volume);
     }
-    return savingShare * 0.55 + reputation * 0.45;
+    return savingShare * weights.saving + reputation * weights.reputation;
   };
 
   let best = eligible[0] as AlternativeCandidate;

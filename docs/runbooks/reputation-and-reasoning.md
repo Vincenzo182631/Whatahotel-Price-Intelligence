@@ -195,6 +195,57 @@ verified reputation exists at all.
 No brand is named anywhere in this logic. An expensive hotel earns HIGH only
 from evidence: what the rate includes, and what verified guests say.
 
+## The personalization layer (Phase 6)
+
+`GET /api/v1/live-intelligence?…&preference=BEST_VALUE` reinterprets the SAME
+computed facts through the guest's stated preference. Values: `GENERAL_VALUE`
+(default — no personalization block, the response is exactly the
+un-personalized one), `BEST_VALUE`, `LUXURY_EXPERIENCE`, `LOCATION`,
+`AMENITIES`, `BEACH_RESORT`, `FAMILY`, `NIGHTLIFE`, `QUIET_RELAXATION`,
+`BUSINESS_TRAVEL`. Unrecognised values are a 400, not a silent default.
+
+Published as a top-level `personalization` block:
+
+```jsonc
+{
+  "preference": "BEST_VALUE",
+  "personalized_insight": "…", // 1-3 validated sentences
+  "why_this_hotel_may_fit": [], // ≤3, each traceable to a bundle fact
+  "what_to_consider": [], // ≤3 neutral considerations
+  "alternative_reason": "…", // why the alternative suits THIS preference
+  "confidence": "HIGH | MEDIUM | LOW", // computed by CODE, never the model
+  "evidence_used": ["comparable_rates", "…"],
+  "source": "MODEL | DETERMINISTIC",
+}
+```
+
+The two rules that govern it:
+
+- **A preference never changes a number.** Score, prices, premium,
+  availability and reputation are identical for every preference — enforced
+  structurally (personalization is built from the finished bundle) and by a
+  test that compares every objective block across all ten preferences. The
+  only preference-sensitive machinery besides the text is the alternative's
+  RANKING among already-eligible candidates (BEST_VALUE weighs the saving at
+  0.7, LUXURY_EXPERIENCE weighs reputation at 0.7; eligibility never moves).
+- **No evidence, no claim.** We hold no amenity, family, nightlife, quiet or
+  business-facility data (the source's `info` method 500s), so those
+  preferences answer "limited information is available" and interpret only
+  the price evidence. Fit lists are shorter when evidence is thin — never
+  padded. `BEACH_RESORT` may cite an ocean view only when the room's
+  normalized `view_type` states one.
+
+The preference travels inside the explanation bundle, so the reasoner's cache
+keys per preference automatically, and `validatePersonalization` holds a
+model draft to the same gate as the assessment: numeric allowlist, no
+predictive language, no citing evidence the bundle does not carry, and
+`confidence`/`preference` are overridden by code. Rejected or absent, the
+deterministic reading ships (`source: "DETERMINISTIC"`).
+
+In the widget, the chips under "What matters most to you?" re-request with
+`preference=` — nothing is relabelled client-side — the choice survives room
+and date changes, and General value restores the un-personalized panel.
+
 ## When the prose is not the model's
 
 `source: "TEMPLATE"` on a request you expected the model to answer means one of:

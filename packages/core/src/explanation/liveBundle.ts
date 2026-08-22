@@ -41,8 +41,9 @@ import type {
 import type { LiveScoreResult } from '../scoring/liveScore.js';
 import { liveBandLabel, liveVerdictLabel } from '../scoring/liveScore.js';
 import { numeralsIn } from './bundle.js';
+import type { Preference } from './preference.js';
 
-export const LIVE_BUNDLE_VERSION = 2;
+export const LIVE_BUNDLE_VERSION = 3;
 
 /** A rating that survived matching. Rating and count travel together. */
 export interface ReputationFact {
@@ -57,12 +58,26 @@ export interface LiveExplanationBundle {
   readonly bundle_version: number;
   readonly config_version: number;
   readonly model: 'LIVE_MARKET';
+  /**
+   * The guest's stated preference — Phase 6. An INTERPRETATION input only:
+   * every fact below is identical for every preference, and the bundle key
+   * (the reasoner's cache key) hashes the whole bundle, so two preferences
+   * can never share a cached narrative. GENERAL_VALUE means no
+   * personalization is produced at all.
+   */
+  readonly preference: Preference;
   readonly subject: {
     readonly hotel_name: string;
     /** The destination, for location context. Null when uncatalogued. */
     readonly city: string | null;
     readonly room_type_name: string;
     readonly room_class: string | null;
+    /**
+     * The view category of the selected room ('OCEAN', 'CITY', …), when the
+     * normalizer resolved one. The only physical room attribute the source
+     * states, so the only one personalization may ever lean on.
+     */
+    readonly room_view: string | null;
     readonly check_in: string;
     readonly check_out: string;
     readonly nights: number;
@@ -189,10 +204,13 @@ export interface LiveExplanationBundle {
 
 export interface LiveBundleInput {
   readonly configVersion: number;
+  /** Defaults to GENERAL_VALUE — the un-personalized Phase 5 behaviour. */
+  readonly preference?: Preference;
   readonly hotelName: string;
   readonly city?: string | null;
   readonly roomTypeName: string;
   readonly roomClass?: string | null;
+  readonly roomViewType?: string | null;
   readonly checkIn: string;
   readonly checkOut: string;
   readonly nights: number;
@@ -351,11 +369,13 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
     bundle_version: LIVE_BUNDLE_VERSION,
     config_version: input.configVersion,
     model: 'LIVE_MARKET',
+    preference: input.preference ?? 'GENERAL_VALUE',
     subject: {
       hotel_name: input.hotelName,
       city: input.city ?? null,
       room_type_name: input.roomTypeName,
       room_class: input.roomClass ?? null,
+      room_view: input.roomViewType ?? null,
       check_in: input.checkIn,
       check_out: input.checkOut,
       nights: input.nights,

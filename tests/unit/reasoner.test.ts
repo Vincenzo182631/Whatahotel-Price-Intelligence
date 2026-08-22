@@ -33,7 +33,7 @@ import {
 const NOW = new Date('2026-08-21T00:00:00Z');
 const OBSERVED = '2026-08-20T23:00:00Z';
 
-function bundle() {
+function bundle(preference: 'GENERAL_VALUE' | 'BEST_VALUE' | 'FAMILY' = 'GENERAL_VALUE') {
   const comps = [48_000, 50_000, 52_000, 55_000].map((n, i) => ({
     hotelId: `c${i}`,
     name: `Competitor ${i}`,
@@ -59,6 +59,7 @@ function bundle() {
 
   return buildLiveExplanationBundle({
     configVersion: DEFAULT_CONFIG.version,
+    preference,
     hotelName: 'Loews Miami Beach',
     roomTypeName: 'Corner King',
     checkIn: '2026-09-10',
@@ -79,12 +80,14 @@ function bundle() {
 }
 
 /** A fetch that answers with whatever `summary` is given. */
-function respondWith(summary: string, assessment: unknown = null) {
+function respondWith(summary: string, assessment: unknown = null, personalization: unknown = null) {
   return vi.fn(
     async () =>
       new Response(
         JSON.stringify({
-          choices: [{ message: { content: JSON.stringify({ summary, assessment }) } }],
+          choices: [
+            { message: { content: JSON.stringify({ summary, assessment, personalization }) } },
+          ],
         }),
         { status: 200 },
       ),
@@ -134,6 +137,61 @@ describe('the assessment rides with the explanation', () => {
     const b = bundle();
     const out = await explainLive(null, b);
     expect(out.assessment).toBeNull(); // NOT_PREMIUM — null is the honest verdict
+  });
+});
+
+describe('the personalization rides with the explanation (Phase 6)', () => {
+  it('GENERAL_VALUE produces no personalization on any path', async () => {
+    const b = bundle();
+    const templated = await explainLive(null, b);
+    expect(templated.personalization).toBeNull();
+
+    vi.stubGlobal('fetch', respondWith('Corner King at Loews Miami Beach is $442 a night.'));
+    const modelled = await reasoner().explain(b);
+    expect(modelled.personalization).toBeNull();
+  });
+
+  it('a stated preference gets the deterministic personalization with no model', async () => {
+    const b = bundle('BEST_VALUE');
+    const out = await explainLive(null, b);
+    expect(out.personalization).not.toBeNull();
+    expect(out.personalization?.preference).toBe('BEST_VALUE');
+    expect(out.personalization?.source).toBe('DETERMINISTIC');
+  });
+
+  it('an invalid model personalization falls back without losing the summary', async () => {
+    const b = bundle('FAMILY');
+    vi.stubGlobal(
+      'fetch',
+      respondWith('Corner King at Loews Miami Beach is $442 a night.', null, {
+        personalized_insight: 'This hotel has a legendary kids club rated 97% by families.',
+        why_this_hotel_may_fit: [],
+        what_to_consider: [],
+        alternative_reason: '',
+        evidence_used: ['live_rate'],
+      }),
+    );
+    const out = await reasoner().explain(b);
+    expect(out.source).toBe('MODEL'); // the summary survived on its own merits
+    expect(out.personalization?.source).toBe('DETERMINISTIC'); // the fabricated 97 did not
+  });
+
+  it('a grounded model personalization is used and marked MODEL', async () => {
+    const b = bundle('FAMILY');
+    vi.stubGlobal(
+      'fetch',
+      respondWith('Corner King at Loews Miami Beach is $442 a night.', null, {
+        personalized_insight:
+          'Limited family-specific information is available for this property, so this reflects the price evidence.',
+        why_this_hotel_may_fit: [],
+        what_to_consider: [],
+        alternative_reason: '',
+        evidence_used: ['live_rate'],
+      }),
+    );
+    const out = await reasoner().explain(b);
+    expect(out.personalization?.source).toBe('MODEL');
+    expect(out.personalization?.preference).toBe('FAMILY');
   });
 });
 

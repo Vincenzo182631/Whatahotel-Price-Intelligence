@@ -410,4 +410,21 @@ neither key set, the API returns `reputation: null` and
 HTML, widget JavaScript, a data attribute, or anything a bundler inlines into
 the browser.
 
+**The personalization layer is live** (Phase 6, 2026-08-22). The widget asks
+"what matters most to you?" and the API takes `preference=` — nine options plus
+the default `GENERAL_VALUE`, which produces byte-for-byte the un-personalized
+response. The hard rule: **a preference never changes a number.** It cannot,
+structurally — personalization (`packages/core/src/explanation/personalization.ts`)
+is built FROM the finished bundle after every number is decided, and a test
+compares all objective blocks across all ten preferences. What a preference
+does move: which facts are foregrounded, the alternative's RANKING among
+already-eligible candidates (never its eligibility), and the alternative's
+reason sentence. The preference travels inside the bundle, so the reasoner's
+cache separates per preference for free. Honesty constraint: the source's
+`info` endpoint answers nothing, so we hold NO amenity/family/nightlife/quiet/
+business data — those preferences say "limited information is available"
+rather than inventing a fit, fit lists are capped at three and never padded,
+and model-written personalization passes the same allowlist/prediction/
+absent-evidence gate as the assessment or the deterministic one ships.
+
 The weights in every version so far remain uncalibrated priors.
