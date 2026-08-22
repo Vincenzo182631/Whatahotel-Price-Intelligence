@@ -131,6 +131,23 @@ describe('Get Help (Phase 7)', () => {
   });
 });
 
+describe('Google rating stars', () => {
+  it('star fill tracks the actual rating — never a flat five', () => {
+    // Five cells, each filled by clamp(rating - i, 0, 1): 4.3 paints four
+    // full stars and 30% of the fifth. A fixed row of five ★ glyphs would
+    // overstate every rating below 4.75.
+    expect(WIDGET).toMatch(/Math\.max\(0, Math\.min\(1, rating - i\)\)/);
+    expect(WIDGET).toMatch(/overlay\.style\.width = fill \* 100 \+ '%'/);
+  });
+
+  it('is compact, secondary, and never implies the rating is scored', () => {
+    expect(WIDGET).toContain("'Google rating'");
+    expect(WIDGET).toContain('Context only — not part of the score.');
+    // Decoration is aria-hidden; the container carries the accessible label.
+    expect(WIDGET).toMatch(/aria-label', 'Rated ' \+ rating\.toFixed\(1\) \+ ' out of 5'/);
+  });
+});
+
 describe('widget mount selector', () => {
   it('accepts the documented marker attribute', () => {
     expect(mountSelector().split(',')).toContain('[data-wah-pi]');
