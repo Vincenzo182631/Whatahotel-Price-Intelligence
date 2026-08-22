@@ -283,20 +283,49 @@
   margin-top: 6px;
 }
 
+/* Compact and secondary by design: fine text and small stars, so the row
+   never competes with the WhataRate score above it. */
 .wahpi__reputation {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
+  font-size: 0.84rem;
+}
+.wahpi__reputation-label,
+.wahpi__reputation-sep,
+.wahpi__reputation-count {
+  color: var(--wahpi-muted);
 }
 .wahpi__reputation-rating {
-  font-size: 1.1rem;
   font-weight: 650;
 }
-.wahpi__reputation-scale,
-.wahpi__reputation-count {
-  font-size: 0.86rem;
-  color: var(--wahpi-muted);
+
+/* Dynamic-fill stars. Each cell is a muted base ★ with a width-clipped
+   filled ★ over it, so 4.3 paints four stars and 30% of the fifth — the
+   glyph count never lies about the rating. Decoration only: the container
+   carries the accessible label and the number always sits beside it. */
+.wahpi__stars {
+  display: inline-flex;
+  line-height: 1;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+  transform: translateY(1px);
+}
+.wahpi__star {
+  position: relative;
+  display: inline-block;
+}
+.wahpi__star-bg {
+  color: var(--wahpi-line);
+}
+.wahpi__star-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: #d99a06;
 }
 .wahpi__premium-eyebrow {
   font-size: 0.68rem;
@@ -348,6 +377,12 @@
   font-size: 0.82rem;
   color: var(--wahpi-muted);
   margin-top: 4px;
+}
+.wahpi__alternative-rating {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
 }
 
 /* Stated, not implied: a rating sitting beside a score reads as part of it. */

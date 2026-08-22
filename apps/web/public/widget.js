@@ -1445,15 +1445,17 @@
       ),
     );
     if (alt.rating !== null && alt.rating !== undefined) {
-      box.appendChild(
-        el(
-          'div',
-          'wahpi__alternative-rating',
-          alt.rating.toFixed(1) +
-            ' / 5 on Google' +
-            (alt.review_count ? ' · ' + alt.review_count.toLocaleString() + ' reviews' : ''),
-        ),
-      );
+      // Same dynamic-fill stars as the subject's rating, same compact scale.
+      var ratingRow = el('div', 'wahpi__alternative-rating');
+      ratingRow.appendChild(el('span', null, 'Google rating'));
+      ratingRow.appendChild(el('span', 'wahpi__reputation-sep', '·'));
+      ratingRow.appendChild(renderStars(alt.rating));
+      ratingRow.appendChild(el('span', null, alt.rating.toFixed(1)));
+      if (alt.review_count) {
+        ratingRow.appendChild(el('span', 'wahpi__reputation-sep', '·'));
+        ratingRow.appendChild(el('span', null, alt.review_count.toLocaleString() + ' reviews'));
+      }
+      box.appendChild(ratingRow);
     }
     if (alt.reason) box.appendChild(el('div', 'wahpi__alternative-reason', alt.reason));
     wrap.appendChild(box);
@@ -1461,12 +1463,42 @@
   }
 
   /**
+   * A row of five small stars whose FILL tracks the actual rating — 4.3
+   * paints four full stars and 30% of the fifth, never a flat five. Each
+   * cell is a muted base star with a width-clipped overlay, so any fraction
+   * (half-stars included) renders exactly, with plain text glyphs and no
+   * images. The row is decoration: it is aria-hidden inside a container
+   * that carries the rating as its accessible label, and the numeric
+   * rating always renders beside it — colour and fill are never the only
+   * carrier of the fact.
+   */
+  function renderStars(rating) {
+    var row = el('span', 'wahpi__stars');
+    row.setAttribute('role', 'img');
+    row.setAttribute('aria-label', 'Rated ' + rating.toFixed(1) + ' out of 5');
+    for (var i = 0; i < 5; i += 1) {
+      var fill = Math.max(0, Math.min(1, rating - i));
+      var cell = el('span', 'wahpi__star');
+      cell.setAttribute('aria-hidden', 'true');
+      cell.appendChild(el('span', 'wahpi__star-bg', '★'));
+      var overlay = el('span', 'wahpi__star-fill');
+      overlay.style.width = fill * 100 + '%';
+      overlay.appendChild(el('span', null, '★'));
+      cell.appendChild(overlay);
+      row.appendChild(cell);
+    }
+    return row;
+  }
+
+  /**
    * The guest rating, when we hold a verified one.
    *
-   * Shown with its review count attached — a rating without one invites a
-   * reader to weigh 32 reviews the same as 4,500 — and labelled as not
-   * affecting the score, because it does not. An unmatched hotel renders
-   * nothing at all rather than an empty star row.
+   * Compact and deliberately secondary: fine text and small stars that do
+   * not compete with the WhataRate score above. Shown with its review count
+   * attached — a rating without one invites a reader to weigh 32 reviews
+   * the same as 4,500 — and labelled as not affecting the score, because it
+   * does not. An unmatched hotel renders nothing at all rather than an
+   * empty star row.
    */
   function renderLiveReputation(data) {
     var rep = data.reputation;
@@ -1474,9 +1506,12 @@
 
     var wrap = section(null);
     var row = el('div', 'wahpi__reputation');
+    row.appendChild(el('span', 'wahpi__reputation-label', 'Google rating'));
+    row.appendChild(el('span', 'wahpi__reputation-sep', '·'));
+    row.appendChild(renderStars(rep.rating));
     row.appendChild(el('span', 'wahpi__reputation-rating', rep.rating.toFixed(1)));
-    row.appendChild(el('span', 'wahpi__reputation-scale', '/ 5 on Google'));
     if (rep.review_count !== null && rep.review_count !== undefined) {
+      row.appendChild(el('span', 'wahpi__reputation-sep', '·'));
       row.appendChild(
         el(
           'span',
