@@ -79,14 +79,14 @@ function bundle() {
 }
 
 /** A fetch that answers with whatever `summary` is given. */
-function respondWith(summary: string) {
+function respondWith(summary: string, assessment: unknown = null) {
   return vi.fn(
     async () =>
       new Response(
-        JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary }) } }] }),
-        {
-          status: 200,
-        },
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({ summary, assessment }) } }],
+        }),
+        { status: 200 },
       ),
   );
 }
@@ -96,6 +96,45 @@ const reasoner = () =>
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('the assessment rides with the explanation', () => {
+  it('a valid model assessment is used and its confidence overridden', async () => {
+    const b = bundle();
+    // 44_200 vs comps 48-55k is NOT premium — bundle() has no premium, so
+    // the assessment must be null regardless of what the model sends.
+    const draft = {
+      level: 'MEDIUM',
+      reasoning: 'Priced above the comparable hotels.',
+      key_positive_factors: [],
+      key_negative_factors: [],
+      confidence: 'HIGH',
+      recommendation: 'Consider it.',
+      evidence_used: ['live_rate'],
+    };
+    vi.stubGlobal('fetch', respondWith('Corner King at Loews Miami Beach is $442 a night.', draft));
+    const out = await reasoner().explain(b);
+    expect(out.source).toBe('MODEL');
+    expect(out.assessment).toBeNull();
+  });
+
+  it('an invalid assessment falls back deterministically without losing a valid summary', async () => {
+    const b = bundle();
+    vi.stubGlobal(
+      'fetch',
+      respondWith('Corner King at Loews Miami Beach is $442 a night.', { level: 'AMAZING' }),
+    );
+    const out = await reasoner().explain(b);
+    expect(out.source).toBe('MODEL'); // the summary survived on its own merits
+    // NOT_PREMIUM stay: deterministic assessment is null; nothing invented.
+    expect(out.assessment).toBeNull();
+  });
+
+  it('with no reasoner at all the deterministic assessment ships', async () => {
+    const b = bundle();
+    const out = await explainLive(null, b);
+    expect(out.assessment).toBeNull(); // NOT_PREMIUM — null is the honest verdict
+  });
 });
 
 describe('explainLive with no reasoner', () => {

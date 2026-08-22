@@ -23,6 +23,7 @@ import {
   buildLiveExplanationBundle,
   liveBandLabel,
   liveVerdictLabel,
+  premiumJustificationSummary,
   type ReputationFact,
 } from '@wahpi/core';
 import {
@@ -108,18 +109,7 @@ function liveReasoner(): OpenAiReasoner | null {
  * about what the hotel is worth.
  */
 function premiumSummary(level: string): string {
-  switch (level) {
-    case 'HIGH':
-      return 'Premium pricing appears justified. This room costs more than comparable hotels, and most of that difference is covered by what the rate includes.';
-    case 'MODERATE':
-      return 'Premium pricing appears partly justified. This room costs more than comparable hotels, and some of that difference is covered by what the rate includes.';
-    case 'LOW':
-      return 'Premium pricing may not be justified. This room costs more than comparable hotels without a matching advantage in what the rate includes.';
-    case 'NOT_PREMIUM':
-      return 'This room is not priced above comparable hotels, so there is no premium to justify.';
-    default:
-      return 'Limited data. This room is priced above the competitive set, but there is not enough comparable information to judge whether the premium is justified.';
-  }
+  return premiumJustificationSummary(level);
 }
 
 export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
@@ -363,6 +353,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   const bundle = buildLiveExplanationBundle({
     configVersion: config.version,
     hotelName: loaded.hotel.name,
+    city: loaded.hotel.destination,
     roomTypeName: loaded.roomName,
     roomClass:
       loaded.availableRooms.find((r) => r.roomTypeId === loaded.roomTypeId)?.roomClass ?? null,
@@ -502,6 +493,31 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       comparables_with_included_value: premium.compsWithBenefits,
       effective_index: round1(premium.effectiveCsi),
       summary: premiumSummary(premium.level),
+      /**
+       * The reasoned verdict: is the premium supported by the evidence?
+       *
+       * `level` above stays the deterministic money-vs-money answer,
+       * untouched. This block may weigh the verified guest reputation as
+       * SUPPORTING evidence — which is as far as reputation ever reaches:
+       * it still moves no score. `source` says who wrote the verdict;
+       * MODEL means it passed the full validation gate (numeric allowlist,
+       * no predictions, every cited piece of evidence present in the
+       * bundle, confidence computed by code). An invalid model verdict is
+       * discarded whole and DETERMINISTIC ships. Null when there is no
+       * premium to justify.
+       */
+      assessment: explanation.assessment
+        ? {
+            level: explanation.assessment.level,
+            reasoning: explanation.assessment.reasoning,
+            key_positive_factors: explanation.assessment.key_positive_factors,
+            key_negative_factors: explanation.assessment.key_negative_factors,
+            confidence: explanation.assessment.confidence,
+            recommendation: explanation.assessment.recommendation,
+            evidence_used: explanation.assessment.evidence_used,
+            source: explanation.assessment.source,
+          }
+        : null,
     },
 
     /**

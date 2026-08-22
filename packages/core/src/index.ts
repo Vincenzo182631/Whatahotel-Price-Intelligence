@@ -154,6 +154,21 @@ export type {
 export { renderLiveExplanation } from './explanation/liveTemplate.js';
 export type { RenderedLiveExplanation } from './explanation/liveTemplate.js';
 export { validateNarrative } from './explanation/validate.js';
+export {
+  ASSESSMENT_EVIDENCE,
+  deterministicAssessment,
+  evidenceConfidence,
+  evidencePresent,
+  premiumJustificationSummary,
+  validateAssessment,
+} from './explanation/assessment.js';
+export type {
+  AssessmentConfidence,
+  AssessmentEvidence,
+  AssessmentLevel,
+  AssessmentValidation,
+  PremiumAssessment,
+} from './explanation/assessment.js';
 export type { NarrativeConstraints, ValidationResult } from './explanation/validate.js';
 
 export { analyze } from './analyze.js';
