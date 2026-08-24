@@ -19,6 +19,16 @@
 //
 //   node scripts/db-maintain.mjs             # measure only
 //   node scripts/db-maintain.mjs --apply     # truncate + slim + vacuum
+//   node scripts/db-maintain.mjs --squeeze   # TRUNCATE observations, migrate
+//
+// --squeeze is the free-tier reset (see migration 0015): the slim-and-vacuum
+// ratchet cannot save a project that is already full, because on Neon only
+// TRUNCATE and DROP lower the project-size counter. The squeeze truncates
+// rate_observation outright — baselines, analyses and the catalogue persist;
+// the observations themselves are re-collected by the next runs — then applies
+// pending migrations so 0015 can replace the monthly partitions with daily
+// ones while they are empty. Ongoing retention is migrate's job, driven by
+// RATE_OBSERVATION_RETAIN_DAYS on every collection run.
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -31,6 +41,7 @@ if (!DATABASE_URL) {
 }
 
 const APPLY = process.argv.includes('--apply');
+const SQUEEZE = process.argv.includes('--squeeze');
 const KEEP_DAYS = Number(process.env.RAW_KEEP_DAYS ?? 14);
 const BATCH = Number(process.env.RAW_BATCH ?? 20_000);
 
@@ -59,6 +70,30 @@ async function measure(label) {
 }
 
 await measure('before');
+
+if (SQUEEZE) {
+  // Whole files back to the quota. TRUNCATE needs no free space, which is the
+  // point: this works on a project where every INSERT and UPDATE fails.
+  console.log('\nTRUNCATE rate_observation (baselines, analyses and the catalogue persist) …');
+  await sql('TRUNCATE rate_observation');
+  console.log('TRUNCATE ingest_reject …');
+  await sql('TRUNCATE ingest_reject');
+
+  // Apply pending migrations while the partitions are empty — 0015 swaps the
+  // monthly partitions for daily ones, and refuses to run over data.
+  console.log('Applying migrations (node scripts/migrate.mjs) …');
+  const { stdout } = await run('node', ['scripts/migrate.mjs'], {
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  console.log(stdout.trim());
+
+  await measure('after');
+  console.log(
+    '\nSqueeze done. Dispatch the collection workflow now — the grid refills ' +
+      'over the next cycles, and on-demand scoring works as soon as a guest asks.',
+  );
+  process.exit(0);
+}
 
 if (!APPLY) {
   console.log('\nMeasure-only run. Re-run with --apply to reclaim.');

@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type "apply" to reclaim; anything else measures only'
+        description: 'Type "apply" to reclaim, "squeeze" to TRUNCATE observations and re-migrate (free-tier reset, see migration 0015); anything else measures only'
         required: false
         default: 'measure'
       raw_keep_days:
@@ -50,7 +50,9 @@ jobs:
       - name: Maintain
         run: |
           set -o pipefail
-          if [ "${{ inputs.confirm }}" = "apply" ]; then
+          if [ "${{ inputs.confirm }}" = "squeeze" ]; then
+            node scripts/db-maintain.mjs --squeeze 2>&1 | tee maintain.log
+          elif [ "${{ inputs.confirm }}" = "apply" ]; then
             node scripts/db-maintain.mjs --apply 2>&1 | tee maintain.log
           else
             node scripts/db-maintain.mjs 2>&1 | tee maintain.log

@@ -16,6 +16,16 @@
 BEGIN;
 
 -- Fixtures ------------------------------------------------------------------
+
+-- The observation fixtures below use fixed slots on 2026-08-14, and daily
+-- partitioning (migration 0015) only maintains a window around today — so on
+-- any database checked after that window has moved on, the fixture rows would
+-- strand in DEFAULT and fail checks 4 and 11 for the wrong reason. Extend the
+-- back window to cover the fixture date explicitly. Rolled back with
+-- everything else.
+SELECT * FROM ensure_rate_observation_partitions(
+    14, GREATEST(100, (CURRENT_DATE - DATE '2026-08-10'))::int);
+
 INSERT INTO source (code, display_name, is_authoritative)
 VALUES ('TEST_SRC', 'Test source', true);
 
@@ -134,15 +144,23 @@ BEGIN
 END $$;
 
 -- Check 4 · partition routing ------------------------------------------------
+--
+-- Since 0015 the partitions are daily, so the assertion is dynamic: every
+-- fixture row must live in the partition named for its own slot date. A row
+-- that landed in DEFAULT (or anywhere else) fails the count.
 DO $$
 DECLARE n INT;
 BEGIN
-    SELECT count(*) INTO n FROM rate_observation_2026_08 o
-      JOIN source s ON s.id = o.source_id WHERE s.code = 'TEST_SRC';
+    SELECT count(*) INTO n FROM rate_observation o
+      JOIN source s ON s.id = o.source_id
+     WHERE s.code = 'TEST_SRC'
+       AND o.tableoid::regclass::text =
+           format('rate_observation_%s',
+                  to_char((o.observation_slot AT TIME ZONE 'UTC')::date, 'YYYY_MM_DD'));
     IF n <> 2 THEN
-        RAISE EXCEPTION 'CHECK 4 FAILED: % rows in the August partition (expected 2)', n;
+        RAISE EXCEPTION 'CHECK 4 FAILED: % rows in their own daily partition (expected 2)', n;
     END IF;
-    RAISE NOTICE 'CHECK 4  ok — observations route to the correct monthly partition';
+    RAISE NOTICE 'CHECK 4  ok — observations route to their slot''s daily partition';
 END $$;
 
 -- Check 5 · check_out must agree with nights ---------------------------------
@@ -267,7 +285,7 @@ END $$;
 DO $$
 DECLARE
     horizon date;
-    months  int;
+    days    int;
 BEGIN
     SELECT max(upper(r)::date) INTO horizon
       FROM (
@@ -288,16 +306,18 @@ BEGIN
         RAISE EXCEPTION 'CHECK 10 FAILED: rate_observation has no explicit partitions';
     END IF;
 
-    months := (EXTRACT(YEAR FROM age(horizon, CURRENT_DATE)) * 12
-               + EXTRACT(MONTH FROM age(horizon, CURRENT_DATE)))::int;
+    -- Daily partitions since 0015: the maintainer keeps 14 days ahead and is
+    -- called by every migrate run (which every collection run performs), so a
+    -- horizon under a week means that loop has been broken for days.
+    days := horizon - CURRENT_DATE;
 
-    IF months < 3 THEN
+    IF days < 7 THEN
         RAISE EXCEPTION
-            'CHECK 10 FAILED: partitions run out on % — only % month(s) ahead. '
+            'CHECK 10 FAILED: partitions run out on % — only % day(s) ahead. '
             'Run scripts/migrate.mjs, which calls ensure_rate_observation_partitions().',
-            horizon, months;
+            horizon, days;
     END IF;
-    RAISE NOTICE 'CHECK 10 ok — partitions cover to % (% months ahead)', horizon, months;
+    RAISE NOTICE 'CHECK 10 ok — partitions cover to % (% days ahead)', horizon, days;
 END $$;
 
 -- Check 11 · nothing is stranded in the DEFAULT partition ----------------------

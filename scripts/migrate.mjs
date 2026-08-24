@@ -93,6 +93,7 @@ async function main() {
   console.log(count === 0 ? '• No pending migrations' : `• Applied ${count} migration(s)`);
 
   await ensurePartitions();
+  await enforceRetention();
 
   if (doSeed) {
     for (const file of await listSql('db/seeds')) {
@@ -134,6 +135,39 @@ async function ensurePartitions() {
     console.log('• Partitions already cover the working window');
   } else {
     for (const row of rows) console.log(`• Partition ${row}`);
+  }
+}
+
+/**
+ * Drop observation partitions older than the retention window — but ONLY when
+ * RATE_OBSERVATION_RETAIN_DAYS says so. Production's collect workflow sets it
+ * because the Neon free tier caps the whole project at 512 MB and DROP is the
+ * only operation that gives that space back (see migration 0015). A developer
+ * database never sets it, so seeded 90-day history survives every migrate.
+ */
+async function enforceRetention() {
+  const days = Number(process.env.RATE_OBSERVATION_RETAIN_DAYS || '');
+  if (!Number.isInteger(days) || days <= 0) return;
+
+  const exists = (
+    await psql(
+      "SELECT 1 FROM pg_proc WHERE proname = 'enforce_rate_observation_retention' LIMIT 1;",
+    )
+  ).includes('1');
+  if (!exists) return;
+
+  const out = await psql(
+    `SELECT partition_name || ' — ' || action FROM enforce_rate_observation_retention(${days});`,
+  );
+  const rows = out
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('rate_observation_'));
+
+  if (rows.length === 0) {
+    console.log(`• Retention (${days}d): nothing old enough to drop`);
+  } else {
+    for (const row of rows) console.log(`• Retention (${days}d): ${row}`);
   }
 }
 

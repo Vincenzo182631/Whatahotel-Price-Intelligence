@@ -76,6 +76,12 @@ jobs:
       # run is unaffected — guest ratings are context beside the price, never
       # a term in any score.
       GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+      # The free-tier space budget (migration 0015): the migrate step below
+      # drops observation partitions older than this many days, because Neon's
+      # 512 MB project cap only shrinks on DROP/TRUNCATE. Baselines and
+      # analyses persist; only raw observations age out. After a Neon plan
+      # upgrade, delete this line and history accrues without limit.
+      RATE_OBSERVATION_RETAIN_DAYS: '7'
 
     steps:
       - uses: actions/checkout@v4

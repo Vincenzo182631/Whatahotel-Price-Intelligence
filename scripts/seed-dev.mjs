@@ -49,6 +49,12 @@ function isoDate(base, offsetDays) {
 }
 
 async function ensureReferenceData(client) {
+  // This seed writes ~90 days of history, but the partition maintainer's
+  // default back window is only a couple of days (migration 0015 — production
+  // has no reason to hold empty backward partitions). Widen it here, where
+  // the history is actually about to be written.
+  await client.query('SELECT ensure_rate_observation_partitions(14, 100)');
+
   await client.query(
     // is_synthetic is what the API reports provenance from, so it must be set
     // here and re-asserted on conflict — a pre-existing row from before the
