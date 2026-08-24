@@ -221,12 +221,27 @@ export function toRecords(query: RateQuery, data: WahRatesResponse): RawRateReco
       isAvailable: true,
       observedAt,
 
+      // The audit payload, SLIMMED. This used to carry the source's whole
+      // room object (amenity prose and all) plus the hotel and stay blocks,
+      // and at ~230k observations it was the majority of a 512 MB database —
+      // the day it filled, every write in the product failed. What is kept
+      // is exactly what anything ever reads back: the booking identifiers
+      // (findAvailableRates), the identity fields for audit, and the two
+      // price figures as the source stated them. db-maintain.mjs nulls even
+      // this once a row ages out of booking relevance.
       raw: {
         source: WHATAHOTEL_SOURCE_CODE,
-        hotel: data.hotel,
-        stay: data.stay,
-        room: { ...room, images: undefined },
-        amadeusProperty: data.amadeus?.codes ?? null,
+        hotel: { id: data.hotel?.id },
+        room: {
+          bookCode: room.bookCode,
+          rateCode: room.rateCode,
+          roomName: room.roomName,
+          bedType: room.bedType,
+          bedNum: room.bedNum,
+          rateDaily: room.rateDaily,
+          rateTotal: room.rateTotal,
+          currency: room.currency,
+        },
       },
     });
   }
