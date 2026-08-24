@@ -55,7 +55,7 @@ export interface HotelValue {
 }
 
 /** Prose for the theme keys, used by the deterministic summary. */
-const THEME_PROSE: Readonly<Record<string, string>> = {
+export const THEME_PROSE: Readonly<Record<string, string>> = {
   service: 'service',
   location: 'the location',
   beach: 'the beach',

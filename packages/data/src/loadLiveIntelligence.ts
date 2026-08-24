@@ -45,6 +45,7 @@ import {
   findAvailableRoomTypes,
   findCurrentRate,
   findQuotedCurrency,
+  resolveRoomCode,
 } from './repositories/observations.js';
 import {
   findCompetitorRates,
@@ -72,6 +73,14 @@ export interface LiveRequest {
    * behaviour every request had before rate selection existed.
    */
   readonly rateId?: string | null;
+  /**
+   * The SOURCE's booking code for one priced row ("E1KBB0") — the identity
+   * a whatahotel.com page actually holds. Resolves to our room and rate;
+   * explicit roomTypeId/rateId win when also given. An unresolvable code
+   * degrades to the engine's pick rather than failing: the page still gets
+   * an answer, and `roomCodeMatch` says what happened.
+   */
+  readonly roomCode?: string | null;
   readonly now?: Date;
 }
 
@@ -190,6 +199,8 @@ export interface LoadedLiveIntelligence {
    * answer — price, score, comparison, booking link — recomputed for it.
    */
   readonly rateOptions: readonly RateOption[];
+  /** How a request's room_code fared: RESOLVED, NOT_FOUND, or null (none sent). */
+  readonly roomCodeMatch: 'RESOLVED' | 'NOT_FOUND' | null;
   readonly selectedRateId: string;
   readonly rateSelectedBy: 'USER' | 'ENGINE';
   /**
@@ -256,11 +267,38 @@ export async function loadLiveIntelligence(
   );
   if (available.length === 0) return { kind: 'NO_CURRENT_RATE' };
 
+  // The source's own booking code, resolved to our identity. Explicit ids
+  // win; a code that resolves fills BOTH the room and the rate, because a
+  // bookCode names one priced row.
+  let effectiveRoomTypeId = request.roomTypeId ?? null;
+  let effectiveRateId = request.rateId ?? null;
+  let roomCodeMatch: 'RESOLVED' | 'NOT_FOUND' | null = null;
+  if (request.roomCode) {
+    const resolved = await resolveRoomCode(
+      hotel.id,
+      request.checkIn,
+      request.nights,
+      request.adults,
+      request.children,
+      currency,
+      request.roomCode,
+      q,
+    );
+    roomCodeMatch = resolved ? 'RESOLVED' : 'NOT_FOUND';
+    if (resolved) {
+      if (effectiveRoomTypeId === null) effectiveRoomTypeId = resolved.roomTypeId;
+      if (effectiveRateId === null) effectiveRateId = resolved.comparabilityClass;
+    }
+  }
+
   const chosen =
-    request.roomTypeId != null
-      ? available.find((r) => r.roomTypeId === request.roomTypeId)
+    effectiveRoomTypeId != null
+      ? available.find((r) => r.roomTypeId === effectiveRoomTypeId)
       : available[0];
   if (!chosen) {
+    // An explicit id the caller stated is a hard miss; a room-code miss
+    // already degraded to the engine pick above, so only the explicit case
+    // reaches here.
     return request.roomTypeId != null
       ? { kind: 'ROOM_TYPE_NOT_FOUND' }
       : { kind: 'NO_CURRENT_RATE' };
@@ -280,12 +318,18 @@ export async function loadLiveIntelligence(
     currency,
     q,
   );
-  const selectedRate =
-    request.rateId != null
-      ? rateRows.find((r) => r.comparabilityClass === request.rateId)
+  let selectedRate =
+    effectiveRateId != null
+      ? rateRows.find((r) => r.comparabilityClass === effectiveRateId)
       : (rateRows.find((r) => r.comparabilityClass === chosen.comparabilityClass) ?? rateRows[0]);
   if (!selectedRate) {
-    return request.rateId != null ? { kind: 'RATE_NOT_FOUND' } : { kind: 'NO_CURRENT_RATE' };
+    // Same asymmetry as the room: only an EXPLICIT rate_id may hard-fail.
+    // A rate that arrived via room_code resolution falls back to the
+    // room's cheapest plan rather than failing the page.
+    if (request.rateId != null) return { kind: 'RATE_NOT_FOUND' };
+    selectedRate =
+      rateRows.find((r) => r.comparabilityClass === chosen.comparabilityClass) ?? rateRows[0];
+    if (!selectedRate) return { kind: 'NO_CURRENT_RATE' };
   }
 
   const stayKey = {
@@ -554,7 +598,7 @@ export async function loadLiveIntelligence(
     // UNKNOWN means the source did not state a view; in bundle semantics
     // "null is unknown — say nothing about it", so it maps to null here.
     roomViewType: chosen.viewType && chosen.viewType !== 'UNKNOWN' ? chosen.viewType : null,
-    roomSelectedBy: request.roomTypeId != null ? 'USER' : 'ENGINE',
+    roomSelectedBy: request.roomTypeId != null || roomCodeMatch === 'RESOLVED' ? 'USER' : 'ENGINE',
     rateOptions: rateRows.map((r) => ({
       rateId: r.comparabilityClass,
       name:
@@ -568,8 +612,12 @@ export async function loadLiveIntelligence(
       nightlyMinor: r.nightlyMinor,
       totalMinor: r.totalMinor,
     })),
+    roomCodeMatch,
     selectedRateId: selectedRate.comparabilityClass,
-    rateSelectedBy: request.rateId != null ? 'USER' : 'ENGINE',
+    rateSelectedBy:
+      request.rateId != null || (roomCodeMatch === 'RESOLVED' && effectiveRateId !== null)
+        ? 'USER'
+        : 'ENGINE',
     booking:
       selectedRate.sourceRoomCode && selectedRate.sourceRateCode
         ? { roomCode: selectedRate.sourceRoomCode, rateCode: selectedRate.sourceRateCode }

@@ -92,6 +92,21 @@
     return 'Nightly rate before taxes and fees · total tax treatment unconfirmed';
   }
 
+  /**
+   * "[Room category] + [bedding]" and nothing else. Source room names carry
+   * an amenity tail ("…, Mini fridge, 420sqft, Wireless internet") that a
+   * guest scanning a rate card does not need. Keep the words before the
+   * first period, then at most two comma segments — the category and the
+   * bedding — which matches names like "Historic Room, 1 King, Mini
+   * fridge," down to "Historic Room, 1 King".
+   */
+  function conciseRoomName(name) {
+    if (!name) return '';
+    var head = String(name).split('.')[0];
+    var parts = head.split(',').map(function (p) { return p.trim(); }).filter(Boolean);
+    return parts.slice(0, 2).join(', ');
+  }
+
   function el(tag, className, text) {
     var node = document.createElement(tag);
     if (className) node.className = className;
@@ -146,7 +161,7 @@
    * The product header. "WhataRate! Check / Live Rate Comparison" is the
    * official name — exact words, not a slot for the host page to restyle
    * into something else. The LIVE marker is honest: everything below it is
-   * measured from rates that are live right now (no historical pricing
+   * measured from the most recent verified rates (no historical pricing
    * exists for this source), so the badge states the product's actual basis.
    */
   function renderBrand() {
@@ -357,14 +372,17 @@
       if (data.hotel_value && data.hotel_value.supporting_signals && data.hotel_value.supporting_signals.length > 0) {
         parts.push('hotel strengths: ' + data.hotel_value.supporting_signals.join(', '));
       }
-      if (data.alternative && data.alternative.name) {
+      var sup = data.superior_alternative;
+      if (sup && sup.kind === 'HOTEL' && sup.hotel) {
         parts.push(
-          'suggested alternative: ' +
-            data.alternative.name +
+          'superior alternative shown: ' +
+            sup.hotel.name +
             ' at ' +
-            formatMoney(data.alternative.nightly) +
+            formatMoney(sup.hotel.nightly) +
             '/night',
         );
+      } else if (sup && sup.kind === 'ROOM' && sup.room) {
+        parts.push('room upgrade shown: ' + sup.room.name);
       }
       if (options && options.preference && options.preference !== 'GENERAL_VALUE') {
         parts.push('what matters most to me: ' + (preferenceLabel(options.preference) || options.preference));
@@ -461,8 +479,11 @@
     wrap.appendChild(el('h2', null, data.subject.hotel.name));
 
     var stay = data.subject.stay;
+    // The room category appears exactly once, in its concise form. Repeating
+    // the full source name in an "auto-selected" footnote said the same thing
+    // twice, the second time with the amenity list attached.
     var meta =
-      data.subject.room_type.name +
+      conciseRoomName(data.subject.room_type.name) +
       ' · ' +
       formatStayDates(stay.check_in, stay.check_out) +
       ' · ' +
@@ -476,16 +497,6 @@
     // Mandatory, not optional detail: the customer must be able to see which
     // product was assessed, or the assessment may not apply to what they book.
     wrap.appendChild(el('span', 'wahpi__terms', data.subject.rate_plan.summary));
-
-    if (data.subject.room_type.selected_by === 'ENGINE') {
-      wrap.appendChild(
-        el(
-          'div',
-          'wahpi__auto-room',
-          'Showing the lowest available rate: ' + data.subject.room_type.name + '.',
-        ),
-      );
-    }
     return wrap;
   }
 
@@ -1056,6 +1067,9 @@
    * question with a different answer — not the same score under a new name.
    */
   function renderRoomPicker(data, state) {
+    // A category pinned by the host page's own per-row button (room_code)
+    // must not be re-choosable inside the panel — the page IS the chooser.
+    if (state.options.roomCode) return null;
     var options = data.subject.room_options || [];
     if (options.length < 2 || typeof state.onRoomChange !== 'function') return null;
 
@@ -1077,7 +1091,7 @@
       // The price belongs in the label: choosing a category IS a price
       // decision, and making the guest select each one to discover the cost
       // turns a comparison into a scavenger hunt.
-      node.textContent = option.name + ' — ' + formatMoney(option.nightly) + '/night';
+      node.textContent = conciseRoomName(option.name) + ' — ' + formatMoney(option.nightly) + '/night';
       if (option.room_type_id === data.subject.room_type.room_type_id) node.selected = true;
       select.appendChild(node);
     }
@@ -1190,6 +1204,7 @@
    * offer is a different question with a different answer.
    */
   function renderRatePicker(data, state) {
+    if (state.options.roomCode) return null;
     var options = data.subject.rate_options || [];
     if (options.length < 2 || typeof state.onRateChange !== 'function') return null;
 
@@ -1222,12 +1237,15 @@
     var wrap = section(null);
     wrap.appendChild(el('h2', null, data.subject.hotel.name));
 
+    // The room appears here ONCE, as category + bedding. It used to appear
+    // three times (meta, the auto-room line, the picker), which read as
+    // noise; the picker labels remain because they are the choices.
     var stay = data.subject.stay;
     wrap.appendChild(
       el(
         'div',
         'wahpi__subject-meta',
-        data.subject.room_type.name +
+        conciseRoomName(data.subject.room_type.name) +
           ' · ' +
           formatStayDates(stay.check_in, stay.check_out) +
           ' · ' +
@@ -1242,16 +1260,6 @@
     // Mandatory, not optional detail: the customer must be able to see which
     // product was assessed, or the assessment may not apply to what they book.
     wrap.appendChild(el('span', 'wahpi__terms', data.subject.rate_plan.summary));
-
-    if (data.subject.room_type.selected_by === 'ENGINE') {
-      wrap.appendChild(
-        el(
-          'div',
-          'wahpi__auto-room',
-          'Showing the lowest available rate: ' + data.subject.room_type.name + '.',
-        ),
-      );
-    }
     return wrap;
   }
 
@@ -1438,45 +1446,85 @@
   }
 
   /**
-   * The better-value alternative — information, not a pitch.
+   * SUPERIOR ALTERNATIVE — the upsell, never the downsell.
    *
-   * One comparable at a meaningfully lower current rate, chosen server-side
-   * by saving AND verified reputation. Absent, nothing renders: the widget
-   * never stretches for an alternative that is not really one, and it never
-   * tells the guest what to book.
+   * Either a comparable hotel rated meaningfully ABOVE this one by verified
+   * guests (with a direct link to its page), or — when no hotel clears the
+   * bar, and always when the guest is booking a protected brand — the room
+   * upgrade at the SAME property, which deepens the booking instead of
+   * competing with it. The tone is "you already have a good option; here is
+   * the step up", and every claim was composed server-side from verified
+   * evidence. Absent, nothing renders.
    */
-  function renderLiveAlternative(data) {
-    var alt = data.alternative;
-    if (!alt) return null;
+  function renderSuperiorAlternative(data, state) {
+    var sup = data.superior_alternative;
+    if (!sup) return null;
 
     var wrap = section(null);
     var box = el('div', 'wahpi__alternative');
-    box.appendChild(el('div', 'wahpi__premium-eyebrow', 'BETTER VALUE ALTERNATIVE'));
-    var head = el('div', 'wahpi__alternative-head');
-    head.appendChild(el('span', 'wahpi__alternative-name', alt.name));
-    head.appendChild(el('span', 'wahpi__alternative-price', formatMoney(alt.nightly) + '/night'));
-    box.appendChild(head);
-    box.appendChild(
-      el(
-        'div',
-        'wahpi__alternative-save',
-        'Save about ' + formatMoney(alt.save_nightly) + '/night',
-      ),
-    );
-    if (alt.rating !== null && alt.rating !== undefined) {
-      // Same dynamic-fill stars as the subject's rating, same compact scale.
-      var ratingRow = el('div', 'wahpi__alternative-rating');
-      ratingRow.appendChild(el('span', null, 'Google rating'));
-      ratingRow.appendChild(el('span', 'wahpi__reputation-sep', '·'));
-      ratingRow.appendChild(renderStars(alt.rating));
-      ratingRow.appendChild(el('span', null, alt.rating.toFixed(1)));
-      if (alt.review_count) {
-        ratingRow.appendChild(el('span', 'wahpi__reputation-sep', '·'));
-        ratingRow.appendChild(el('span', null, alt.review_count.toLocaleString() + ' reviews'));
+
+    if (sup.kind === 'HOTEL' && sup.hotel) {
+      var hotel = sup.hotel;
+      box.appendChild(el('div', 'wahpi__premium-eyebrow', 'SUPERIOR ALTERNATIVE'));
+      var head = el('div', 'wahpi__alternative-head');
+      if (hotel.url) {
+        var link = el('a', 'wahpi__alternative-name wahpi__alternative-link', hotel.name);
+        link.href = hotel.url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        head.appendChild(link);
+      } else {
+        head.appendChild(el('span', 'wahpi__alternative-name', hotel.name));
       }
-      box.appendChild(ratingRow);
+      head.appendChild(el('span', 'wahpi__alternative-price', formatMoney(hotel.nightly) + '/night'));
+      box.appendChild(head);
+
+      if (hotel.rating !== null && hotel.rating !== undefined) {
+        var ratingRow = el('div', 'wahpi__alternative-rating');
+        ratingRow.appendChild(el('span', null, 'Google rating'));
+        ratingRow.appendChild(el('span', 'wahpi__reputation-sep', '·'));
+        ratingRow.appendChild(renderStars(hotel.rating));
+        ratingRow.appendChild(el('span', null, hotel.rating.toFixed(1)));
+        if (hotel.review_count) {
+          ratingRow.appendChild(el('span', 'wahpi__reputation-sep', '·'));
+          ratingRow.appendChild(el('span', null, hotel.review_count.toLocaleString() + ' reviews'));
+        }
+        box.appendChild(ratingRow);
+      }
+      if (sup.reason) box.appendChild(el('div', 'wahpi__alternative-reason', sup.reason));
+      if (hotel.price_direction === 'LOWER') {
+        box.appendChild(
+          el(
+            'div',
+            'wahpi__alternative-save',
+            'And it is currently ' + formatMoney(hotel.price_delta_nightly) + ' less per night.',
+          ),
+        );
+      }
+    } else if (sup.kind === 'ROOM' && sup.room) {
+      var room = sup.room;
+      box.appendChild(el('div', 'wahpi__premium-eyebrow', 'CONSIDER THE UPGRADE'));
+      var roomHead = el('div', 'wahpi__alternative-head');
+      roomHead.appendChild(el('span', 'wahpi__alternative-name', conciseRoomName(room.name)));
+      roomHead.appendChild(el('span', 'wahpi__alternative-price', formatMoney(room.nightly) + '/night'));
+      box.appendChild(roomHead);
+      if (sup.reason) box.appendChild(el('div', 'wahpi__alternative-reason', sup.reason));
+      if (typeof state.onRoomChange === 'function' && !state.options.roomCode) {
+        var view = el(
+          'button',
+          'wahpi__btn wahpi__btn--secondary wahpi__alternative-view',
+          'View this room',
+        );
+        view.type = 'button';
+        view.addEventListener('click', function () {
+          state.onRoomChange(room.room_type_id);
+        });
+        box.appendChild(view);
+      }
+    } else {
+      return null;
     }
-    if (alt.reason) box.appendChild(el('div', 'wahpi__alternative-reason', alt.reason));
+
     wrap.appendChild(box);
     return wrap;
   }
@@ -1656,8 +1704,12 @@
     var wrap = section(null);
     var provenance = el('div', 'wahpi__provenance');
 
+    // "Last checked 7 hours ago" and a claim of momentary liveness cannot
+    // share a sentence honestly. The time is dynamic (relativeTime handles
+    // singular/plural), and the second line describes what the system
+    // actually did: compared the most recent verified rates it holds.
     var observed = el('div');
-    observed.textContent = 'This rate was checked ' + relativeTime(data.price.observed_at) + '.';
+    observed.textContent = 'This rate was last checked ' + relativeTime(data.price.observed_at) + '.';
     observed.title = new Date(data.price.observed_at).toISOString();
     provenance.appendChild(observed);
 
@@ -1665,7 +1717,7 @@
       el(
         'div',
         null,
-        'We compare rates that are live right now. We do not forecast future prices.',
+        'Comparisons use the most recent verified rates we hold for comparable hotels. We do not forecast future prices.',
       ),
     );
 
@@ -1710,6 +1762,15 @@
     return wrap;
   }
 
+  /**
+   * The first paint is the DECISION THIRD: brand, the stay, the price, the
+   * score, and why you might choose the hotel — then SEE MORE. Everything
+   * analytical (the narrative, premium insight, personalization, the
+   * superior alternative, the workings) expands in place and collapses
+   * again; the CTAs and the provenance line never hide, because a booking
+   * button behind a fold is a conversion killed and a provenance line
+   * behind one is honesty deferred.
+   */
   function renderLive(root, data, state) {
     root.textContent = '';
     root.className = 'wahpi';
@@ -1723,13 +1784,37 @@
     append(root, renderLivePrice(data));
     append(root, renderLiveVerdict(data));
     append(root, renderLiveWhyChoose(data));
-    append(root, renderLiveExplanation(data));
-    append(root, renderLivePremium(data));
-    append(root, renderLiveReputation(data));
-    append(root, renderLiveAlternative(data));
-    append(root, renderLivePersonalization(data));
-    append(root, renderLiveReasons(data));
-    append(root, renderLiveDetails(data, state));
+
+    var more = el('div', 'wahpi__more');
+    more.id = 'wahpi-more-' + state.uid;
+    append(more, renderLiveExplanation(data));
+    append(more, renderLivePremium(data));
+    append(more, renderLiveReputation(data));
+    append(more, renderSuperiorAlternative(data, state));
+    append(more, renderLivePersonalization(data));
+    append(more, renderLiveReasons(data));
+    append(more, renderLiveDetails(data, state));
+
+    if (more.childNodes.length > 0) {
+      var seeMoreWrap = section(null);
+      var toggle = el('button', 'wahpi__see-more');
+      toggle.type = 'button';
+      toggle.setAttribute('aria-controls', more.id);
+      function paintMore() {
+        toggle.textContent = state.seeMore ? 'SEE LESS ▲' : 'SEE MORE ▼';
+        toggle.setAttribute('aria-expanded', state.seeMore ? 'true' : 'false');
+        more.hidden = !state.seeMore;
+      }
+      toggle.addEventListener('click', function () {
+        state.seeMore = !state.seeMore;
+        paintMore();
+      });
+      paintMore();
+      seeMoreWrap.appendChild(toggle);
+      root.appendChild(seeMoreWrap);
+      root.appendChild(more);
+    }
+
     append(root, renderLiveProvenance(data));
     append(root, renderActions(data, state.options));
   }
@@ -1864,6 +1949,9 @@
     if (!live) params.set('include', 'explanation,history,comparables');
     if (options.roomTypeId) params.set('room_type_id', String(options.roomTypeId));
     if (live && options.rateId) params.set('rate_id', String(options.rateId));
+    // The source's own booking code, from a per-category button on the host
+    // page. The server resolves it to the exact room and rate.
+    if (live && options.roomCode) params.set('room_code', String(options.roomCode));
     if (options.currency) params.set('currency', options.currency);
     // GENERAL_VALUE is the server default; sending nothing keeps the URL —
     // and any CDN cache entry — identical to the pre-Phase-6 one.
@@ -1935,6 +2023,7 @@
     var live = options.model !== 'history';
     var state = {
       windowDays: 90,
+      seeMore: options.seeMore === true,
       options: options,
       // Collapsed by default. A host page that has room — a dedicated rate
       // page rather than a room row — can pass expanded: true.
@@ -1958,6 +2047,7 @@
       }
       next.roomTypeId = roomTypeId;
       next.expanded = state.expanded;
+      next.seeMore = state.seeMore;
       // A rate id belongs to the room it priced: a different room has
       // different offers, so the rate pin is dropped with the room change.
       delete next.rateId;
@@ -1980,6 +2070,7 @@
       }
       next.rateId = rateId;
       next.expanded = state.expanded;
+      next.seeMore = state.seeMore;
       root.__wahpiRate = {
         stay: staySignature(next) + '|' + (next.roomTypeId || ''),
         rateId: rateId,
@@ -1998,6 +2089,7 @@
       }
       next.preference = preference;
       next.expanded = state.expanded;
+      next.seeMore = state.seeMore;
       root.__wahpiPref = preference;
       mount(root, next);
     };
@@ -2328,6 +2420,7 @@
     if (ds.currency) config.currency = ds.currency;
     if (ds.roomTypeId) config.roomTypeId = ds.roomTypeId;
     if (ds.rateId) config.rateId = ds.rateId;
+    if (ds.roomCode) config.roomCode = ds.roomCode;
     // A category the guest picked outranks nothing in the template, but it
     // must not be lost to an unrelated remount — the host page firing an input
     // event should not silently reset the panel to the cheapest room. It is
@@ -2538,6 +2631,7 @@
         'data-children',
         'data-room-type-id',
         'data-rate-id',
+        'data-room-code',
         'data-model',
         'data-currency',
         'data-preference',

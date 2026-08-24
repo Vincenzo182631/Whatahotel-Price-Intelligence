@@ -19,6 +19,7 @@ export {
   findQuotedCurrency,
   findSameStaySeries,
   findSeriesGaps,
+  resolveRoomCode,
 } from './repositories/observations.js';
 export type {
   AvailableRateRow,

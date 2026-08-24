@@ -70,9 +70,12 @@
   margin-bottom: 4px;
 }
 .wahpi__brand-row {
+  /* Centered on every device — the title used to sit left on phones. The
+     LIVE pill floats to the corner so the wordmark itself stays centred. */
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 10px;
 }
 .wahpi__brand-name {
@@ -80,6 +83,16 @@
   font-weight: 800;
   letter-spacing: -0.015em;
   line-height: 1.15;
+  text-align: center;
+}
+.wahpi__brand-sub {
+  text-align: center;
+}
+.wahpi__brand-live {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 .wahpi__brand-what {
   color: var(--wahpi-accent-deep);
@@ -955,4 +968,41 @@
   border-radius: 999px;
   background: var(--wahpi-bg);
   color: var(--wahpi-fg);
+}
+
+/* ── SEE MORE (partial first paint) ─────────────────────────────────────
+   The decision third shows first; the analysis expands in place. */
+
+.wahpi__see-more {
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed var(--wahpi-line);
+  border-radius: 10px;
+  background: var(--wahpi-bg-soft);
+  color: var(--wahpi-accent);
+  cursor: pointer;
+}
+.wahpi__see-more:hover {
+  border-color: var(--wahpi-accent);
+}
+.wahpi__see-more:focus-visible {
+  outline: 2px solid var(--wahpi-accent);
+  outline-offset: 1px;
+}
+
+.wahpi__alternative-link {
+  color: var(--wahpi-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.wahpi__alternative-view {
+  margin-top: 10px;
+  flex: 0 0 auto;
+  width: auto;
+  padding: 8px 14px;
+  font-size: 0.85rem;
 }

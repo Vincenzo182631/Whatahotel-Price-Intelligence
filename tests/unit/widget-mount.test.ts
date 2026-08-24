@@ -175,3 +175,36 @@ describe('widget mount selector', () => {
     expect(WIDGET).not.toMatch(/matches\('\[data-wah-pi\]'\)/);
   });
 });
+
+describe('Superior Alternative (upsell) and the concise UI', () => {
+  it('the section is the upsell, and the downsell card is gone', () => {
+    expect(WIDGET).toContain("'SUPERIOR ALTERNATIVE'");
+    expect(WIDGET).toContain("'CONSIDER THE UPGRADE'");
+    expect(WIDGET).not.toContain('BETTER VALUE ALTERNATIVE');
+  });
+
+  it('the recommended hotel links out safely', () => {
+    expect(WIDGET).toMatch(/link\.rel = 'noopener'/);
+  });
+
+  it('a room_code pin removes the in-panel choosers — the page is the chooser', () => {
+    expect(WIDGET).toMatch(/if \(state\.options\.roomCode\) return null/);
+    expect(WIDGET).toMatch(/params\.set\('room_code', String\(options\.roomCode\)\)/);
+  });
+
+  it('first paint is partial, with SEE MORE expanding in place', () => {
+    expect(WIDGET).toContain("'SEE MORE ▼'");
+    expect(WIDGET).toContain("'SEE LESS ▲'");
+    expect(WIDGET).toMatch(/more\.hidden = !state\.seeMore/);
+  });
+
+  it('the room shows once, as category + bedding', () => {
+    expect(WIDGET).toMatch(/function conciseRoomName/);
+    expect(WIDGET).not.toContain('Showing the lowest available rate');
+  });
+
+  it('the timestamp wording is honest and dynamic', () => {
+    expect(WIDGET).toContain("'This rate was last checked ' + relativeTime(");
+    expect(WIDGET).not.toContain('live right now');
+  });
+});
