@@ -69,31 +69,58 @@ if (!APPLY) {
 console.log('\nTRUNCATE ingest_reject …');
 await sql('TRUNCATE ingest_reject');
 
-// 2. Old audit payloads, in batches so each fits in freed space.
-console.log(`Slimming raw older than ${KEEP_DAYS} days in batches of ${BATCH} …`);
+// 2. Old audit payloads — as a RATCHET, because on a genuinely full
+// project even a modest UPDATE cannot extend a file. An UPDATE only adds
+// new tuple versions; the space comes back when VACUUM reclaims the old
+// ones and their TOASTed raw values. So: small batch, VACUUM the
+// partition, grow the batch as headroom accumulates; on a size-limit
+// error, halve and vacuum again. The first batches squeeze into whatever
+// TRUNCATE just freed, and each round makes the next one roomier.
+console.log(`Slimming raw older than ${KEEP_DAYS} days (adaptive batches, target ${BATCH}) …`);
+const partitions = (
+  await sql(`
+    SELECT c.relname FROM pg_class c JOIN pg_inherits i ON i.inhrelid = c.oid
+     WHERE i.inhparent = 'rate_observation'::regclass ORDER BY c.relname`)
+).split('\n').filter(Boolean);
+
 let total = 0;
+let batch = 500;
+let failures = 0;
 for (;;) {
-  const n = Number(
-    await sql(`
+  let n = 0;
+  try {
+    const out = await sql(`
       WITH victims AS (
         SELECT id, observation_slot FROM rate_observation
          WHERE observation_slot < now() - interval '${KEEP_DAYS} days' AND raw IS NOT NULL
-         LIMIT ${BATCH})
+         LIMIT ${batch})
       UPDATE rate_observation o SET raw = NULL
         FROM victims v
        WHERE o.id = v.id AND o.observation_slot = v.observation_slot
-      RETURNING 1`).then((out) => (out === '' ? 0 : out.split('\n').length)),
-  );
+      RETURNING 1`);
+    n = out === '' ? 0 : out.split('\n').length;
+  } catch (err) {
+    if (String(err).includes('size limit')) {
+      failures += 1;
+      batch = Math.max(50, Math.floor(batch / 2));
+      console.log(`  size limit hit — batch down to ${batch}, vacuuming …`);
+      for (const part of partitions) await sql(`VACUUM ${part}`).catch(() => {});
+      if (failures > 12) throw new Error('cannot reclaim: repeated size-limit failures at minimum batch');
+      continue;
+    }
+    throw err;
+  }
   total += n;
-  console.log(`  batch: ${n} (total ${total})`);
-  if (n < BATCH) break;
+  console.log(`  batch of ${batch}: ${n} slimmed (total ${total})`);
+  if (n === 0) break;
+  // The ratchet: reclaim what this batch freed, then try a bigger bite.
+  for (const part of partitions) await sql(`VACUUM ${part}`).catch(() => {});
+  batch = Math.min(BATCH, batch * 2);
 }
 
-// 3. Make the freed pages reusable so inserts stop extending files.
+// 3. A final pass with ANALYZE so the planner sees the new shape.
 console.log('VACUUM ANALYZE rate_observation …');
 await sql('VACUUM ANALYZE rate_observation');
-console.log('VACUUM ANALYZE ingest_reject …');
-await sql('VACUUM ANALYZE ingest_reject');
 
 await measure('after');
 console.log('\nDone. Note: freed pages are reused by new writes; the project size figure itself shrinks only as files are truncated or rewritten.');
