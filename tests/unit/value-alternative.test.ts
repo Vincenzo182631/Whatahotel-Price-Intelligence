@@ -15,6 +15,9 @@ import { describe, expect, it } from 'vitest';
 import {
   assessAvailabilityPosition,
   chooseAlternative,
+  chooseRoomUpgrade,
+  chooseSuperiorAlternative,
+  isProtectedBrand,
   premiumPosition,
 } from '../../packages/core/src/index.js';
 
@@ -187,5 +190,66 @@ describe('the customer-facing register (spec §1/§13)', () => {
     for (const banned of ['LOW', 'Bad', 'bad value', 'overpriced', 'not worth', 'poor']) {
       expect(labels.includes(banned), `"${banned}" in customer labels`).toBe(false);
     }
+  });
+});
+
+describe('chooseSuperiorAlternative — the upsell', () => {
+  const subject = { hotelName: 'The Kahala Resort', nightlyMinor: 60_000, rating: 4.4 };
+  const strong = {
+    wahHotelId: 'sup',
+    name: 'Halekulani',
+    nightlyMinor: 90_000,
+    isAvailable: true,
+    rating: 4.7,
+    reviewCount: 4_100,
+    themes: ['service', 'quiet'],
+  };
+
+  it('recommends by verified standing, never by price — pricier is fine', () => {
+    const pick = chooseSuperiorAlternative(subject, [strong]);
+    expect(pick?.wahHotelId).toBe('sup');
+    expect(pick?.priceDeltaNightlyMinor).toBe(30_000); // an upsell, and said so
+  });
+
+  it('needs a MEANINGFUL rating gap and real review volume', () => {
+    expect(
+      chooseSuperiorAlternative(subject, [{ ...strong, rating: 4.5 }]), // +0.1 only
+    ).toBeNull();
+    expect(chooseSuperiorAlternative(subject, [{ ...strong, reviewCount: 60 }])).toBeNull();
+  });
+
+  it('NEVER fires for a Four Seasons booking — the rule is code, not prompt', () => {
+    expect(isProtectedBrand('Four Seasons Oahu at Ko Olina')).toBe(true);
+    expect(isProtectedBrand('FourSeasons Resort Maui')).toBe(true);
+    expect(isProtectedBrand('The Kahala Resort')).toBe(false);
+    expect(
+      chooseSuperiorAlternative(
+        { hotelName: 'Four Seasons Resort Oahu', nightlyMinor: 60_000, rating: 4.2 },
+        [strong],
+      ),
+    ).toBeNull();
+  });
+
+  it('a Four Seasons CANDIDATE is still recommendable — the rule protects the selection', () => {
+    const fsCandidate = { ...strong, wahHotelId: 'fs', name: 'Four Seasons Resort Maui' };
+    expect(chooseSuperiorAlternative(subject, [fsCandidate])?.wahHotelId).toBe('fs');
+  });
+});
+
+describe('chooseRoomUpgrade — the non-competing recommendation', () => {
+  const rooms = [
+    { roomTypeId: 1, name: 'Historic Room, 1 King', roomClass: 'ROOM', nightlyMinor: 50_000 },
+    { roomTypeId: 2, name: 'Junior Suite', roomClass: 'JUNIOR_SUITE', nightlyMinor: 80_000 },
+    { roomTypeId: 3, name: 'Grand Suite', roomClass: 'SUITE', nightlyMinor: 140_000 },
+  ];
+
+  it('offers the CHEAPEST higher category', () => {
+    const up = chooseRoomUpgrade('ROOM', 50_000, rooms);
+    expect(up?.roomTypeId).toBe(2);
+    expect(up?.priceDeltaNightlyMinor).toBe(30_000);
+  });
+
+  it('is silent when the guest already holds the top category on offer', () => {
+    expect(chooseRoomUpgrade('SUITE', 140_000, rooms)).toBeNull();
   });
 });

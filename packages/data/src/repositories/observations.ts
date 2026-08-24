@@ -118,6 +118,45 @@ export async function findAvailableRates(
 }
 
 /**
+ * Resolve the SOURCE's own booking code to our room and rate identity.
+ *
+ * whatahotel.com's rate rows carry a bookCode ("E1KBB0") that encodes room
+ * and offer; the embed on those pages knows that code and nothing about our
+ * internal ids. This lets a per-category button say "this exact row" in the
+ * source's vocabulary and get our room_type_id + rate identity back —
+ * resolved from the freshest capture of this stay, same recency rule as
+ * everything else. Null when the code matches nothing we hold.
+ */
+export async function resolveRoomCode(
+  hotelId: number,
+  checkIn: string,
+  nights: number,
+  adults: number,
+  children: number,
+  currency: string,
+  roomCode: string,
+  q?: Queryable,
+): Promise<{ roomTypeId: number; comparabilityClass: string } | null> {
+  const { rows } = await db(q).query(
+    `SELECT room_type_id, comparability_class
+       FROM rate_observation
+      WHERE hotel_id = $1 AND check_in = $2 AND nights = $3
+        AND adults = $4 AND children = $5 AND currency = $6
+        AND is_available AND room_type_id IS NOT NULL
+        AND raw #>> '{room,bookCode}' = $7
+      ORDER BY observation_slot DESC
+      LIMIT 1`,
+    [hotelId, checkIn, nights, adults, children, currency, roomCode.trim().toUpperCase()],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    roomTypeId: row.room_type_id as number,
+    comparabilityClass: row.comparability_class as string,
+  };
+}
+
+/**
  * The newest observation for an exact stay tuple.
  *
  * Note this reads STORED data — the API never calls a rate source synchronously

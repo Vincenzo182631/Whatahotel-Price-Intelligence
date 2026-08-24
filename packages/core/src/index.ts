@@ -174,6 +174,7 @@ export type {
 } from './explanation/assessment.js';
 export {
   HOTEL_VALUE_EVIDENCE,
+  THEME_PROSE,
   deterministicHotelValue,
   hotelValueConfidence,
   hotelValueEvidencePresent,
@@ -192,11 +193,20 @@ export {
   validatePersonalization,
 } from './explanation/personalization.js';
 export type { Personalization, PersonalizationValidation } from './explanation/personalization.js';
-export { assessAvailabilityPosition, chooseAlternative } from './scoring/valueAlternative.js';
+export {
+  assessAvailabilityPosition,
+  chooseAlternative,
+  chooseRoomUpgrade,
+  chooseSuperiorAlternative,
+  isProtectedBrand,
+} from './scoring/valueAlternative.js';
 export type {
   AlternativeCandidate,
   AvailabilityPosition,
   AvailableCategory,
+  RoomUpgrade,
+  SuperiorAlternative,
+  SuperiorCandidate,
   ValueAlternative,
 } from './scoring/valueAlternative.js';
 export type { NarrativeConstraints, ValidationResult } from './explanation/validate.js';

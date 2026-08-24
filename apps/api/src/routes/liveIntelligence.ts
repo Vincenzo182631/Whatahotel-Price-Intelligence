@@ -21,8 +21,11 @@
 
 import {
   PREFERENCES,
+  THEME_PROSE,
   buildLiveExplanationBundle,
   chooseAlternative,
+  chooseRoomUpgrade,
+  chooseSuperiorAlternative,
   liveBandLabel,
   liveVerdictLabel,
   parsePreference,
@@ -154,6 +157,13 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   // what every request got before rate selection existed.
   const rateId = url.searchParams.get('rate_id');
 
+  // The SOURCE's own booking code for one priced row ("E1KBB0") — the
+  // identity a whatahotel.com rates page already holds, so a per-category
+  // button can say "this exact row" without knowing our ids. Resolves to
+  // our room and rate server-side; an unresolvable code degrades to the
+  // engine's pick and `subject.room_code_match` says so.
+  const roomCode = url.searchParams.get('room_code');
+
   // The guest's stated preference (Phase 6). Absent means GENERAL_VALUE —
   // the un-personalized answer, byte-for-byte what it was before the
   // preference existed. An unrecognised value is a 400 rather than a silent
@@ -181,6 +191,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     currency: requestedCurrency,
     roomTypeId,
     rateId,
+    roomCode,
     now,
   };
   let loaded = await loadLiveIntelligence(request, config);
@@ -372,7 +383,11 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   let comparableRatings: number[] = [];
   let competitorReputations = new Map<
     string,
-    { rating: number | null; userRatingCount: number | null }
+    {
+      rating: number | null;
+      userRatingCount: number | null;
+      reviewThemes: readonly string[];
+    }
   >();
   try {
     const [subject, comps] = await Promise.all([
@@ -403,6 +418,42 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     // fails costs the reader a sentence, not the response.
     console.error('reputation lookup failed:', (err as Error).message);
   }
+
+  /**
+   * The SUPERIOR alternative — the upsell, never the downsell. A comparable
+   * rated meaningfully ABOVE this hotel by verified guests, chosen by
+   * standing rather than price; when none clears the bar (or the guest is
+   * booking a protected brand — the Four Seasons rule lives in
+   * chooseSuperiorAlternative, in code, not in a prompt), the
+   * recommendation becomes the ROOM upgrade at the same property, which can
+   * never compete with the booking. Reasons are composed from verified
+   * evidence only.
+   */
+  const superiorCandidates = loaded.competitorRates.map((c) => {
+    const rep = competitorReputations.get(c.wahHotelId);
+    return {
+      wahHotelId: c.wahHotelId,
+      name: c.name,
+      nightlyMinor: c.nightlyMinor,
+      isAvailable: c.isAvailable,
+      rating: rep?.rating ?? null,
+      reviewCount: rep?.userRatingCount ?? null,
+      themes: rep?.reviewThemes ?? [],
+    };
+  });
+  const superiorHotel = chooseSuperiorAlternative(
+    {
+      hotelName: loaded.hotel.name,
+      nightlyMinor: loaded.nightlyMinor,
+      rating: subjectReputation?.rating ?? null,
+    },
+    superiorCandidates,
+  );
+  const selectedRoomClass =
+    loaded.availableRooms.find((r) => r.roomTypeId === loaded.roomTypeId)?.roomClass ?? 'UNKNOWN';
+  const roomUpgrade = superiorHotel
+    ? null
+    : chooseRoomUpgrade(selectedRoomClass, loaded.nightlyMinor, loaded.availableRooms);
 
   /**
    * The better-value alternative, chosen deterministically from the same
@@ -523,6 +574,14 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       })),
       selected_rate_id: loaded.selectedRateId,
       rate_selected_by: loaded.rateSelectedBy,
+      /**
+       * How a `room_code` request fared. RESOLVED = the source's booking
+       * code named a row we hold and this answer is for it; NOT_FOUND = the
+       * code matched nothing (stale page, changed inventory) and the
+       * answer fell back to the engine's pick; null = no code was sent.
+       */
+      requested_room_code: roomCode,
+      room_code_match: loaded.roomCodeMatch,
       // Every room bookable for THIS stay, cheapest first, so a client can
       // offer the choice rather than only ever showing the engine's pick.
       // Re-request with `room_type_id` to score any of them: the comp set, the
@@ -691,6 +750,69 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
             'A comparable stay is currently available at a lower rate.',
         }
       : null,
+
+    /**
+     * SUPERIOR ALTERNATIVE — the upsell. Either a comparable hotel rated
+     * meaningfully above this one by verified guests (never chosen by
+     * price, and never offered when the guest is booking a protected
+     * brand — the Four Seasons rule is code, in
+     * chooseSuperiorAlternative), or the room upgrade at the same
+     * property when no hotel clears the bar. `reason` is composed from
+     * verified evidence only. Null hides the section.
+     */
+    superior_alternative: superiorHotel
+      ? {
+          kind: 'HOTEL',
+          hotel: {
+            hotel_id: superiorHotel.wahHotelId,
+            name: superiorHotel.name,
+            url: `https://www.whatahotel.com/hotels/${superiorHotel.wahHotelId}/`,
+            nightly: money(superiorHotel.nightlyMinor, currency),
+            price_delta_nightly: money(Math.abs(superiorHotel.priceDeltaNightlyMinor), currency),
+            price_direction:
+              superiorHotel.priceDeltaNightlyMinor > 0
+                ? 'HIGHER'
+                : superiorHotel.priceDeltaNightlyMinor < 0
+                  ? 'LOWER'
+                  : 'SIMILAR',
+            rating: superiorHotel.rating,
+            review_count: superiorHotel.reviewCount,
+            themes: superiorHotel.themes,
+          },
+          room: null,
+          reason: [
+            `Guests rate ${superiorHotel.name} ${superiorHotel.rating} out of 5` +
+              (superiorHotel.reviewCount
+                ? ` across ${superiorHotel.reviewCount.toLocaleString('en-US')} reviews`
+                : '') +
+              (subjectReputation ? ` — above this property's ${subjectReputation.rating}` : '') +
+              '.',
+            superiorHotel.themes.length > 0
+              ? `Recent reviewers mention ${superiorHotel.themes
+                  .slice(0, 3)
+                  .map((t) => THEME_PROSE[t] ?? t)
+                  .join(', ')}.`
+              : '',
+            'You already have a good option — this is the step up if you want it.',
+          ]
+            .filter(Boolean)
+            .join(' '),
+        }
+      : roomUpgrade
+        ? {
+            kind: 'ROOM',
+            hotel: null,
+            room: {
+              room_type_id: String(roomUpgrade.roomTypeId),
+              name: roomUpgrade.name,
+              room_class: roomUpgrade.roomClass,
+              nightly: money(roomUpgrade.nightlyMinor, currency),
+              price_delta_nightly: money(roomUpgrade.priceDeltaNightlyMinor, currency),
+            },
+            reason:
+              'A higher room category is available at this property for this stay — more space for the same dates, without changing hotels.',
+          }
+        : null,
 
     /**
      * The personalization layer (Phase 6) — the SAME facts, read through the

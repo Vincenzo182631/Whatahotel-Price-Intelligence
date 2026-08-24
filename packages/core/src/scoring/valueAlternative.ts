@@ -190,3 +190,128 @@ export function chooseAlternative(
     reviewCount: best.reviewCount ?? null,
   };
 }
+
+// ── The SUPERIOR alternative (upsell, never downsell) ─────────────────────
+
+export interface SuperiorCandidate {
+  readonly wahHotelId: string;
+  readonly name: string;
+  readonly nightlyMinor: Minor;
+  readonly isAvailable: boolean;
+  readonly rating: number | null;
+  readonly reviewCount: number | null;
+  /** Review themes measured by the sweep, when held. Evidence for the pitch. */
+  readonly themes?: readonly string[];
+}
+
+export interface SuperiorAlternative {
+  readonly wahHotelId: string;
+  readonly name: string;
+  readonly nightlyMinor: Minor;
+  /** Positive when the superior hotel costs MORE per night (the usual upsell). */
+  readonly priceDeltaNightlyMinor: Minor;
+  readonly rating: number;
+  readonly reviewCount: number | null;
+  readonly themes: readonly string[];
+}
+
+/** One room upgrade at the SAME property — the non-competing recommendation. */
+export interface RoomUpgrade {
+  readonly roomTypeId: number;
+  readonly name: string;
+  readonly roomClass: string;
+  readonly nightlyMinor: Minor;
+  readonly priceDeltaNightlyMinor: Minor;
+}
+
+/**
+ * The business rule, in code where prompts cannot lose it: a guest already
+ * booking a Four Seasons is never pointed at another hotel. Matching is on
+ * the property name because that is what the catalogue carries; it is
+ * deliberately broad (any spelling that contains the brand words).
+ */
+export function isProtectedBrand(hotelName: string): boolean {
+  return /four\s*seasons/i.test(hotelName);
+}
+
+/**
+ * A genuinely SUPERIOR comparable — the upsell, chosen by verified guest
+ * standing, never by price.
+ *
+ * Eligible: currently available, and rated meaningfully ABOVE the subject
+ * (at least +0.15 when the subject has a rating; at least 4.5 when it does
+ * not) on a review volume that means something (200+). Price is not a
+ * criterion in either direction: a superior hotel that also happens to cost
+ * less is still superior. Ranked by volume-weighted rating. Null when no
+ * candidate clears the bar — the section hides rather than stretches — and
+ * ALWAYS null for a protected brand: the rule lives here, not in a prompt.
+ */
+export function chooseSuperiorAlternative(
+  subject: {
+    readonly hotelName: string;
+    readonly nightlyMinor: Minor;
+    readonly rating: number | null;
+  },
+  candidates: readonly SuperiorCandidate[],
+): SuperiorAlternative | null {
+  if (isProtectedBrand(subject.hotelName)) return null;
+
+  const bar = subject.rating !== null ? subject.rating + 0.15 : 4.5;
+  // Note: a candidate that itself IS a protected brand stays eligible —
+  // upselling INTO a Four Seasons is not the failure mode. The rule only
+  // protects the guest's existing selection.
+  const eligible = candidates.filter(
+    (c) => c.isAvailable && c.rating !== null && c.rating >= bar && (c.reviewCount ?? 0) >= 200,
+  );
+
+  if (eligible.length === 0) return null;
+
+  const strength = (c: SuperiorCandidate): number => {
+    const volume = Math.min(1, Math.log10(Math.max(1, c.reviewCount ?? 1)) / 3.5);
+    return ((c.rating ?? 0) / 5) * (0.5 + 0.5 * volume);
+  };
+  let best = eligible[0] as SuperiorCandidate;
+  for (const c of eligible) if (strength(c) > strength(best)) best = c;
+
+  return {
+    wahHotelId: best.wahHotelId,
+    name: best.name,
+    nightlyMinor: best.nightlyMinor,
+    priceDeltaNightlyMinor: best.nightlyMinor - subject.nightlyMinor,
+    rating: best.rating as number,
+    reviewCount: best.reviewCount ?? null,
+    themes: best.themes ?? [],
+  };
+}
+
+/**
+ * The room upgrade at the SAME property: the cheapest available room in a
+ * HIGHER category than the one selected. Null when the guest is already in
+ * the top category on offer. This is the recommendation that can never
+ * compete with the booking — it deepens it.
+ */
+export function chooseRoomUpgrade(
+  selectedRoomClass: string,
+  selectedNightlyMinor: Minor,
+  availableRooms: readonly {
+    readonly roomTypeId: number;
+    readonly name: string;
+    readonly roomClass: string;
+    readonly nightlyMinor: Minor;
+  }[],
+): RoomUpgrade | null {
+  const selectedRank = CLASS_RANK[selectedRoomClass] ?? 1;
+  const upgrades = availableRooms.filter(
+    (r) => (CLASS_RANK[r.roomClass] ?? 1) > selectedRank && r.nightlyMinor > selectedNightlyMinor,
+  );
+  if (upgrades.length === 0) return null;
+  let best = upgrades[0] as (typeof upgrades)[number];
+  for (const r of upgrades) if (r.nightlyMinor < best.nightlyMinor) best = r;
+  return {
+    roomTypeId: best.roomTypeId,
+    name: best.name,
+    roomClass: best.roomClass,
+    nightlyMinor: best.nightlyMinor,
+    priceDeltaNightlyMinor: best.nightlyMinor - selectedNightlyMinor,
+  };
+}
