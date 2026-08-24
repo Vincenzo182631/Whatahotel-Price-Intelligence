@@ -1,0 +1,99 @@
+// Reclaim database space without touching a single scoring-relevant fact.
+//
+// Written for the day the Neon project hit its 512 MB ceiling and every
+// write — scheduled collection, on-demand rescue, rollups — began failing
+// with "could not extend file because project size limit has been
+// exceeded", which surfaced to guests as NO_CURRENT_RATE on every stay.
+//
+// What takes the space is not the facts but the AUDIT PAYLOADS:
+//   - rate_observation.raw carries the source's full room object per row,
+//     needed only while the row is fresh (booking codes are read from the
+//     freshest capture; older raw is diagnostics we have never once read
+//     back). Nulling raw on old rows frees the bulk of the table.
+//   - ingest_reject stores full raw payloads for review; reviewed or not,
+//     they are re-creatable by the next run that hits the same reject.
+//
+// Order matters on a FULL project: TRUNCATE first — it returns whole files
+// to the quota without needing to extend anything — and only then run the
+// batched UPDATEs, which need headroom for new row versions.
+//
+//   node scripts/db-maintain.mjs             # measure only
+//   node scripts/db-maintain.mjs --apply     # truncate + slim + vacuum
+
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const run = promisify(execFile);
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error('DATABASE_URL is not set. This maintains a real database or nothing.');
+  process.exit(1);
+}
+
+const APPLY = process.argv.includes('--apply');
+const KEEP_DAYS = Number(process.env.RAW_KEEP_DAYS ?? 14);
+const BATCH = Number(process.env.RAW_BATCH ?? 20_000);
+
+async function sql(query) {
+  const { stdout } = await run('psql', [DATABASE_URL, '-tA', '-v', 'ON_ERROR_STOP=1', '-c', query], {
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  return stdout.trim();
+}
+
+async function measure(label) {
+  console.log(`\n── ${label} ──`);
+  console.log('database size:', await sql('SELECT pg_size_pretty(pg_database_size(current_database()))'));
+  const top = await sql(`
+    SELECT relname || ' ' || pg_size_pretty(pg_total_relation_size(c.oid))
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public' AND c.relkind IN ('r','p','i','t')
+     ORDER BY pg_total_relation_size(c.oid) DESC LIMIT 12`);
+  console.log('largest relations:\n  ' + top.split('\n').join('\n  '));
+  const rawStats = await sql(`
+    SELECT count(*) || ' rows, ' || pg_size_pretty(COALESCE(sum(pg_column_size(raw)),0)::bigint) || ' of raw'
+      FROM rate_observation
+     WHERE observation_slot < now() - interval '${KEEP_DAYS} days' AND raw IS NOT NULL`);
+  console.log(`raw older than ${KEEP_DAYS}d:`, rawStats);
+  console.log('ingest_reject:', await sql(`SELECT count(*) || ' rows, ' || pg_size_pretty(pg_total_relation_size('ingest_reject'))  FROM ingest_reject`));
+}
+
+await measure('before');
+
+if (!APPLY) {
+  console.log('\nMeasure-only run. Re-run with --apply to reclaim.');
+  process.exit(0);
+}
+
+// 1. Whole files back to the quota, no extension needed even when full.
+console.log('\nTRUNCATE ingest_reject …');
+await sql('TRUNCATE ingest_reject');
+
+// 2. Old audit payloads, in batches so each fits in freed space.
+console.log(`Slimming raw older than ${KEEP_DAYS} days in batches of ${BATCH} …`);
+let total = 0;
+for (;;) {
+  const n = Number(
+    await sql(`
+      WITH victims AS (
+        SELECT id, observation_slot FROM rate_observation
+         WHERE observation_slot < now() - interval '${KEEP_DAYS} days' AND raw IS NOT NULL
+         LIMIT ${BATCH})
+      UPDATE rate_observation o SET raw = NULL
+        FROM victims v
+       WHERE o.id = v.id AND o.observation_slot = v.observation_slot
+      RETURNING 1`).then((out) => (out === '' ? 0 : out.split('\n').length)),
+  );
+  total += n;
+  console.log(`  batch: ${n} (total ${total})`);
+  if (n < BATCH) break;
+}
+
+// 3. Make the freed pages reusable so inserts stop extending files.
+console.log('VACUUM ANALYZE rate_observation …');
+await sql('VACUUM ANALYZE rate_observation');
+console.log('VACUUM ANALYZE ingest_reject …');
+await sql('VACUUM ANALYZE ingest_reject');
+
+await measure('after');
+console.log('\nDone. Note: freed pages are reused by new writes; the project size figure itself shrinks only as files are truncated or rewritten.');

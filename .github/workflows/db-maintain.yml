@@ -1,0 +1,62 @@
+# Reclaim database space — the day-the-disk-filled runbook, as a button.
+#
+# Read scripts/db-maintain.mjs for what is (and is not) touched: audit
+# payloads only, never a fact any score or booking link reads. `measure`
+# is free to run any time; `apply` truncates ingest_reject and nulls
+# rate_observation.raw older than the keep window, then vacuums.
+name: Database maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "apply" to reclaim; anything else measures only'
+        required: false
+        default: 'measure'
+      raw_keep_days:
+        description: 'Keep raw payloads newer than this many days'
+        required: false
+        default: '14'
+
+concurrency:
+  group: db-maintain
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      RAW_KEEP_DAYS: ${{ inputs.raw_keep_days }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the database secret is set
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+        run: |
+          if [ "$HAS_DATABASE_URL" != "true" ]; then
+            echo "::error::DATABASE_URL is not set."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Maintain
+        run: |
+          set -o pipefail
+          if [ "${{ inputs.confirm }}" = "apply" ]; then
+            node scripts/db-maintain.mjs --apply 2>&1 | tee maintain.log
+          else
+            node scripts/db-maintain.mjs 2>&1 | tee maintain.log
+          fi
+
+      - name: Summarise
+        if: always()
+        run: |
+          { echo '## Database maintenance'; echo; echo '```'; cat maintain.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -156,6 +156,13 @@ jobs:
           # truncated, because a partial collection is still worth keeping. It
           # must not pass unnoticed, though: uncollected stays are permanently
           # lost data.
+          # A full database fails every insert while the run itself "succeeds" —
+          # which is how a two-day outage once hid inside green runs. Say it
+          # loudly and fail the run.
+          if grep -q 'project size limit' collect.log; then
+            echo "::error::Database project size limit exceeded — every write is failing. Run the Database maintenance workflow (confirm: apply)."
+            exit 1
+          fi
           if grep -q 'plan truncated' collect.log; then
             echo "::warning::Plan was truncated — raise --limit or collect more often."
           fi
