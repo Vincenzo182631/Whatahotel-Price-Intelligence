@@ -168,3 +168,43 @@ anything.
 | Check 10 or 11 fails                             | Partition horizon missed                       | `node scripts/migrate.mjs`                                                             |
 | API returns `NO_CURRENT_RATE` for everything     | No collection has run yet                      | §4 steps 3–4                                                                           |
 | `/api/v1/health` reports `provenance: SYNTHETIC` | Synthetic seed was pointed at this database    | **Stop.** Rebuild it — synthetic rows are indistinguishable from real ones once stored |
+
+## 8. The free-tier squeeze (2026-08-24)
+
+The estimate in §5 predates the catalogue sweep. At ~3,200 hotels with a 1,200-
+stay collection limit the observation table grows ~30 MB/day even with slimmed
+raw payloads, and on 2026-08-23 it filled Neon's 512 MB free-tier project cap:
+every INSERT and UPDATE failed, collection went dark inside green runs (now a
+loud failure), and every stay scored nothing. Two platform facts drive the
+design that fixed it:
+
+- **Neon's project-size counter only falls on `TRUNCATE` or `DROP TABLE`.**
+  `DELETE` + `VACUUM` frees pages for reuse inside a file but never shrinks
+  the file; `UPDATE` adds tuple versions and makes it worse.
+- **`DROP` needs no free space**, so a full project can always be rescued by
+  dropping something — which is what makes the steady state self-healing.
+
+The machinery (migration 0015):
+
+- `rate_observation` is partitioned **daily** — a droppable increment that
+  fits the budget, where a monthly partition (~1 GB) never could.
+- `enforce_rate_observation_retention(days)` drops partitions wholly older
+  than the window. `scripts/migrate.mjs` calls it **only when
+  `RATE_OBSERVATION_RETAIN_DAYS` is set**; `collect.yml` sets `7`, so
+  retention rides every scheduled run. Developer databases never set it.
+- The one-time reset is the **Database maintenance** workflow with
+  `confirm: squeeze`: TRUNCATE observations, then migrate (0015 swaps the
+  monthly partitions for daily ones while they are empty). Baselines,
+  analyses, reputation and the catalogue all persist; observations refill
+  from the next collection cycles, and on-demand scoring works as soon as
+  space exists.
+
+What the window costs: same-stay history and calibration replay reach back at
+most `RATE_OBSERVATION_RETAIN_DAYS` days. Baselines keep accruing (rollups are
+their own tables), so the score's history model still deepens — but M7
+calibration wants months of raw observations and cannot have them on this
+tier.
+
+**After a Neon plan upgrade:** delete the `RATE_OBSERVATION_RETAIN_DAYS` line
+from `collect.yml`. Nothing else to undo — daily partitions are fine to keep,
+retention simply stops running, and history accrues from that day forward.

@@ -149,11 +149,26 @@ engine.
     stays it can already see. Without the top-up the tracked set freezes at
     whatever the first run captured and empties after ~90 days — with every run
     still exiting 0. See `findMissingGridStays`.
-15. **Partitions must stay ahead of the data.** `rate_observation` is
-    partitioned monthly and has a `DEFAULT`, so running past the last real
-    partition is silent — rows keep landing, and then _block_ the partition that
-    should have held them. `ensure_rate_observation_partitions()` (migration 0009) maintains the window and rescues anything stranded; `scripts/migrate.mjs`
-    calls it on every run. Schema checks 10 and 11 enforce it.
+15. **Partitions must stay ahead of the data — and, on the free tier, behind
+    it too.** `rate_observation` is partitioned **daily** (migration 0015;
+    monthly until then) with a `DEFAULT`, so running past the last real
+    partition is silent — rows keep landing, and then _block_ the partition
+    that should have held them. `ensure_rate_observation_partitions()`
+    maintains the window and rescues anything stranded; `scripts/migrate.mjs`
+    calls it on every run. Schema checks 10 and 11 enforce it. Daily
+    granularity exists because of Neon's free-tier project cap: the size
+    counter only falls on `TRUNCATE`/`DROP` (never `DELETE` + `VACUUM`), so
+    retention must drop whole partitions — and a partition must be a day, not
+    a month, for that to fit inside 512 MB.
+    `enforce_rate_observation_retention()` runs from migrate **only when
+    `RATE_OBSERVATION_RETAIN_DAYS` is set** — the collect workflow sets `7`;
+    a developer database never sets it, so seeded history survives. The cost:
+    observations older than the window are gone — baselines, analyses and the
+    catalogue persist, but same-stay series and calibration replay are capped
+    at the window. **After a Neon plan upgrade, delete that env line from
+    `collect.yml` and history accrues again.** If the project ever fills
+    anyway, the next collect run's retention drop self-heals it — `DROP`
+    needs no free space.
 16. **A stay that yields nothing must back off.** It has no observation, so the
     grid sees it as missing and would re-request it every run forever;
     `collection_attempt` exists solely to stop that. It is not a fact table —
