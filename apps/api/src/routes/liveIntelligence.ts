@@ -22,6 +22,7 @@
 import {
   PREFERENCES,
   THEME_PROSE,
+  applyScoreDisplayFloor,
   buildLiveExplanationBundle,
   chooseAlternative,
   chooseRoomUpgrade,
@@ -345,7 +346,12 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     }
   }
 
-  const { result, compSet, calendar, compression, premium } = loaded;
+  const { compSet, calendar, compression, premium } = loaded;
+  // The presentation floor applies HERE, before the explanation bundle is
+  // built, so the verdict block, the narrative, its numeric allowlist and the
+  // help context all describe the same (floored) score. The loader's result
+  // stays true — see applyScoreDisplayFloor for what the floor is not.
+  const result = applyScoreDisplayFloor(loaded.result, config);
   // Whatever the hotel is actually quoted in, resolved by the loader.
   const currency = loaded.currency;
 

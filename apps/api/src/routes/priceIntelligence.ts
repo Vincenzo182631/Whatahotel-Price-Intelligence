@@ -6,7 +6,7 @@
  * table grows and decouples external API cost from traffic (docs/mvp/06 §2).
  */
 
-import { analyze } from '@wahpi/core';
+import { SCORE_DISPLAY_FLOOR, analyze, bandForScore } from '@wahpi/core';
 import {
   isLoadFailure,
   loadActiveConfig,
@@ -140,8 +140,20 @@ export const priceIntelligenceHandler: Handler = async (_req, res, ctx) => {
     },
 
     verdict: {
-      deal_score: analysis.dealScore,
-      deal_score_band: analysis.dealScoreBand,
+      // The presentation floor (see applyScoreDisplayFloor in core): the
+      // customer never reads below 6.0. The floor sits AFTER persistAnalysis,
+      // so the stored analysis — and everything calibration replays — keeps
+      // the true score. The history template phrases from the recommendation
+      // and the factors, not the numeral, so no re-render is needed; the
+      // recommendation itself is never negative (BOOK_NOW / CONSIDER only).
+      deal_score:
+        analysis.dealScore !== null && analysis.dealScore < SCORE_DISPLAY_FLOOR
+          ? SCORE_DISPLAY_FLOOR
+          : analysis.dealScore,
+      deal_score_band:
+        analysis.dealScore !== null && analysis.dealScore < SCORE_DISPLAY_FLOOR
+          ? bandForScore(SCORE_DISPLAY_FLOOR, config)
+          : analysis.dealScoreBand,
       confidence: analysis.confidence,
       confidence_band: analysis.confidenceBand,
       recommendation: analysis.recommendation,
