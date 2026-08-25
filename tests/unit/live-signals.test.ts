@@ -16,7 +16,11 @@ import {
   type CompetitorRate,
   type NearbyDateRate,
 } from '../../packages/core/src/scoring/liveSignals.js';
-import { composeLiveScore } from '../../packages/core/src/scoring/liveScore.js';
+import {
+  SCORE_DISPLAY_FLOOR,
+  applyScoreDisplayFloor,
+  composeLiveScore,
+} from '../../packages/core/src/scoring/liveScore.js';
 
 const NOW = new Date('2026-08-17T12:00:00Z');
 const FRESH = '2026-08-17T11:30:00Z';
@@ -472,5 +476,81 @@ describe('reason copy', () => {
       );
       for (const reason of r.reasons) expect(reason).not.toMatch(forbidden);
     }
+  });
+});
+
+// ── The presentation floor ──────────────────────────────────────────────────
+//
+// Business rule (2026-08-24): the customer never reads a Deal Score below
+// 6.0. The floor is presentation-only — composeLiveScore itself is untouched,
+// which is exactly what these tests pin down.
+describe('the score display floor', () => {
+  const strongComps = [comp('A', 850), comp('B', 900), comp('C', 800), comp('D', 875)];
+  const cheapDates = [near('a', 940), near('b', 940), near('c', 940), near('d', 940)];
+
+  const premiumResult = () =>
+    composeLiveScore(
+      // Subject priced far above every comparable: a true PREMIUM case.
+      computeCompSetIndex(1400_00, strongComps, DEFAULT_CONFIG, NOW),
+      computeCalendarDelta(1400_00, cheapDates, DEFAULT_CONFIG),
+      computeCompression({ checked: 4, soldOut: 0 }, DEFAULT_CONFIG),
+      1,
+      DEFAULT_CONFIG,
+    );
+
+  it('floors a premium-priced score to exactly 6.0 with coherent band and verdict', () => {
+    const raw = premiumResult();
+    expect(raw.score).not.toBeNull();
+    expect(raw.score!).toBeLessThan(SCORE_DISPLAY_FLOOR);
+    expect(raw.band).toBe('PREMIUM');
+    expect(raw.verdict).toBe('CONSIDER_ALTERNATIVES');
+
+    const floored = applyScoreDisplayFloor(raw, DEFAULT_CONFIG);
+    expect(floored.score).toBe(SCORE_DISPLAY_FLOOR);
+    expect(floored.outOfTen).toBe(6);
+    // 60 sits in the MARKET band, so the label and verdict read as neutral
+    // copy, never as a recommendation against the hotel.
+    expect(floored.band).toBe('MARKET');
+    expect(floored.verdict).toBe('BOOK_CONSIDER');
+  });
+
+  it('does not touch the composed engine result — the floor is presentation-only', () => {
+    const raw = premiumResult();
+    const before = raw.score;
+    applyScoreDisplayFloor(raw, DEFAULT_CONFIG);
+    expect(raw.score).toBe(before);
+    expect(raw.band).toBe('PREMIUM');
+  });
+
+  it('returns a score at or above the floor unchanged, same object', () => {
+    const strong = composeLiveScore(
+      computeCompSetIndex(650_00, strongComps, DEFAULT_CONFIG, NOW),
+      computeCalendarDelta(650_00, cheapDates, DEFAULT_CONFIG),
+      computeCompression({ checked: 4, soldOut: 2 }, DEFAULT_CONFIG),
+      1,
+      DEFAULT_CONFIG,
+    );
+    expect(strong.score!).toBeGreaterThanOrEqual(SCORE_DISPLAY_FLOOR);
+    expect(applyScoreDisplayFloor(strong, DEFAULT_CONFIG)).toBe(strong);
+  });
+
+  it('never invents a score: null stays null (rule 3)', () => {
+    const empty = composeLiveScore(
+      computeCompSetIndex(650_00, [], DEFAULT_CONFIG, NOW),
+      computeCalendarDelta(650_00, [], DEFAULT_CONFIG),
+      computeCompression(null, DEFAULT_CONFIG),
+      1,
+      DEFAULT_CONFIG,
+    );
+    expect(empty.score).toBeNull();
+    const floored = applyScoreDisplayFloor(empty, DEFAULT_CONFIG);
+    expect(floored.score).toBeNull();
+    expect(floored.verdict).toBe('NOT_ENOUGH_DATA');
+  });
+
+  it('keeps the factual reasons — the floor adjusts the verdict, not the facts', () => {
+    const raw = premiumResult();
+    const floored = applyScoreDisplayFloor(raw, DEFAULT_CONFIG);
+    expect(floored.reasons).toEqual(raw.reasons);
   });
 });

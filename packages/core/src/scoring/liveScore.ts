@@ -197,6 +197,44 @@ function verdictFor(band: LiveBand, confidence: LiveConfidence): LiveVerdict {
 }
 
 /**
+ * The presentation floor — an owner business rule (2026-08-24): the customer
+ * never reads a Deal Score below 6.0. WhataHotel sells every hotel the widget
+ * appears on, so the score's job on-page is to rank good against better, not
+ * to talk a guest out of the catalogue.
+ *
+ * What this deliberately is NOT:
+ * - It is not scoring. composeLiveScore is untouched; the true score keeps
+ *   flowing into calibration, gates, alternative selection and any stored
+ *   record. Flooring those would poison the only data that could ever tell
+ *   us what the weights should be.
+ * - It is not data. The comp-set facts, premium justification and reasons
+ *   stay true: a floored response may still say "priced above comparable
+ *   hotels", because that is a fact about the price, not a verdict.
+ *
+ * Apply it at the response boundary, to the SAME result object the
+ * explanation bundle is built from — a floored number beside a narrative
+ * quoting the true one would contradict itself in front of the customer.
+ * A null score stays null (rule 3): the floor raises real scores, it never
+ * invents one.
+ */
+export const SCORE_DISPLAY_FLOOR = 60;
+
+export function applyScoreDisplayFloor(
+  result: LiveScoreResult,
+  config: ScoringConfig,
+): LiveScoreResult {
+  if (result.score === null || result.score >= SCORE_DISPLAY_FLOOR) return result;
+  const band = bandFor(SCORE_DISPLAY_FLOOR, config);
+  return {
+    ...result,
+    score: SCORE_DISPLAY_FLOOR,
+    outOfTen: SCORE_DISPLAY_FLOOR / 10,
+    band,
+    verdict: verdictFor(band, result.confidence),
+  };
+}
+
+/**
  * The customer-facing bullets.
  *
  * Only measured facts, phrased in the present tense. No sentence here may

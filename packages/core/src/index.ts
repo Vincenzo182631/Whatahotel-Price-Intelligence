@@ -91,6 +91,8 @@ export type {
   NearbyDateRate,
 } from './scoring/liveSignals.js';
 export {
+  SCORE_DISPLAY_FLOOR,
+  applyScoreDisplayFloor,
   assessLiveConfidence,
   composeLiveScore,
   liveBandLabel,

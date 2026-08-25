@@ -309,6 +309,23 @@ engine.
     the cost for precision the signal does not have. See
     `docs/runbooks/reputation-and-reasoning.md`.
 
+23. **The customer never reads a Deal Score below 6.0.** Owner business rule
+    (2026-08-24): WhataHotel sells every hotel the widget appears on, so the
+    score's on-page job is ranking good against better, not talking a guest
+    out of the catalogue. `applyScoreDisplayFloor`
+    (`packages/core/src/scoring/liveScore.ts`, floor `SCORE_DISPLAY_FLOOR =
+60`) is applied at the RESPONSE BOUNDARY in both API routes, to the same
+    result object the explanation bundle is built from, so the number, band,
+    verdict and narrative stay coherent. Three things the floor must never
+    do: it never touches what the engine computes or what `persistAnalysis`
+    stores (calibration needs true scores — flooring them would poison the
+    only data that can ever set the weights); it never turns an absent score
+    into a number (rule 3 — null stays null); and it never edits the facts —
+    a floored response may still say "priced above comparable hotels",
+    because that is a statement about the price, not the verdict. 60 sits in
+    the MARKET band, so the floored copy reads "Market rate / Consider
+    booking", never a recommendation against the hotel.
+
 ## Adding or changing a factor
 
 1. Update `docs/mvp/02-deal-score.md` with the rationale first.
