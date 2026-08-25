@@ -1262,13 +1262,43 @@
     scoreBox.appendChild(el('div', 'wahpi__metric-label', 'Deal score'));
 
     if (v.out_of_ten === null || v.out_of_ten === undefined) {
-      scoreBox.appendChild(
-        el('div', 'wahpi__metric-value wahpi__metric-value--band-only', 'Not available'),
+      // HOTEL VALUE MODE (owner directive, 2026-08-26). No score exists, and
+      // the panel says what the property IS instead of what the system could
+      // not do: the verified Google rating where one exists, and the
+      // hotel-value headline the server computed from evidence. No invented
+      // number — rule 3 holds precisely because this branch renders no score
+      // at all — and no "not enough data" narration: that is an internal
+      // condition, not customer copy.
+      var valueGrid = el('div', 'wahpi__verdict wahpi__verdict--value');
+      var rep = data.reputation;
+      if (rep && rep.rating !== null && rep.rating !== undefined) {
+        var repBox = el('div', 'wahpi__metric');
+        repBox.appendChild(el('div', 'wahpi__metric-label', 'Guest rating'));
+        var repValue = el('div', 'wahpi__metric-value');
+        repValue.textContent = Number(rep.rating).toFixed(1);
+        repValue.appendChild(el('span', 'wahpi__metric-sub', ' / 5'));
+        repBox.appendChild(repValue);
+        if (rep.review_count) {
+          repBox.appendChild(
+            el('div', 'wahpi__metric-note', rep.review_count.toLocaleString() + ' Google reviews'),
+          );
+        }
+        valueGrid.appendChild(repBox);
+      }
+      var hv = data.hotel_value;
+      var valueBox = el('div', 'wahpi__recommendation wahpi--neutral');
+      valueBox.appendChild(
+        el(
+          'div',
+          'wahpi__recommendation-label',
+          (hv && hv.headline) || 'Ask an advisor for tailored rate guidance',
+        ),
       );
-      scoreBox.appendChild(
-        el('div', 'wahpi__metric-note', 'Not enough live rates to score this stay.'),
-      );
-    } else {
+      valueGrid.appendChild(valueBox);
+      wrap.appendChild(valueGrid);
+      return wrap;
+    }
+    {
       var value = el('div', 'wahpi__metric-value wahpi__live-score ' + tone);
       value.textContent = formatOutOfTen(v.out_of_ten);
       value.appendChild(el('span', 'wahpi__metric-sub', ' / 10'));
@@ -1351,6 +1381,10 @@
   function renderLivePremium(data) {
     var premium = data.premium_justification;
     if (!premium || premium.level === 'NOT_PREMIUM') return null;
+    // No measured premium means there is no premium question to answer —
+    // rendering the box would put an unmeasured comparison in front of the
+    // guest. Nothing is lost: the hotel-value section carries the story.
+    if (premium.premium_pct === null || premium.premium_pct === undefined) return null;
 
     // The reasoned verdict, when the API produced one. Everything shown here
     // was validated server-side — the widget renders it verbatim and adds
@@ -1706,6 +1740,13 @@
     append(root, renderLiveVerdict(data));
     append(root, renderLiveWhyChoose(data));
 
+    // HOTEL VALUE MODE: no score means no "how we worked this out" drawer —
+    // that drawer itemises the comparison's inputs, and with no comparison
+    // its rows could only narrate what is missing. The value sections
+    // (explanation, reputation, alternative, personalization) still render.
+    var valueMode =
+      data.verdict && (data.verdict.out_of_ten === null || data.verdict.out_of_ten === undefined);
+
     var more = el('div', 'wahpi__more');
     more.id = 'wahpi-more-' + state.uid;
     append(more, renderLiveExplanation(data));
@@ -1714,7 +1755,7 @@
     append(more, renderSuperiorAlternative(data, state));
     append(more, renderLivePersonalization(data));
     append(more, renderLiveReasons(data));
-    append(more, renderLiveDetails(data, state));
+    if (!valueMode) append(more, renderLiveDetails(data, state));
 
     if (more.childNodes.length > 0) {
       var seeMoreWrap = section(null);
@@ -2243,12 +2284,15 @@
 
         var code = result.body && result.body.error ? result.body.error.code : 'INTERNAL_ERROR';
         if (code === 'NO_CURRENT_RATE') {
-          // Honest, and deliberately never hidden behind unavailable:'hide':
-          // "we could not verify this" is information a customer can use.
+          // The one message allowed to say a stay cannot be presented — and
+          // even here, the copy is about the STAY and the advisor, never
+          // about our data (owner directive, 2026-08-26). Deliberately not
+          // hidden behind unavailable:'hide': an unbookable stay is
+          // information a customer can use.
           renderNotice(
             root,
-            'Not available for these dates',
-            'We could not verify enough live data to score this stay. Try nearby dates, or ask an advisor.',
+            'Not bookable online for these dates',
+            'Our advisors can check availability directly and often access rooms not shown online — reach out and we will help you find the right stay.',
           );
         } else if (code === 'RATE_NOT_FOUND' && options.rateId) {
           // The pinned offer went away — sold out, withdrawn, or the guest

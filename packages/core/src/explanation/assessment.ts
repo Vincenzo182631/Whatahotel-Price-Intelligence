@@ -211,7 +211,10 @@ export function premiumJustificationSummary(level: string): string {
     case 'NOT_PREMIUM':
       return 'This room is not priced above comparable hotels, so there is no premium to justify.';
     default:
-      return 'Limited data. This room is priced above the competitive set, but there is not enough comparable information to judge whether the premium is justified.';
+      // The LIMITED_DATA reading, phrased about the rates rather than about
+      // the system: the fact is that the rates' inclusions are unstated, and
+      // that is a property of the product a guest can act on.
+      return 'This room is priced above the competitive set. The rates do not state what each includes, so the premium is measured on price alone.';
   }
 }
 

@@ -470,4 +470,15 @@ and the comp top-up still fires on it so a merely-unfetched market upgrades to
 a terms-matched comparison. It is not the rule-5 merge: nothing is presented
 as like-for-like, and baselines never see it.
 
+**Hotel Value mode** (2026-08-26): a live response whose score is null carries
+`intelligence_mode: HOTEL_VALUE`, and every customer surface presents the
+hotel-value assessment (rating, themes, perks — the existing validated layer)
+instead of narrating the missing comparison. Validator V3 rejects any
+generated sentence containing data-limitation language ("not enough data",
+"could not verify", "insufficient", "unfortunately"); honest caveats about the
+PRODUCT ("the rates do not state what each includes") still pass. The score
+stays null (rule 3), the engine is untouched, and the one message allowed to
+say a stay cannot be presented is the unbookable notice — phrased about the
+stay and the advisor, never about our data.
+
 The weights in every version so far remain uncalibrated priors.

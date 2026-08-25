@@ -560,6 +560,14 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     generated_at: now.toISOString(),
     model: 'LIVE_MARKET',
     config_version: config.version,
+    // Which product this response is. MARKET carries a Deal Score computed
+    // from live comparisons; HOTEL_VALUE means the market comparison could
+    // not stand a score, and the response's substance is the hotel-value
+    // assessment (reputation, themes, perks) — a client should present the
+    // value reading, never a "no data" state. The score itself stays null in
+    // HOTEL_VALUE mode (rule 3): the mode renames the presentation, it never
+    // invents a number.
+    intelligence_mode: result.score === null ? 'HOTEL_VALUE' : 'MARKET',
     // Whether this answer required fetching the stay live just now. STORED is
     // the common case and the fast one; LIVE_FETCH means the guest's search
     // itself widened the dataset.
@@ -675,7 +683,14 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       comparable_included_value_nightly: money(premium.medianCompBenefitPerNightMinor, currency),
       comparables_with_included_value: premium.compsWithBenefits,
       effective_index: round1(premium.effectiveCsi),
-      summary: premiumSummary(premium.level),
+      // A LIMITED_DATA summary asserts "priced above the competitive set" —
+      // supportable only when a premium was actually measured. With no
+      // premium_pct there is no measured gap, and the honest summary says
+      // exactly that instead of implying a comparison that never ran.
+      summary:
+        premium.premiumPct === null && premium.level === 'LIMITED_DATA'
+          ? 'No market premium was measured for this stay.'
+          : premiumSummary(premium.level),
       /**
        * The reasoned verdict: is the premium supported by the evidence?
        *
