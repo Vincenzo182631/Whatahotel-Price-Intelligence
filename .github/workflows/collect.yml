@@ -87,7 +87,13 @@ jobs:
       # 512 MB project cap only shrinks on DROP/TRUNCATE. Baselines and
       # analyses persist; only raw observations age out. After a Neon plan
       # upgrade, delete this line and history accrues without limit.
-      RATE_OBSERVATION_RETAIN_DAYS: '7'
+      #
+      # 5, not 7, since the limit rose to 2000: measured growth at the new
+      # volume is ~50-60 MB/day of observations, and 7 days of that plus
+      # baselines projected to ~450-500 MB — inside the ceiling only on a
+      # good week. 5 days holds ~385 MB steady with real margin, and the
+      # live model reads rates far fresher than either window.
+      RATE_OBSERVATION_RETAIN_DAYS: '5'
 
     steps:
       - uses: actions/checkout@v4
