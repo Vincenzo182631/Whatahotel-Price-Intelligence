@@ -168,6 +168,24 @@ update the attributes, and the panel follows with no stale state.
 Absent all three, the panel shows the engine's pick (cheapest current rate).
 There is no in-panel way to change category — the page is the chooser.
 
+**If every button shows the first category**, the identifier is not reaching
+the widget or not resolving, and the browser console now says which:
+
+1. **Attributes must be real DOM attributes.** jQuery's `.data('room-code',
+v)` stores in memory and never touches the DOM — the widget cannot see
+   it. Use `.attr('data-room-code', v)` (or `el.setAttribute`).
+2. **Set the attribute on the mount node itself**, before or after mounting
+   — the widget observes attribute changes and remounts. A brand-new node
+   inserted with the attribute already set also works.
+3. **`data-room-code` must be the rates feed's `bookCode`** for these exact
+   dates (not `rateCode`); an unknown code logs
+   `[wah-pi] data-room-code "…" was not found for this stay`.
+4. **`data-room-name` must correspond to the source's room names.** Exact,
+   prefix, and whole-word matches land; an ambiguous or foreign label logs
+   `[wah-pi] data-room-name "…" matched no room for this stay` together
+   with the room names the stay actually offers — copy one of those, or
+   switch to the id.
+
 ### Pre-warming: make Rate Intel open in under a second
 
 A stay nobody has collected makes the API fetch live rates before it can

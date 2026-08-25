@@ -50,3 +50,33 @@ describe('matchRoomOption — the display-name lock', () => {
     expect(matchRoomOption('Deluxe King', [])).toBeNull();
   });
 });
+
+describe('matchRoomOption — the word-overlap tier for prettified labels', () => {
+  it('matches a label whose words all appear in one option, non-contiguously', () => {
+    const opts = [
+      { room_type_id: '4', name: 'Garden View Executive Suite King Bed Lanai' },
+      { room_type_id: '1', name: 'Historic Room King' },
+    ];
+    // "Garden Executive Suite" is neither a prefix nor a substring of the
+    // full name (the source injects "View" mid-phrase) — the word tier is
+    // what makes the host page's prettified label land.
+    expect(matchRoomOption('Garden Executive Suite', opts)?.room_type_id).toBe('4');
+  });
+
+  it('refuses to guess when the label is ambiguous between two rooms', () => {
+    const opts = [
+      { room_type_id: 'k', name: '1K OCEAN VIEW' },
+      { room_type_id: 'q', name: '2 QN OCEAN VIEW' },
+    ];
+    // "Ocean View King" shares the same two words with both options — a tie.
+    // Locking either would show a guest the wrong category with full
+    // confidence; the engine's pick plus a console warning is the honest out.
+    expect(matchRoomOption('Ocean View King', opts)).toBeNull();
+  });
+
+  it('still requires the label to mostly describe the room', () => {
+    const opts = [{ room_type_id: '1', name: 'Historic Room King' }];
+    // One shared word out of four is a coincidence, not an identification.
+    expect(matchRoomOption('Presidential Ocean Villa King', opts)).toBeNull();
+  });
+});

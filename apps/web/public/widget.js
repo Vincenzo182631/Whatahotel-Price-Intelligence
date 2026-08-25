@@ -1899,7 +1899,81 @@
         if (!contains || key.length < normalizeRoomKey(contains.name).length) contains = options[i];
       }
     }
-    return prefix || contains;
+    if (prefix || contains) return prefix || contains;
+
+    // Last tier: word overlap, for labels the host page prettified ("Garden
+    // Executive Suite" against the source's "Garden View Executive Suite
+    // King Bed Lanai"). Deliberately strict about ambiguity: the best option
+    // must cover at least half of the wanted words AND beat every other
+    // option outright — a tie means the label does not identify one room,
+    // and guessing between an ocean king and an ocean double would show a
+    // guest the wrong category with full confidence. Null over that, always.
+    var wantedTokens = wanted.split(' ');
+    var best = null;
+    var bestShared = 0;
+    var tied = false;
+    for (var j = 0; j < options.length; j++) {
+      var optTokens = normalizeRoomKey(options[j].name).split(' ');
+      var shared = 0;
+      for (var t = 0; t < wantedTokens.length; t++) {
+        if (optTokens.indexOf(wantedTokens[t]) !== -1) shared++;
+      }
+      if (shared > bestShared) {
+        best = options[j];
+        bestShared = shared;
+        tied = false;
+      } else if (shared === bestShared && shared > 0) {
+        tied = true;
+      }
+    }
+    if (best && !tied && bestShared * 2 >= wantedTokens.length) return best;
+    return null;
+  }
+
+  /**
+   * The integration's early-warning system: a category identifier that did
+   * not take effect is INVISIBLE on screen — the panel just shows the
+   * engine's pick, which reads as "every button shows the first room". Say
+   * exactly what happened in the console instead, so the person wiring the
+   * buttons finds the cause in one look rather than a support thread.
+   * (Attributes set with jQuery's .data() never reach the DOM — use
+   * .attr() — and a data-room-name must correspond to the source's room
+   * names; the warning lists them.)
+   */
+  function diagnoseRoomLock(options, data) {
+    try {
+      var subject = data && data.subject ? data.subject : {};
+      if (subject.room_code_match === 'NOT_FOUND') {
+        explain(
+          'warn',
+          'data-room-code "' +
+            (subject.requested_room_code || options.roomCode) +
+            '" was not found for this stay — showing the engine\'s pick (' +
+            (subject.room_type ? subject.room_type.name : '?') +
+            '). Codes come from the rates feed\'s bookCode for these exact dates.',
+        );
+      }
+      if (options.roomName && !options.roomTypeId && !options.roomCode) {
+        var match = matchRoomOption(options.roomName, subject.room_options || []);
+        if (!match) {
+          var offered = (subject.room_options || [])
+            .slice(0, 6)
+            .map(function (o) {
+              return o.name;
+            })
+            .join(' | ');
+          explain(
+            'warn',
+            'data-room-name "' +
+              options.roomName +
+              '" matched no room for this stay — showing the engine\'s pick. Rooms offered: ' +
+              offered,
+          );
+        }
+      }
+    } catch (e) {
+      /* diagnostics must never break the panel */
+    }
   }
 
   /**
@@ -2149,6 +2223,7 @@
           // One extra round-trip, almost always cache-warm — and honest:
           // the label match is checked against what the stay actually
           // offers, never assumed.
+          if (live) diagnoseRoomLock(options, result.body);
           var namedRoomId = live ? resolveNamedRoom(options, result.body) : null;
           if (namedRoomId !== null) {
             var next = {};
