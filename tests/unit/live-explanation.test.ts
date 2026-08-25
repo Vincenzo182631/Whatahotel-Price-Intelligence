@@ -155,11 +155,28 @@ describe('the live bundle carries facts, not inputs', () => {
     }
   });
 
-  it('renders an absent score as absent, never as zero', () => {
+  it('renders an absent score as absent, never as zero — and never narrates the absence', () => {
     const bundle = bundleFor({ comps: [] });
     const text = renderLiveExplanation(bundle).text;
-    expect(text).toContain('not enough live market data');
+    // The price is still stated confidently; the missing comparison is an
+    // internal condition, not customer copy (owner directive, 2026-08-26).
+    expect(text).toMatch(/a night before taxes and fees\./);
     expect(text).not.toMatch(/\b0 out of 10\b/);
+    expect(text).not.toMatch(/not enough|could not|unable to|insufficient|unavailable/i);
+  });
+
+  it('no rendering, scored or not, exposes an internal data limitation', () => {
+    const BANNED = /not enough|could not verify|unable to|insufficient|we do not have enough/i;
+    for (const tweak of [
+      {},
+      { comps: [] as number[] },
+      { subjectNightly: 70_000 },
+      { termsBasis: 'PRICE_ONLY' as const },
+      { subjectBenefit: 6_000, compBenefit: 1_000 },
+    ]) {
+      const text = renderLiveExplanation(bundleFor(tweak)).text;
+      expect(BANNED.test(text), text).toBe(false);
+    }
   });
 });
 
@@ -302,5 +319,28 @@ describe('the price-only comparison is disclosed wherever it is rendered', () =>
     const bundle = bundleFor();
     expect(bundle.market.comp_set.terms_basis).toBe('MATCHED');
     expect(renderLiveExplanation(bundle).text).not.toContain('compared on price alone');
+  });
+});
+
+describe('V3 — data-limitation language rejects a draft whole', () => {
+  it('rejects the phrases a model might use to narrate a system condition', () => {
+    const bundle = bundleFor();
+    for (const bad of [
+      'We do not have enough data to compare this rate.',
+      'Insufficient data prevents a full comparison.',
+      'We could not verify the comparable rates.',
+      'Unfortunately, market data is unavailable for these dates.',
+      'There is not enough comparable information for these dates.',
+    ]) {
+      const check = validateNarrative(bad, bundle.constraints);
+      expect(check.violations.join(' '), bad).toContain('data-limitation');
+    }
+  });
+
+  it('passes honest caveats stated about the product, not the system', () => {
+    const bundle = bundleFor();
+    const ok = 'The rates do not state what each includes, so the comparison rests on price alone.';
+    const check = validateNarrative(ok, bundle.constraints);
+    expect(check.violations).toEqual([]);
   });
 });

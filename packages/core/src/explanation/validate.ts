@@ -33,6 +33,18 @@ function sentenceCount(text: string): number {
   return text.split(/[.!?]+(?:\s|$)/).filter((s) => s.trim().length > 0).length;
 }
 
+/**
+ * V3 — internal system conditions are not customer copy (owner directive,
+ * 2026-08-26). "We don't have enough data" describes the SYSTEM; customer
+ * prose describes the HOTEL and the RATE. A draft that apologises for the
+ * data is rejected whole, and the deterministic renderer — which never
+ * writes these phrases — ships instead. This does not weaken honesty:
+ * facts and caveats stated about the product ("the rates do not state what
+ * each includes") pass; narrated limitations do not.
+ */
+const DATA_APOLOGY =
+  /\b(not enough (?:data|information|live|comparable|rates?|reviews?)|could not (?:verify|calculate|score|compare)|unable to (?:score|calculate|verify|compare)|insufficient (?:data|information|comparables?)|data (?:is |was )?(?:unavailable|missing|limited)|we (?:do not|don'?t) have enough|system (?:could|can)(?:not| not)|unfortunately)\b/i;
+
 export function validateNarrative(
   text: string,
   constraints: NarrativeConstraints,
@@ -42,6 +54,11 @@ export function validateNarrative(
   const predictive = findPredictiveLanguage(text);
   if (predictive.length > 0) {
     violations.push(`predictive language: ${[...new Set(predictive)].join(', ')}`);
+  }
+
+  const apology = DATA_APOLOGY.exec(text);
+  if (apology) {
+    violations.push(`data-limitation language: "${apology[0]}"`);
   }
 
   // Compared at one decimal because that is the precision the allowlist is

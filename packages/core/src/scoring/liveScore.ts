@@ -59,7 +59,12 @@ const VERDICT_LABEL: Record<LiveVerdict, string> = {
   // the customer to make our decision for us.
   BOOK_CONSIDER: 'Consider booking',
   CONSIDER_ALTERNATIVES: 'Consider alternatives',
-  NOT_ENOUGH_DATA: 'Not enough data yet',
+  // The customer-facing label for the no-score verdict names what the panel
+  // DOES show — the hotel-value assessment — not the system condition that
+  // led there (owner directive, 2026-08-26: internal data limitations are
+  // not customer-facing copy). The verdict CODE stays NOT_ENOUGH_DATA:
+  // machines read the code, people read the label.
+  NOT_ENOUGH_DATA: 'Hotel value insight',
 };
 
 export function liveVerdictLabel(verdict: LiveVerdict): string {

@@ -43,7 +43,11 @@ function verdictSentence(bundle: LiveExplanationBundle): string {
   const name = `${bundle.subject.room_type_name} at ${bundle.subject.hotel_name}`;
   const price = money(bundle, bundle.price.nightly_minor);
   if (bundle.verdict.out_of_ten === null) {
-    return `${name} is ${price} a night before taxes and fees, and there is not enough live market data to rate it.`;
+    // No score, no narration of why not. The absence of a market comparison
+    // is an internal condition, not customer copy (owner directive,
+    // 2026-08-26); the sentences that follow — reputation, inclusions,
+    // availability context — carry the hotel-value reading instead.
+    return `${name} is ${price} a night before taxes and fees.`;
   }
   const band = bundle.verdict.band_label ? ` — ${bundle.verdict.band_label.toLowerCase()}` : '';
   return `${name} is ${price} a night before taxes and fees, and we rate it ${bundle.verdict.out_of_ten} out of 10${band}.`;
@@ -116,7 +120,9 @@ function contextSentence(bundle: LiveExplanationBundle): string | null {
     return `The rate is ${pct(premium.premium_pct)} above the comparable median and what it includes covers little of that.`;
   }
   if (premium.level === 'LIMITED_DATA' && premium.premium_pct !== null && premium.premium_pct > 0) {
-    return `It is ${pct(premium.premium_pct)} above the comparable median, and we do not have enough information about what each rate includes to say whether that is justified.`;
+    // Say what the RATES don't state, not what WE don't have — same fact,
+    // stated about the product rather than about the system.
+    return `It is ${pct(premium.premium_pct)} above the comparable median; the rates do not state what each includes, so the comparison rests on price alone.`;
   }
 
   const reputation = bundle.reputation.subject;

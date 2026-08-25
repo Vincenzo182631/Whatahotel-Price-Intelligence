@@ -278,3 +278,32 @@ describe('Rate Intel is category-specific — the dropdown is gone', () => {
     expect(WIDGET).toMatch(/options\.roomTypeId \|\| options\.roomCode\) return null/);
   });
 });
+
+describe('Hotel Value mode — no score is never narrated as missing data', () => {
+  it('renders the value grid instead of a "Not available" score tile', () => {
+    expect(WIDGET).toContain('wahpi__verdict--value');
+    expect(WIDGET).toContain("'Guest rating'");
+    expect(WIDGET).toContain('Google reviews');
+    // The old system-condition copy is gone from the live panel entirely.
+    expect(WIDGET).not.toContain('Not enough live rates to score this stay');
+  });
+
+  it('falls back to the hotel-value headline, or an advisor line — never a data apology', () => {
+    expect(WIDGET).toContain('Ask an advisor for tailored rate guidance');
+  });
+
+  it('the unbookable notice speaks about the stay and the advisor, not the data', () => {
+    expect(WIDGET).toContain('Not bookable online for these dates');
+    expect(WIDGET).toContain('advisors can check availability directly');
+    expect(WIDGET).not.toContain('could not verify enough live data');
+    expect(WIDGET).not.toContain('Try nearby dates');
+  });
+
+  it('suppresses the workings drawer and the premium box when nothing was measured', () => {
+    // The drawer itemises the comparison's inputs; with no comparison its
+    // rows could only narrate what is missing.
+    expect(WIDGET).toMatch(/if \(!valueMode\) append\(more, renderLiveDetails/);
+    // A premium box without a measured premium_pct is an unmeasured claim.
+    expect(WIDGET).toMatch(/premium\.premium_pct === null \|\| premium\.premium_pct === undefined/);
+  });
+});
