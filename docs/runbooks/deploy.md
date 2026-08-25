@@ -134,6 +134,43 @@ All four are deliberate opt-in markers carrying our own name. `data-hotel-id`
 alone is deliberately NOT a mount target — a search-results page can carry it
 on every card, and that would render a panel per row.
 
+### Pre-warming: make Rate Intel open in under a second
+
+A stay nobody has collected makes the API fetch live rates before it can
+score — up to ~40 seconds the first time. The guest spends longer than that
+just reading the hotel page before pressing the button, so start the work
+when the page loads, not when the panel opens. Two equivalent forms:
+
+```html
+<!-- a hidden marker anywhere in the page; it is never mounted -->
+<div
+  data-wah-pi-prefetch
+  data-hotel-id="1198"
+  data-check-in="2026-10-30"
+  data-check-out="2026-11-02"
+  data-adults="2"
+  hidden
+></div>
+```
+
+```js
+// or programmatically, e.g. as soon as the booking form knows the dates
+WahPriceIntelligence.prefetch({
+  hotelId: '1198',
+  checkIn: '2026-10-30',
+  checkOut: '2026-11-02',
+  adults: 2,
+});
+```
+
+Both fire the exact request the panel itself would and discard the response —
+the point is that the server fetches, ingests and caches the stay. When the
+guest opens Rate Intel moments later, the answer is stored and renders in
+well under a second. Each distinct stay is warmed once per page view;
+failures are silent (the panel's own request still handles errors honestly).
+Prefetching a stay the guest never opens costs one API round per comparable —
+use it on hotel detail pages, not on search-result grids.
+
 **The stay can come from the page instead of attributes**, which is what lets
 ONE template edit cover every hotel page on the site. Each field is resolved
 independently, first hit wins:

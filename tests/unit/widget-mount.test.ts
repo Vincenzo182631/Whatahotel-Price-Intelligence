@@ -208,3 +208,27 @@ describe('Superior Alternative (upsell) and the concise UI', () => {
     expect(WIDGET).not.toContain('live right now');
   });
 });
+
+describe('prefetch — warming a stay before the panel opens', () => {
+  it('exposes prefetch() on the public API', () => {
+    expect(WIDGET).toMatch(/prefetch: prefetch,/);
+  });
+
+  it('scans for [data-wah-pi-prefetch] markers at boot, before mounting', () => {
+    expect(WIDGET).toContain("querySelectorAll('[data-wah-pi-prefetch]')");
+    // Boot order: warming starts before the mount loop so a page that has
+    // both gets the head start either way.
+    const boot = WIDGET.indexOf('prefetchMarked();');
+    // lastIndexOf: the same call literal appears earlier inside remountAll;
+    // the mount loop that matters here is initAuto's, which is the final one.
+    const mountLoop = WIDGET.lastIndexOf('autoMount(nodes[i]);');
+    expect(boot).toBeGreaterThan(-1);
+    expect(boot).toBeLessThan(mountLoop);
+  });
+
+  it('warms each distinct stay once per page view and swallows failures', () => {
+    expect(WIDGET).toMatch(/if \(prefetched\[url\]\) return;/);
+    // Fire-and-forget: a rejected warm-up must never surface to the host page.
+    expect(WIDGET).toMatch(/fetch\(url\)\.catch\(/);
+  });
+});

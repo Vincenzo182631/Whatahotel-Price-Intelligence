@@ -50,7 +50,7 @@ on:
       limit:
         description: 'Max stays to collect in this run'
         required: false
-        default: '1200'
+        default: '2000'
       dry_run:
         description: 'Plan only — make no API calls and write nothing'
         type: boolean
@@ -140,20 +140,20 @@ jobs:
           fi
           npm run collect -- --catalog "${{ inputs.catalog }}" --concurrency 6 2>&1 | tee collect.log
 
-      # The limit was 500 until 2026-08-20, then 800 briefly the same day.
-      # A dry-run at 800 still truncated 135: the pre-fix rollover storms
-      # (see the ±1 day tolerance change) left the tracked set carrying near-
-      # duplicate parallel grids, and `planCollection` clamps its due list at
-      # the limit, so "800 due" meant "at least 800". 1200 clears the whole
-      # measured demand; it is a cap, not a target — runs with less due plan
-      # less — and the legacy demand decays as the duplicated check-in dates
-      # pass. Re-measure once truncation has been absent for a week; the
-      # steady-state figure was ~680/run before the storms.
+      # The limit was 500 until 2026-08-20, then 800 briefly the same day,
+      # then 1200 (which cleared the demand measured at the time). Raised to
+      # 2000 on 2026-08-25: on-demand scoring auto-enrolls every hotel a
+      # guest asks about, and measured demand had grown to ~1,750–1,900
+      # stays per 6h — every run at 1200 truncated, and every truncated stay
+      # is a future cold 30-40s first load for some guest. It is a cap, not
+      # a target — runs with less due plan less — so quiet runs spend
+      # nothing extra. If truncation warnings return at 2000, that is the
+      # signal to re-measure demand, not to blindly raise again.
       - name: Collect
         if: inputs.catalog == ''
         run: |
           npm run collect -- \
-            --limit "${{ inputs.limit || 1200 }}" \
+            --limit "${{ inputs.limit || 2000 }}" \
             --concurrency 6 \
             ${{ inputs.dry_run && '--dry-run' || '' }} \
             2>&1 | tee collect.log

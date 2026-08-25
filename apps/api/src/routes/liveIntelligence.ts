@@ -532,7 +532,14 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
    * reader of the API is entitled to know whether a sentence was written by a
    * template or by a model that was then checked against the facts above.
    */
-  const explanation = await explainLive(liveReasoner(), bundle);
+  // A request that just performed live collection has already spent tens of
+  // seconds of the guest's patience on the source; the model reword (up to
+  // 6s more) is the one remaining cost that CAN be cut without cutting a
+  // fact. Serve the deterministic sentences on this first, cold answer — the
+  // stay is warm now, so the next request takes the model path and the
+  // explanation cache keeps what it writes.
+  const coldRequest = Boolean(onDemand?.performed || compTopUp?.performed);
+  const explanation = await explainLive(coldRequest ? null : liveReasoner(), bundle);
   if (explanation.source === 'TEMPLATE' && (explanation.failure || explanation.violations.length)) {
     // Server log only — the violations name specific numbers and belong to
     // our validator, not to the customer's stay. The response carries the
