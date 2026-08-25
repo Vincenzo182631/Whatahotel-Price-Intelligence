@@ -203,8 +203,12 @@ describe('Superior Alternative (upsell) and the concise UI', () => {
     expect(WIDGET).not.toContain('Showing the lowest available rate');
   });
 
-  it('the timestamp wording is honest and dynamic', () => {
-    expect(WIDGET).toContain("'This rate was last checked ' + relativeTime(");
+  it('renders no provenance block — the owner removed it (2026-08-25)', () => {
+    // The panel ends on the verdict and the actions. The removal must not
+    // resurrect the old claims either: no timestamp line, and never the
+    // "live right now" phrasing whose contradiction started all this.
+    expect(WIDGET).not.toContain('This rate was last checked');
+    expect(WIDGET).not.toContain('We do not forecast future prices');
     expect(WIDGET).not.toContain('live right now');
   });
 });

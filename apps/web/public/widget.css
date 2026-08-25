@@ -495,7 +495,7 @@
   font-weight: 600;
 }
 
-/* H · provenance */
+/* H · provenance — class retained for the history model's line */
 .wahpi__provenance {
   font-size: 0.84rem;
   color: var(--wahpi-muted);
