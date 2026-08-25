@@ -1689,37 +1689,6 @@
     return wrap;
   }
 
-  /**
-   * Provenance, mandatory in every state (docs/mvp/08 §H).
-   *
-   * The last line is the product's central claim and its central limit in one
-   * sentence. It is not marketing copy and must not be trimmed for space.
-   */
-  function renderLiveProvenance(data) {
-    var wrap = section(null);
-    var provenance = el('div', 'wahpi__provenance');
-
-    // "Last checked 7 hours ago" and a claim of momentary liveness cannot
-    // share a sentence honestly. The time is dynamic (relativeTime handles
-    // singular/plural), and the second line describes what the system
-    // actually did: compared the most recent verified rates it holds.
-    var observed = el('div');
-    observed.textContent = 'This rate was last checked ' + relativeTime(data.price.observed_at) + '.';
-    observed.title = new Date(data.price.observed_at).toISOString();
-    provenance.appendChild(observed);
-
-    provenance.appendChild(
-      el(
-        'div',
-        null,
-        'Comparisons use the most recent verified rates we hold for comparable hotels. We do not forecast future prices.',
-      ),
-    );
-
-    wrap.appendChild(provenance);
-    return wrap;
-  }
-
   function renderLiveDetails(data, state) {
     var wrap = el('section', 'wahpi__section wahpi__details');
 
@@ -1810,7 +1779,12 @@
       root.appendChild(more);
     }
 
-    append(root, renderLiveProvenance(data));
+    // No provenance block. The owner removed it (2026-08-25): the panel now
+    // ends on the verdict and the actions. The last-checked instant still
+    // travels in the API (price.observed_at) and in the details disclosure,
+    // so nothing stops a future presentation from surfacing it again — but
+    // nothing rendered here states or implies a future price, so rule 2
+    // holds without the disclaimer sentence.
     append(root, renderActions(data, state.options));
   }
 
