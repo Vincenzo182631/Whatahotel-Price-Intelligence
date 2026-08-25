@@ -58,7 +58,7 @@ import { db, type Queryable } from '../client.js';
  * $1 is the subject hotel id; `limitParam` is the caller's own placeholder;
  * `widenParam` is a boolean that suppresses the curated branch entirely.
  */
-function compSetCte(limitParam: string, widenParam: string): string {
+function compSetCte(limitParam: string, widenParam: string, radiusParam: string): string {
   return `curated AS (
        SELECT c.comparable_id AS hotel_id, c.rank
          FROM hotel_comparable c
@@ -75,9 +75,28 @@ function compSetCte(limitParam: string, widenParam: string): string {
          WHERE NOT EXISTS (SELECT 1 FROM curated)
            AND h.is_active
            AND h.id <> $1
-           AND s.destination_id IS NOT NULL
-           AND h.destination_id = s.destination_id
-         ORDER BY (h.city_rank IS NULL),
+           -- The same destination, PLUS anything within the nearby radius.
+           -- Destination labels fragment real markets: Palm Beach Aruba and
+           -- Oranjestad are 7 km apart on one island, and the label split
+           -- left the St. Regis with two comparables in a four-hotel market
+           -- (2026-08-25). Distance is symmetric and physical; the radius is
+           -- config (live.csi.nearbyRadiusKm), and 0 disables the widening.
+           -- Same-destination hotels still outrank radius entries below, so a
+           -- dense city never sees its comp set diluted by neighbours.
+           AND (
+             (s.destination_id IS NOT NULL AND h.destination_id = s.destination_id)
+             OR (
+               ${radiusParam}::float8 > 0
+               AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+               AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+               AND power(111.32 * (h.latitude - s.latitude)::float8, 2)
+                 + power(111.32 * cos(radians(s.latitude::float8))
+                     * (h.longitude - s.longitude)::float8, 2)
+                 <= power(${radiusParam}::float8, 2)
+             )
+           )
+         ORDER BY (h.destination_id = s.destination_id) IS NOT TRUE,
+                  (h.city_rank IS NULL),
                   h.city_rank DESC,
                   (h.latitude IS NULL OR s.latitude IS NULL),
                   (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
@@ -148,10 +167,12 @@ export async function findCompetitorRates(
    */
   roomClass: string | null = null,
   viewType: string | null = null,
+  /** Km radius for the destination fallback's nearby widening; 0 disables. */
+  nearbyRadiusKm = 0,
   q?: Queryable,
 ): Promise<CompetitorRate[]> {
   const { rows } = await db(q).query(
-    `WITH ${compSetCte('$8', '$12')},
+    `WITH ${compSetCte('$8', '$12', '$15')},
      latest AS (
        SELECT DISTINCT ON (o.hotel_id, o.room_type_id)
               o.hotel_id, o.nightly_amount_minor, o.observed_at, o.is_available
@@ -226,6 +247,7 @@ export async function findCompetitorRates(
       widen,
       roomClass,
       viewType,
+      nearbyRadiusKm,
     ],
   );
 
@@ -336,10 +358,12 @@ export async function findMarketCompression(
   maxAgeHours: number,
   /** Must match the comp set's own choice, or the two describe different markets. */
   widen = false,
+  /** Must also match the comp set's radius, for the same reason. */
+  nearbyRadiusKm = 0,
   q?: Queryable,
 ): Promise<CompressionInput | null> {
   const { rows } = await db(q).query(
-    `WITH ${compSetCte('$5', '$7')},
+    `WITH ${compSetCte('$5', '$7', '$8')},
      priced AS (
        SELECT DISTINCT o.hotel_id
          FROM rate_observation o
@@ -360,7 +384,7 @@ export async function findMarketCompression(
        (SELECT count(*) FROM attempted)                                    AS attempted,
        (SELECT count(*) FROM attempted WHERE last_outcome = 'NO_AVAILABILITY'
            AND hotel_id NOT IN (SELECT hotel_id FROM priced))              AS sold_out`,
-    [hotelId, checkIn, nights, adults, limit, maxAgeHours, widen],
+    [hotelId, checkIn, nights, adults, limit, maxAgeHours, widen, nearbyRadiusKm],
   );
 
   const row = rows[0];

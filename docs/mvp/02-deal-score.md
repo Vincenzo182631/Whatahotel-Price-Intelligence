@@ -368,3 +368,24 @@ market genuinely offers no terms-comparable rate.
 **Scenario impact:** none. S1–S9 exercise the history model, and every
 terms-matched live comparison is byte-identical to v5 — the rung fires only
 where v5 produced no comp set at all.
+
+## The nearby-radius comp widening (config v7, 2026-08-25)
+
+**The failure this removes.** The destination comp fallback matched on the
+destination LABEL, and labels fragment physical markets. The type case is the
+St. Regis Aruba: four luxury hotels stand on Palm Beach, one was yielding no
+rates, and the Renaissance — 7 km away on the same island — was invisible
+because its label says "Oranjestad". Two comparables in a real four-hotel
+market, no index, no score.
+
+**The rung.** `live.csi.nearbyRadiusKm` (30) lets the destination fallback —
+and the on-demand fetch list, which must mirror it — include hotels within
+that straight-line distance of the subject, whatever their label says.
+Same-destination hotels always sort first, so a dense city's comp set is
+unchanged; radius entries only fill seats the label could not. 30 km spans a
+resort island or a metro area (Versailles→Paris is ~18 km) without stitching
+separate cities together. 0 disables the widening.
+
+**Scenario impact:** none — S1–S9 exercise the history model, and curated comp
+sets are untouched: the radius applies only to the label fallback that runs
+before a destination has baselines to rank.
