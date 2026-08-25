@@ -20,6 +20,10 @@
 //   node scripts/db-maintain.mjs             # measure only
 //   node scripts/db-maintain.mjs --apply     # truncate + slim + vacuum
 //   node scripts/db-maintain.mjs --squeeze   # TRUNCATE observations, migrate
+//   node scripts/db-maintain.mjs --market 6792 2026-08-30 1 2
+//                                            # read-only market probe: why does
+//                                            # this hotel's comp pool look the
+//                                            # way it does for that stay?
 //
 // --squeeze is the free-tier reset (see migration 0015): the slim-and-vacuum
 // ratchet cannot save a project that is already full, because on Neon only
@@ -67,6 +71,73 @@ async function measure(label) {
      WHERE observation_slot < now() - interval '${KEEP_DAYS} days' AND raw IS NOT NULL`);
   console.log(`raw older than ${KEEP_DAYS}d:`, rawStats);
   console.log('ingest_reject:', await sql(`SELECT count(*) || ' rows, ' || pg_size_pretty(pg_total_relation_size('ingest_reject'))  FROM ingest_reject`));
+}
+
+// Read-only market probe. Answers, from the database itself, the question the
+// API cannot: which hotels the comp-set CTE can even SEE around a subject, and
+// what each of them holds for one stay. Exists because diagnosing this through
+// the public API means guessing — comps_used says how many survived, never who
+// was excluded or why.
+const MARKET = process.argv.indexOf('--market');
+if (MARKET !== -1) {
+  const [wahId, checkIn, nights, adults] = process.argv.slice(MARKET + 1, MARKET + 5);
+  if (!wahId || !checkIn || !nights || !adults) {
+    console.error('usage: --market <wahHotelId> <checkIn> <nights> <adults>');
+    process.exit(1);
+  }
+  console.log(`\n── market probe: hotel ${wahId}, ${checkIn} × ${nights}n × ${adults}a ──`);
+  console.log(
+    await sql(`
+      SELECT 'subject: id=' || h.id || ' active=' || h.is_active || ' tier=' || h.collection_tier
+          || ' dest_id=' || COALESCE(h.destination_id::text, 'NULL')
+          || ' dest=' || COALESCE(d.slug, 'NULL')
+          || ' lat=' || COALESCE(h.latitude::text, 'NULL')
+          || ' lng=' || COALESCE(h.longitude::text, 'NULL')
+          || ' curated_comps=' || (SELECT count(*) FROM hotel_comparable c WHERE c.hotel_id = h.id)
+        FROM hotel h LEFT JOIN destination d ON d.id = h.destination_id
+       WHERE h.wah_hotel_id = '${wahId.replace(/'/g, '')}'`),
+  );
+  console.log('\ncandidates (same destination or within 30 km), with their stay data:');
+  console.log(
+    await sql(`
+      WITH s AS (
+        SELECT id, destination_id, latitude, longitude FROM hotel
+         WHERE wah_hotel_id = '${wahId.replace(/'/g, '')}'
+      )
+      SELECT h.wah_hotel_id || ' ' || left(h.name, 34)
+          || ' | active=' || h.is_active
+          || ' | dest=' || COALESCE(d.slug, 'NULL')
+          || ' | coords=' || (h.latitude IS NOT NULL)
+          || ' | km=' || COALESCE(round(sqrt(
+                 power(111.32 * (h.latitude - s.latitude)::float8, 2)
+               + power(111.32 * cos(radians(s.latitude::float8))
+                   * (h.longitude - s.longitude)::float8, 2))::numeric, 1)::text, '?')
+          || ' | fresh_obs=' || (
+               SELECT count(*) FROM rate_observation o
+                WHERE o.hotel_id = h.id AND o.check_in = '${checkIn.replace(/'/g, '')}'::date
+                  AND o.nights = ${Number(nights)} AND o.adults = ${Number(adults)}
+                  AND o.observed_at >= now() - interval '24 hours')
+          || ' | avail=' || COALESCE((
+               SELECT o.is_available::text FROM rate_observation o
+                WHERE o.hotel_id = h.id AND o.check_in = '${checkIn.replace(/'/g, '')}'::date
+                  AND o.nights = ${Number(nights)} AND o.adults = ${Number(adults)}
+                ORDER BY o.observed_at DESC LIMIT 1), 'none')
+          || ' | attempt=' || COALESCE((
+               SELECT a.last_outcome || 'x' || a.consecutive_failures FROM collection_attempt a
+                WHERE a.hotel_id = h.id AND a.check_in = '${checkIn.replace(/'/g, '')}'::date
+                  AND a.nights = ${Number(nights)} AND a.adults = ${Number(adults)}
+                LIMIT 1), 'none')
+        FROM hotel h
+        JOIN s ON h.id <> s.id
+        LEFT JOIN destination d ON d.id = h.destination_id
+       WHERE (s.destination_id IS NOT NULL AND h.destination_id = s.destination_id)
+          OR (s.latitude IS NOT NULL AND h.latitude IS NOT NULL
+              AND power(111.32 * (h.latitude - s.latitude)::float8, 2)
+                + power(111.32 * cos(radians(s.latitude::float8))
+                    * (h.longitude - s.longitude)::float8, 2) <= power(30, 2))
+       ORDER BY h.wah_hotel_id`),
+  );
+  process.exit(0);
 }
 
 await measure('before');
