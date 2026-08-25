@@ -410,6 +410,7 @@ export async function loadLiveIntelligence(
       false,
       roomClass,
       viewType,
+      live.csi.nearbyRadiusKm,
       q,
     );
 
@@ -438,6 +439,7 @@ export async function loadLiveIntelligence(
       // signals must agree about which hotels are bookable.
       live.csi.maxCompAgeHours,
       false,
+      live.csi.nearbyRadiusKm,
       q,
     ),
   ]);
@@ -501,6 +503,7 @@ export async function loadLiveIntelligence(
         // here would guarantee it finds nothing either.
         null,
         null,
+        live.csi.nearbyRadiusKm,
         q,
       ),
       findMarketCompression(
@@ -511,6 +514,7 @@ export async function loadLiveIntelligence(
         compLimit,
         live.csi.maxCompAgeHours,
         true,
+        live.csi.nearbyRadiusKm,
         q,
       ),
     ]);
@@ -554,6 +558,7 @@ export async function loadLiveIntelligence(
       compBasis === 'DESTINATION',
       null,
       null,
+      live.csi.nearbyRadiusKm,
       q,
     );
     let adopted = priceOnly;
@@ -572,6 +577,7 @@ export async function loadLiveIntelligence(
         true,
         null,
         null,
+        live.csi.nearbyRadiusKm,
         q,
       );
       if (priceOnlyWidened.length > adopted.length) {
@@ -596,6 +602,7 @@ export async function loadLiveIntelligence(
           compLimit,
           live.csi.maxCompAgeHours,
           true,
+          live.csi.nearbyRadiusKm,
           q,
         );
       }

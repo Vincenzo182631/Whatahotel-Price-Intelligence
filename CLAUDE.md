@@ -459,7 +459,7 @@ rather than inventing a fit, fit lists are capped at three and never padded,
 and model-written personalization passes the same allowlist/prediction/
 absent-evidence gate as the assessment or the deterministic one ships.
 
-Config v6 added the **price-only comp fallback** (docs/mvp/02, final section):
+Config v6 added the **price-only comp fallback** and v7 the **nearby-radius comp widening** (30 km across fragmented destination labels; same-destination always ranks first) (docs/mvp/02, final section):
 when every terms-matched rung of the comparison ladder yields fewer than
 `minComps`, one last query drops the terms filter and compares price alone.
 Measured 2026-08-25, subject rates with unshared terms (packages, reward and

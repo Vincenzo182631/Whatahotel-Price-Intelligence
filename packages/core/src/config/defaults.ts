@@ -84,6 +84,12 @@ export interface ScoringConfig {
        * the index is shown — see CompTermsBasis in scoring/liveSignals.ts.
        */
       readonly priceOnlyFallback: boolean;
+      /**
+       * Km radius the destination comp fallback may reach beyond the
+       * subject's own destination label. 0 disables the widening. Same-
+       * destination hotels always outrank radius entries.
+       */
+      readonly nearbyRadiusKm: number;
       /** Competitor rates older than this are not live-validated; excluded. */
       readonly maxCompAgeHours: number;
       /** CSI at which the sub-score hits 0 and 100 respectively. */
@@ -276,7 +282,13 @@ export interface ScoringConfig {
 }
 
 export const DEFAULT_CONFIG: ScoringConfig = {
-  // v6 — adds the price-only comp-set fallback (`live.csi.priceOnlyFallback`):
+  // v7 — adds `live.csi.nearbyRadiusKm`: the destination comp fallback may
+  // reach 30 km beyond the subject's destination LABEL, because labels
+  // fragment physical markets (Palm Beach Aruba vs Oranjestad). Same-
+  // destination hotels always outrank radius entries, so dense cities are
+  // unchanged; only label-starved markets gain comparables.
+  //
+  // v6 added the price-only comp-set fallback (`live.csi.priceOnlyFallback`):
   // when every terms-matched rung of the comparison ladder comes up short, the
   // index may compare price alone, capped at LOW confidence and disclosed in
   // every rendering. Nothing else changes; scores that had a terms-matched
@@ -290,7 +302,7 @@ export const DEFAULT_CONFIG: ScoringConfig = {
   //
   // The v2 factor weights are retained unchanged, and every analysis records the
   // version that produced it, so older scores stay reproducible.
-  version: 6,
+  version: 7,
 
   score: {
     weight: {
@@ -325,6 +337,13 @@ export const DEFAULT_CONFIG: ScoringConfig = {
       // honestly: real prices, same stay, terms disclosed as unmatched,
       // confidence pinned LOW.
       priceOnlyFallback: true,
+      // Destination labels fragment physical markets: Palm Beach Aruba and
+      // Oranjestad are one island 7 km apart, and the split left the
+      // St. Regis with 2 comparables in a 4-hotel market (2026-08-25).
+      // 30 km holds the comparison to the same local market — it reaches
+      // across a resort island or a metro area (Versailles→Paris is ~18 km)
+      // without stitching separate cities together.
+      nearbyRadiusKm: 30,
       maxCompAgeHours: 24,
       // CSI 130 → 0, CSI 70 → 100. Centred so parity (100) lands mid-scale.
       scoreAtCsi: { zero: 130, full: 70 },

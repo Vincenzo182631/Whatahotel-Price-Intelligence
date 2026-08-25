@@ -1,3 +1,5 @@
+import { DEFAULT_CONFIG } from '@wahpi/core';
+
 import { db, type Queryable } from '../client.js';
 
 export interface HotelRow {
@@ -66,6 +68,13 @@ export async function findHotelByWahId(
 export async function findComparableIdentities(
   hotelId: number,
   limit: number,
+  /**
+   * Km radius the same-destination fallback may reach beyond the label —
+   * the SAME widening the scoring-time comp set applies
+   * (live.csi.nearbyRadiusKm), so the hotels we fetch are the hotels we will
+   * compare against. 0 disables it.
+   */
+  nearbyRadiusKm: number = DEFAULT_CONFIG.live.csi.nearbyRadiusKm,
   q?: Queryable,
 ): Promise<{ hotelId: number; wahHotelId: string }[]> {
   const { rows } = await db(q).query(
@@ -100,18 +109,34 @@ export async function findComparableIdentities(
             (SELECT destination_id, latitude, longitude FROM hotel WHERE id = $1) s
       WHERE h.is_active
         AND h.id <> $1
-        AND s.destination_id IS NOT NULL
-        AND h.destination_id = s.destination_id
-      -- Source ranking first, distance for whatever it has not ranked. Same
+        -- Same destination, PLUS anything within the nearby radius. The same
+        -- widening the comp-set CTE applies: destination labels fragment real
+        -- markets (Palm Beach Aruba vs Oranjestad), and a fetch list narrower
+        -- than the comparison would fetch rates we never use while starving
+        -- the ones we do.
+        AND (
+          (s.destination_id IS NOT NULL AND h.destination_id = s.destination_id)
+          OR (
+            $3::float8 > 0
+            AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+            AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+            AND power(111.32 * (h.latitude - s.latitude)::float8, 2)
+              + power(111.32 * cos(radians(s.latitude::float8))
+                  * (h.longitude - s.longitude)::float8, 2)
+              <= power($3::float8, 2)
+          )
+        )
+      -- Same-destination first, then source ranking, then distance. Same
       -- order the scoring-time comp set uses, so the hotels we FETCH are the
       -- hotels we will compare against.
-      ORDER BY (h.city_rank IS NULL),
+      ORDER BY (h.destination_id = s.destination_id) IS NOT TRUE,
+               (h.city_rank IS NULL),
                h.city_rank DESC,
                (h.latitude IS NULL OR s.latitude IS NULL),
                (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
                h.id
       LIMIT $2`,
-    [hotelId, limit],
+    [hotelId, limit, nearbyRadiusKm],
   );
   return sameDestination.map((r) => ({
     hotelId: r.id as number,
