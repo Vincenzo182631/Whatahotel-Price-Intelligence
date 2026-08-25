@@ -1,0 +1,57 @@
+/* WhataHotel site overrides for the WhataRate! widget.
+   Load AFTER the hot-linked stylesheet:
+
+     <link rel="stylesheet" href="https://whatahotel-price-intelligence-api.vercel.app/widget.css" />
+     <link rel="stylesheet" href="/css/pi_widget-overrides.css" />
+
+   This file carries ONLY the site's intentional changes (brand colors, the
+   modal panel shell, the flattened card). Everything else comes from the
+   hot-linked file, so widget updates — new sections, fixes, styles for new
+   controls — reach the page automatically instead of freezing at whatever
+   version was last copied. */
+
+/* Brand tokens. Declared on both the wrapper and the widget root so they
+   apply whether or not the mount carries the wrapper class. */
+.wahpi-wrapper,
+.wahpi {
+  --wahpi-accent: #2b4447;
+  --wahpi-accent-light: #db353d;
+  --wahpi-accent-deep: #b93c42;
+}
+
+.wahpi-wrapper {
+  padding: 0;
+}
+
+/* The modal panel shell around the widget. */
+.wahpi-panel {
+  max-height: 60dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background-color: #ffffff;
+  box-shadow: var(--wahpi-shadow);
+  border-radius: 3px;
+  padding: 20px;
+}
+
+/* Flatten the card inside the panel — the panel carries the chrome. */
+.wahpi {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 20px;
+  max-width: 800px;
+  margin: 0;
+}
+
+.wahpi header {
+  margin-top: 0;
+}
+
+/* The primary CTA in the site's red. The default gradient runs
+   accent→accent-deep, which with the teal accent above would blend
+   teal into red — state the red pair explicitly. */
+.wahpi__btn--primary {
+  background: linear-gradient(180deg, var(--wahpi-accent-light), var(--wahpi-accent-deep));
+  border-color: var(--wahpi-accent-deep);
+}
