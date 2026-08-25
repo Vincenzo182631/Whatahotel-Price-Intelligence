@@ -238,13 +238,19 @@ export function isProtectedBrand(hotelName: string): boolean {
  * A genuinely SUPERIOR comparable — the upsell, chosen by verified guest
  * standing, never by price.
  *
- * Eligible: currently available, and rated meaningfully ABOVE the subject
+ * Eligible: currently available, rated meaningfully ABOVE the subject
  * (at least +0.15 when the subject has a rating; at least 4.5 when it does
- * not) on a review volume that means something (200+). Price is not a
- * criterion in either direction: a superior hotel that also happens to cost
- * less is still superior. Ranked by volume-weighted rating. Null when no
- * candidate clears the bar — the section hides rather than stretches — and
- * ALWAYS null for a protected brand: the rule lives here, not in a prompt.
+ * not) on a review volume that means something (200+), and priced AT OR
+ * ABOVE the guest's current nightly rate. The price floor is the upsell
+ * contract (owner rule, 2026-08-25): a "step up" that undercuts the booking
+ * reads as a contradiction, not a bargain — doubly so because the
+ * candidate's rate comes from the comp set, which at a relaxed room-match
+ * rung may be the competitor's entry-level category shown against the
+ * guest's suite. Price still does not RANK candidates — among those at or
+ * above the floor, the volume-weighted rating decides. Null when no
+ * candidate clears every bar — the section hides rather than stretches —
+ * and ALWAYS null for a protected brand: the rule lives here, not in a
+ * prompt.
  */
 export function chooseSuperiorAlternative(
   subject: {
@@ -261,7 +267,12 @@ export function chooseSuperiorAlternative(
   // upselling INTO a Four Seasons is not the failure mode. The rule only
   // protects the guest's existing selection.
   const eligible = candidates.filter(
-    (c) => c.isAvailable && c.rating !== null && c.rating >= bar && (c.reviewCount ?? 0) >= 200,
+    (c) =>
+      c.isAvailable &&
+      c.rating !== null &&
+      c.rating >= bar &&
+      (c.reviewCount ?? 0) >= 200 &&
+      c.nightlyMinor >= subject.nightlyMinor,
   );
 
   if (eligible.length === 0) return null;

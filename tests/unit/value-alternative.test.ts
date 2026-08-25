@@ -205,10 +205,28 @@ describe('chooseSuperiorAlternative — the upsell', () => {
     themes: ['service', 'quiet'],
   };
 
-  it('recommends by verified standing, never by price — pricier is fine', () => {
+  it('recommends by verified standing — pricier is the point of an upsell', () => {
     const pick = chooseSuperiorAlternative(subject, [strong]);
     expect(pick?.wahHotelId).toBe('sup');
     expect(pick?.priceDeltaNightlyMinor).toBe(30_000); // an upsell, and said so
+  });
+
+  it('never undercuts the booking: a cheaper candidate is excluded whatever its rating', () => {
+    // Rated far above the subject on huge volume — but its comp-set rate is
+    // below the guest's current nightly, so as an "upsell" it would read as
+    // a contradiction. The price floor excludes it.
+    const cheaperButSuperior = { ...strong, nightlyMinor: 45_000, rating: 4.9 };
+    expect(chooseSuperiorAlternative(subject, [cheaperButSuperior])).toBeNull();
+
+    // Same nightly is the boundary: at or above the floor stays eligible.
+    const samePrice = { ...strong, nightlyMinor: 60_000 };
+    expect(chooseSuperiorAlternative(subject, [samePrice])?.wahHotelId).toBe('sup');
+  });
+
+  it('price gates but never ranks: among floor-clearing candidates, standing decides', () => {
+    const dearerButWeaker = { ...strong, wahHotelId: 'dear', nightlyMinor: 200_000, rating: 4.6 };
+    const pick = chooseSuperiorAlternative(subject, [strong, dearerButWeaker]);
+    expect(pick?.wahHotelId).toBe('sup'); // higher rating wins, not higher price
   });
 
   it('needs a MEANINGFUL rating gap and real review volume', () => {
