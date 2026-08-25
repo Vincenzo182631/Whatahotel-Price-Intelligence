@@ -1492,15 +1492,10 @@
         box.appendChild(ratingRow);
       }
       if (sup.reason) box.appendChild(el('div', 'wahpi__alternative-reason', sup.reason));
-      if (hotel.price_direction === 'LOWER') {
-        box.appendChild(
-          el(
-            'div',
-            'wahpi__alternative-save',
-            'And it is currently ' + formatMoney(hotel.price_delta_nightly) + ' less per night.',
-          ),
-        );
-      }
+      // No price-comparison line here. The server guarantees an upsell is
+      // never cheaper than the booking (the price floor in
+      // chooseSuperiorAlternative), and a "less per night" pitch on a
+      // step-up card read as a contradiction.
     } else if (sup.kind === 'ROOM' && sup.room) {
       var room = sup.room;
       box.appendChild(el('div', 'wahpi__premium-eyebrow', 'CONSIDER THE UPGRADE'));
