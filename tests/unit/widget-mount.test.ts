@@ -263,6 +263,15 @@ describe('Rate Intel is category-specific — the dropdown is gone', () => {
     expect(WIDGET).toMatch(/!templateNamesRoom && pinned/);
   });
 
+  it('a failed lock is loud in the console, never silent on screen', () => {
+    // "Every button shows the first room" is what a silently failed lock
+    // looks like. The diagnostics name the cause: an unfound room_code, or
+    // a room name matching nothing, with the real room list printed.
+    expect(WIDGET).toMatch(/function diagnoseRoomLock/);
+    expect(WIDGET).toContain('was not found for this stay');
+    expect(WIDGET).toContain('matched no room for this stay');
+  });
+
   it('a name lock resolves against the real room list, never assumes', () => {
     expect(WIDGET).toMatch(/function resolveNamedRoom/);
     // Only the NAME lock resolves; ids were already exact.
