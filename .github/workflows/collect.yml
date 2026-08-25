@@ -67,7 +67,13 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 90, not 45: a 3,000-stay catch-up run measures ~35-50 minutes end to
+    # end, and the 45-minute cap silently KILLED one mid-ingest on
+    # 2026-08-25 (run 38, conclusion "cancelled") — the partial work
+    # persisted, but the remaining backlog quietly did not drain. The cap
+    # exists to stop a hung run from blocking the 6-hour schedule, and 90
+    # still does that with a full cron slot to spare.
+    timeout-minutes: 90
 
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
