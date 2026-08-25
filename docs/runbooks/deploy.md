@@ -134,6 +134,40 @@ All four are deliberate opt-in markers carrying our own name. `data-hotel-id`
 alone is deliberately NOT a mount target — a search-results page can carry it
 on every card, and that would render a panel per row.
 
+### Category-specific Rate Intel: the button is the chooser
+
+The Intel panel renders **no room-category dropdown**. The category is decided
+by the WhataRate! Intel button the guest pressed, which the host page declares
+on the mount element with any ONE of three identifiers — strongest first:
+
+| attribute           | value                                            | behaviour                                                                                                       |
+| ------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `data-room-code`    | the source's own `bookCode` for the priced row   | exact row: room AND rate locked server-side; `subject.room_code_match` reports the outcome                      |
+| `data-room-type-id` | our `room_type_id` (from `subject.room_options`) | that category, cheapest plan; rate-plan picker still offered                                                    |
+| `data-room-name`    | the label the button renders ("Deluxe King")     | resolved against the stay's real room list on first response; exact match wins, then closest prefix/containment |
+
+```html
+<div
+  data-wah-pi
+  data-hotel-id="1198"
+  data-check-in="2026-10-30"
+  data-check-out="2026-11-02"
+  data-adults="2"
+  data-room-code="E1KBB0"
+></div>
+```
+
+Prefer `data-room-code` — it is the identifier the rates page already holds
+and the only one that also pins the exact rate plan. `data-room-name` is the
+fallback for a button that only knows its label; if the name matches nothing
+the stay actually offers, the panel keeps the engine's pick rather than
+guessing — never a blank box. Changing any of these attributes remounts the
+panel for the new category, so per-row buttons can share one mount node:
+update the attributes, and the panel follows with no stale state.
+
+Absent all three, the panel shows the engine's pick (cheapest current rate).
+There is no in-panel way to change category — the page is the chooser.
+
 ### Pre-warming: make Rate Intel open in under a second
 
 A stay nobody has collected makes the API fetch live rates before it can

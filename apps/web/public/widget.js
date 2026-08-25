@@ -1055,59 +1055,10 @@
   }
 
   /**
-   * The room-category chooser.
-   *
-   * Rendered only when the stay actually has more than one bookable room — a
-   * single-option <select> is a control that cannot be used, and it implies a
-   * choice the guest does not have.
-   *
-   * Changing it RE-REQUESTS with `room_type_id` rather than re-labelling what
-   * is on screen. The comp set, the nearby-date series and the terms match are
-   * all keyed on the chosen room, so a different category is a different
-   * question with a different answer — not the same score under a new name.
-   */
-  function renderRoomPicker(data, state) {
-    // A category pinned by the host page's own per-row button (room_code)
-    // must not be re-choosable inside the panel — the page IS the chooser.
-    if (state.options.roomCode) return null;
-    var options = data.subject.room_options || [];
-    if (options.length < 2 || typeof state.onRoomChange !== 'function') return null;
-
-    var wrap = el('div', 'wahpi__room-picker');
-    var id = 'wahpi-room-' + state.uid;
-
-    var label = el('label', 'wahpi__room-label', 'Room category');
-    label.setAttribute('for', id);
-    wrap.appendChild(label);
-
-    var select = document.createElement('select');
-    select.className = 'wahpi__room-select';
-    select.id = id;
-
-    for (var i = 0; i < options.length; i += 1) {
-      var option = options[i];
-      var node = document.createElement('option');
-      node.value = option.room_type_id;
-      // The price belongs in the label: choosing a category IS a price
-      // decision, and making the guest select each one to discover the cost
-      // turns a comparison into a scavenger hunt.
-      node.textContent = conciseRoomName(option.name) + ' — ' + formatMoney(option.nightly) + '/night';
-      if (option.room_type_id === data.subject.room_type.room_type_id) node.selected = true;
-      select.appendChild(node);
-    }
-
-    select.addEventListener('change', function () {
-      state.onRoomChange(select.value);
-    });
-    wrap.appendChild(select);
-    return wrap;
-  }
-
-  /**
    * "What matters most to you?" — the preference chips.
    *
    * Picking one RE-REQUESTS with `preference` rather than re-labelling
-   * what is on screen, exactly like the room picker: the personalized
+   * what is on screen: the personalized
    * sections are written and validated server-side, and the widget never
    * assembles personalized prose from numbers. The choice is fully
    * reversible — General value restores the un-personalized answer — and
@@ -1237,9 +1188,9 @@
     var wrap = section(null);
     wrap.appendChild(el('h2', null, data.subject.hotel.name));
 
-    // The room appears here ONCE, as category + bedding. It used to appear
-    // three times (meta, the auto-room line, the picker), which read as
-    // noise; the picker labels remain because they are the choices.
+    // The room appears here ONCE, as category + bedding — the category is
+    // fixed by the Intel button the guest pressed (or the engine's pick),
+    // never re-chosen inside the panel.
     var stay = data.subject.stay;
     wrap.appendChild(
       el(
@@ -1742,7 +1693,13 @@
 
     append(root, renderBrand());
     append(root, renderLiveSubject(data));
-    append(root, renderRoomPicker(data, state));
+    // No room-category dropdown. The category is decided BEFORE the panel
+    // opens — by the WhataRate! Intel button the guest pressed, which the
+    // host page passes as data-room-code, data-room-type-id or
+    // data-room-name — or, absent all three, by the engine's cheapest-rate
+    // pick. Re-choosing it inside the panel was removed (owner decision,
+    // 2026-08-25); the room-change machinery itself remains for the
+    // upsell's "View this room" and for the host page's identifiers.
     append(root, renderRatePicker(data, state));
     append(root, renderPreferencePicker(data, state));
     append(root, renderLivePrice(data));
@@ -1905,6 +1862,60 @@
   }
 
   // ── mount ──────────────────────────────────────────────────────────────
+
+  /**
+   * Find the room option a display name refers to.
+   *
+   * The host page's per-row Intel button may only know the label it renders
+   * ("Deluxe King"), while the API's room list carries the source's fuller
+   * names ("DELUXE KING Partial Ocean View…"). Ranked leniency: an exact
+   * normalized match wins outright; otherwise a prefix relationship (either
+   * direction), otherwise containment — closest (shortest) name first, so
+   * "Deluxe King" prefers "Deluxe King" over "Deluxe King Suite". Null when
+   * nothing plausibly matches, and the caller keeps the engine's pick rather
+   * than guessing.
+   */
+  function normalizeRoomKey(name) {
+    return String(name || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  function matchRoomOption(name, options) {
+    var wanted = normalizeRoomKey(name);
+    if (!wanted || !options) return null;
+    var prefix = null;
+    var contains = null;
+    for (var i = 0; i < options.length; i++) {
+      var key = normalizeRoomKey(options[i].name);
+      if (!key) continue;
+      if (key === wanted) return options[i];
+      var isPrefix = key.indexOf(wanted) === 0 || wanted.indexOf(key) === 0;
+      var isContained = key.indexOf(wanted) !== -1 || wanted.indexOf(key) !== -1;
+      if (isPrefix) {
+        if (!prefix || key.length < normalizeRoomKey(prefix.name).length) prefix = options[i];
+      } else if (isContained) {
+        if (!contains || key.length < normalizeRoomKey(contains.name).length) contains = options[i];
+      }
+    }
+    return prefix || contains;
+  }
+
+  /**
+   * The room_type_id a name-locked mount should re-request with, or null when
+   * this response already answers for the right room (or nothing matches).
+   * Only the NAME lock resolves here: an id or room_code was already exact.
+   */
+  function resolveNamedRoom(options, data) {
+    if (!options.roomName || options.roomTypeId || options.roomCode) return null;
+    var subject = data && data.subject ? data.subject : {};
+    var match = matchRoomOption(options.roomName, subject.room_options || []);
+    if (!match) return null;
+    var current = subject.room_type ? String(subject.room_type.room_type_id) : null;
+    if (String(match.room_type_id) === current) return null;
+    return match.room_type_id;
+  }
 
   function buildUrl(options, live) {
     var base = options.apiBase !== undefined ? options.apiBase : DEFAULT_API_BASE;
@@ -2133,6 +2144,23 @@
         settle();
         if (!fresh()) return null;
         if (result.status === 200) {
+          // A name-locked mount resolves against the REAL room list here,
+          // where it is first known, then re-requests for that exact room.
+          // One extra round-trip, almost always cache-warm — and honest:
+          // the label match is checked against what the stay actually
+          // offers, never assumed.
+          var namedRoomId = live ? resolveNamedRoom(options, result.body) : null;
+          if (namedRoomId !== null) {
+            var next = {};
+            for (var key in options) {
+              if (Object.prototype.hasOwnProperty.call(options, key)) next[key] = options[key];
+            }
+            next.roomTypeId = namedRoomId;
+            next.seeMore = state.seeMore;
+            next.expanded = state.expanded;
+            mount(root, next);
+            return result.body;
+          }
           if (live) renderLive(root, result.body, state);
           else renderAnalysis(root, result.body, state);
           return result.body;
@@ -2403,13 +2431,25 @@
     if (ds.roomTypeId) config.roomTypeId = ds.roomTypeId;
     if (ds.rateId) config.rateId = ds.rateId;
     if (ds.roomCode) config.roomCode = ds.roomCode;
+    // The category by its DISPLAY NAME, for host pages whose per-row button
+    // knows the label but not an id. Weakest of the three identifiers —
+    // room_code and room_type_id win when present — and resolved against the
+    // stay's real room list once the first response arrives (matchRoomOption).
+    if (ds.roomName) config.roomName = ds.roomName;
     // A category the guest picked outranks nothing in the template, but it
     // must not be lost to an unrelated remount — the host page firing an input
     // event should not silently reset the panel to the cheapest room. It is
     // kept only while the STAY is unchanged: a room id priced for one set of
     // dates says nothing about another.
     var pinned = node.__wahpiRoom;
-    if (pinned && pinned.stay === staySignature(config)) config.roomTypeId = pinned.roomTypeId;
+    // A pin never outranks the template: when the host page names a category
+    // (any of the three identifiers), THAT is the room this panel answers
+    // for. Without the guard, opening Intel for Room B after viewing Room
+    // A's upgrade kept answering for Room A — the stale-state bug.
+    var templateNamesRoom = Boolean(ds.roomCode || ds.roomTypeId || ds.roomName);
+    if (!templateNamesRoom && pinned && pinned.stay === staySignature(config)) {
+      config.roomTypeId = pinned.roomTypeId;
+    }
     // A pinned rate survives only for the exact stay AND room it was chosen
     // for; anything else falls back to the room's cheapest plan.
     var pinnedRate = node.__wahpiRate;
@@ -2654,6 +2694,7 @@
         'data-room-type-id',
         'data-rate-id',
         'data-room-code',
+        'data-room-name',
         'data-model',
         'data-currency',
         'data-preference',
@@ -2672,6 +2713,7 @@
   global.WahPriceIntelligence = {
     mount: mount,
     prefetch: prefetch,
+    matchRoomOption: matchRoomOption,
     formatOutOfTen: formatOutOfTen,
     // Exposed for the host page and for tests.
     formatMoney: formatMoney,

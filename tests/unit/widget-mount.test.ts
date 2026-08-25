@@ -28,10 +28,10 @@ function mountSelector(): string {
   return match[1] as string;
 }
 
-describe('room-category picker', () => {
-  it('renders only when the stay has more than one bookable room', () => {
-    // A one-option <select> is a control that cannot be used, and it implies a
-    // choice the guest does not have.
+describe('room-change machinery — the dropdown is gone, the logic remains', () => {
+  it('a single-option chooser can never render (now only the rate picker)', () => {
+    // A one-option control cannot be used, and it implies a choice the guest
+    // does not have.
     expect(WIDGET).toMatch(/options\.length < 2[^\n]*return null/);
   });
 
@@ -187,7 +187,7 @@ describe('Superior Alternative (upsell) and the concise UI', () => {
     expect(WIDGET).toMatch(/link\.rel = 'noopener'/);
   });
 
-  it('a room_code pin removes the in-panel choosers — the page is the chooser', () => {
+  it('a room_code pin removes the in-panel rate chooser too — the page is the chooser', () => {
     expect(WIDGET).toMatch(/if \(state\.options\.roomCode\) return null/);
     expect(WIDGET).toMatch(/params\.set\('room_code', String\(options\.roomCode\)\)/);
   });
@@ -234,5 +234,38 @@ describe('prefetch — warming a stay before the panel opens', () => {
     expect(WIDGET).toMatch(/if \(prefetched\[url\]\) return;/);
     // Fire-and-forget: a rejected warm-up must never surface to the host page.
     expect(WIDGET).toMatch(/fetch\(url\)\.catch\(/);
+  });
+});
+
+describe('Rate Intel is category-specific — the dropdown is gone', () => {
+  it('the room-category dropdown does not exist, in logic or in style hooks', () => {
+    // Removed, not hidden: no renderer, no class, no label string. The rate
+    // PLAN picker survives (a different control), which is why the shared
+    // wahpi__room-label class is still allowed to appear.
+    expect(WIDGET).not.toContain('renderRoomPicker');
+    expect(WIDGET).not.toContain('wahpi__room-picker');
+    expect(WIDGET).not.toContain('wahpi__room-select');
+    expect(WIDGET).not.toContain("'Room category'");
+  });
+
+  it('the host page names the category three ways, strongest first', () => {
+    expect(WIDGET).toMatch(/if \(ds\.roomCode\) config\.roomCode = ds\.roomCode/);
+    expect(WIDGET).toMatch(/if \(ds\.roomTypeId\) config\.roomTypeId = ds\.roomTypeId/);
+    expect(WIDGET).toMatch(/if \(ds\.roomName\) config\.roomName = ds\.roomName/);
+    expect(WIDGET).toContain("'data-room-name',");
+  });
+
+  it('a template-named category outranks the pinned room — no stale state', () => {
+    // Opening Intel for Room B after viewing Room A must answer for Room B.
+    expect(WIDGET).toMatch(
+      /templateNamesRoom = Boolean\(ds\.roomCode \|\| ds\.roomTypeId \|\| ds\.roomName\)/,
+    );
+    expect(WIDGET).toMatch(/!templateNamesRoom && pinned/);
+  });
+
+  it('a name lock resolves against the real room list, never assumes', () => {
+    expect(WIDGET).toMatch(/function resolveNamedRoom/);
+    // Only the NAME lock resolves; ids were already exact.
+    expect(WIDGET).toMatch(/options\.roomTypeId \|\| options\.roomCode\) return null/);
   });
 });
