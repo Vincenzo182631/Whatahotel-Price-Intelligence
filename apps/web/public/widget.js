@@ -1988,7 +1988,12 @@
    * milliseconds. The staged messages below are what keep that wait from
    * reading as a broken page.
    */
-  var REQUEST_TIMEOUT_MS = 25000;
+  // Just OVER the server's 60s function cap (vercel.json maxDuration), so on
+  // a cold stay — where the API fetches the subject and its comparables from
+  // the source before it can score — the widget outlives the server instead
+  // of aborting first. A guest a second from an answer was being shown the
+  // unavailable state by our own timer.
+  var REQUEST_TIMEOUT_MS = 65000;
 
   /**
    * The stay a room-category choice belongs to.
@@ -2110,6 +2115,13 @@
     var stage4 = setTimeout(function () {
       if (fresh()) status.textContent = 'Preparing your recommendation…';
     }, 14000);
+    // A cold stay makes the API fetch live rates for these exact dates before
+    // it can score, which can take tens of seconds. Say so, or a long wait
+    // reads as a hang and the guest closes what was about to answer.
+    var stage5 = setTimeout(function () {
+      if (fresh())
+        status.textContent = 'Fetching live rates for these exact dates — almost there…';
+    }, 22000);
 
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var deadline = setTimeout(function () {
@@ -2120,6 +2132,7 @@
       clearTimeout(stage2);
       clearTimeout(stage3);
       clearTimeout(stage4);
+      clearTimeout(stage5);
       clearTimeout(deadline);
     }
 
