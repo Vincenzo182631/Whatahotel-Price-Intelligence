@@ -107,6 +107,12 @@ export function assessLiveConfidence(
   // verdict. See normalize/compMatch.ts for why the tolerant key exists at all.
   if (compSet.matchStrength === 'OPAQUE') return 'LOW';
 
+  // The price-only rung compared rates whose terms were not held equal at
+  // all — the weakest comparison the system is willing to make. It exists so
+  // a hotel selling only a package or reward rate still gets an answer, and
+  // the answer is honest precisely because it can never read as confident.
+  if (compSet.termsBasis === 'PRICE_ONLY') return 'LOW';
+
   const strongComps = compSet.compsUsed >= cfg.highMinComps;
   const strongCalendar =
     calendar.signal.available && calendar.neighboursUsed >= cfg.highMinNeighbours;
@@ -272,7 +278,11 @@ function buildReasons(
     // above reads as like-for-like on cancellation terms, which the tolerant
     // key does not guarantee — it matched rates the source left equally
     // unstated. Disclosing the limit is the price of using the weaker key.
-    if (compSet.matchStrength !== 'RESOLVED' && compSet.unknownDimensions.length > 0) {
+    // The price-only rung held NO terms fixed, so it gets the blunter
+    // sentence instead of a list of dimensions it never consulted.
+    if (compSet.termsBasis === 'PRICE_ONLY') {
+      out.push('Compared by price alone — rate terms and inclusions differ across hotels');
+    } else if (compSet.matchStrength !== 'RESOLVED' && compSet.unknownDimensions.length > 0) {
       out.push(`Comparison does not account for ${listPhrase(compSet.unknownDimensions)}`);
     }
   }

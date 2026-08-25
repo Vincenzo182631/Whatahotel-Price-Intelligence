@@ -165,6 +165,8 @@ export interface LiveExplanationBundle {
       readonly median_competitor_nightly_minor: number | null;
       readonly comps_used: number;
       readonly match_strength: string;
+      /** MATCHED or PRICE_ONLY — whether rate terms were held equal at all. */
+      readonly terms_basis: string;
       readonly unavailable_reason: string | null;
     };
     readonly calendar: {
@@ -500,6 +502,7 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
         median_competitor_nightly_minor: compSet.medianCompetitorNightlyMinor,
         comps_used: compSet.compsUsed,
         match_strength: compSet.matchStrength,
+        terms_basis: compSet.termsBasis,
         unavailable_reason: compSet.signal.unavailableReason,
       },
       calendar: {

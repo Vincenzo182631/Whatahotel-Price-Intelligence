@@ -390,6 +390,32 @@ describe('confidence', () => {
     expect(r.confidence).toBe('LOW');
   });
 
+  it('pins a price-only comparison at LOW, whatever else is strong', () => {
+    // Four fresh comps and a strong calendar would normally reach HIGH with a
+    // RESOLVED match. The price-only rung declared that terms were not
+    // consulted at all, so nothing may lift it above LOW.
+    const priceOnly = computeCompSetIndex(650_00, comps4, DEFAULT_CONFIG, NOW, {
+      strength: 'RESOLVED',
+      unknown: [],
+      termsBasis: 'PRICE_ONLY',
+    });
+    expect(priceOnly.termsBasis).toBe('PRICE_ONLY');
+    const r = composeLiveScore(
+      priceOnly,
+      computeCalendarDelta(650_00, near4, DEFAULT_CONFIG),
+      computeCompression({ checked: 4, soldOut: 2 }, DEFAULT_CONFIG),
+      1,
+      DEFAULT_CONFIG,
+    );
+    expect(r.score).not.toBeNull();
+    expect(r.confidence).toBe('LOW');
+  });
+
+  it('defaults the terms basis to MATCHED so every existing caller keeps its meaning', () => {
+    const r = computeCompSetIndex(650_00, comps4, DEFAULT_CONFIG, NOW);
+    expect(r.termsBasis).toBe('MATCHED');
+  });
+
   it('softens the verdict rather than reversing it when confidence is low', () => {
     // A strong band with LOW confidence must not become "consider
     // alternatives" — the evidence is thin, not contrary.
@@ -427,6 +453,29 @@ describe('reason copy', () => {
     expect(atParity.reasons).toEqual(
       expect.arrayContaining([expect.stringContaining('In line with')]),
     );
+  });
+
+  it('a price-only comparison says so in the customer bullets', () => {
+    const r = composeLiveScore(
+      computeCompSetIndex(650_00, comps, DEFAULT_CONFIG, NOW, {
+        strength: 'PARTIAL',
+        unknown: ['cancellation terms'],
+        termsBasis: 'PRICE_ONLY',
+      }),
+      computeCalendarDelta(650_00, [], DEFAULT_CONFIG),
+      // Comp set alone (0.45) is under minWeightCoverage; compression joins it
+      // so a score — and therefore the bullets — actually renders. This is
+      // exactly the Mandarin Oriental shape: comps + availability, no calendar.
+      computeCompression({ checked: 5, soldOut: 0 }, DEFAULT_CONFIG),
+      1,
+      DEFAULT_CONFIG,
+    );
+    expect(r.reasons).toEqual(
+      expect.arrayContaining([expect.stringContaining('Compared by price alone')]),
+    );
+    // The blunter sentence REPLACES the dimension list — both together would
+    // say the same limitation twice in different words.
+    expect(r.reasons.join(' ')).not.toContain('does not account for');
   });
 
   it('states direction correctly on both sides', () => {

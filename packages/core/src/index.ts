@@ -77,6 +77,7 @@ export type {
   CalendarBand,
   CalendarResult,
   CompSetResult,
+  CompTermsBasis,
   CompetitorRate,
   PremiumConfidence,
   PremiumJustificationResult,

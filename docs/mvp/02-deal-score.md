@@ -329,3 +329,42 @@ choice, and merging them is precisely how "expensive" becomes "bad".
 takes the `LIMITED_DATA` path and scores exactly as it did under v4. The change
 is inert until real perk data is present on both sides — which is the correct
 shape for a change that must never flatter a hotel on absent evidence.
+
+## The price-only comp fallback (config v6, 2026-08-25)
+
+**The failure this removes.** The Comp-Set Index requires competitors selling
+on the SAME rate terms — meal plan, refundability, audience — with `UNKNOWN`
+matching only `UNKNOWN`. That rule is right, and it has a blind spot: a hotel
+whose only current rate is a package, a reward or a members-only plan carries
+terms no competitor shares, so every rung of the comparison ladder (room match,
+then destination widening) finds nothing. Measured on 2026-08-25 across 32
+production hotels, this was the single largest cause of a null score: 15 of the
+32 returned `NOT_ENOUGH_DATA`, and the type case (Mandarin Oriental Hyde Park,
+whose only rate was an "FC REWARD" plan with unstated terms) had 63 fresh
+competitor rates in store — none of which the terms filter would touch.
+
+**The rung.** When the whole terms-matched ladder yields fewer than `minComps`
+usable competitors and `live.csi.priceOnlyFallback` is on, one final query runs
+with the terms filter dropped entirely: each competitor prices itself at its
+cheapest current rate, whatever plan that is. Same stay, same freshness bound,
+same curated-then-destination basis order. The result is labeled
+`terms_basis: PRICE_ONLY` end to end — signal result, API, explanation bundle.
+
+**Why this is not the forbidden merge.** Rule 5 forbids matching a stated term
+against an unstated one, because that merge is INVISIBLE — the reader believes
+like was compared with like. The price-only rung compares nothing to nothing:
+it declares that terms were not consulted at all, in the API (`terms_basis`),
+in the customer bullets ("Compared by price alone — rate terms and inclusions
+differ across hotels"), and in the narrative sentence itself. Baselines are
+untouched; nothing here writes or reads a baseline key.
+
+**What it can never do.** `assessLiveConfidence` pins a PRICE_ONLY comparison
+at `LOW` before any other upgrade path is consulted — strong comp counts and a
+strong calendar cannot lift it. The comp top-up still fires on a PRICE_ONLY
+answer, so a stay whose comparables were merely un-fetched upgrades to a real
+terms-matched comparison on the next load; the fallback only persists where the
+market genuinely offers no terms-comparable rate.
+
+**Scenario impact:** none. S1–S9 exercise the history model, and every
+terms-matched live comparison is byte-identical to v5 — the rung fires only
+where v5 produced no comp set at all.

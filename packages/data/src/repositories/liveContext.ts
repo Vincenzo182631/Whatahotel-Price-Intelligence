@@ -119,7 +119,13 @@ export async function findCompetitorRates(
   adults: number,
   children: number,
   currency: string,
-  terms: { mealPlan: string; refundPolicy: string; audience: string },
+  /**
+   * Null drops the terms filter entirely — the price-only rung (config
+   * `live.csi.priceOnlyFallback`). Each competitor then prices itself at its
+   * cheapest CURRENT rate regardless of plan. The caller must label the
+   * result PRICE_ONLY; this function cannot make that disclosure for it.
+   */
+  terms: { mealPlan: string; refundPolicy: string; audience: string } | null,
   limit: number,
   maxAgeHours: number,
   /**
@@ -160,7 +166,12 @@ export async function findCompetitorRates(
         WHERE (rt.id IS NULL OR rt.is_active)
           AND o.check_in = $2::date AND o.nights = $3 AND o.adults = $4
           AND o.children = $5 AND o.currency = $6
-          AND rp.meal_plan = $7 AND rp.refund_policy = $10 AND rp.audience = $11
+          -- NULL params = the price-only rung: no terms filter at all. The
+          -- ::text casts mirror the room_class pattern below — the columns
+          -- are enums and do not compare to a nullable text parameter.
+          AND ($7::text IS NULL OR rp.meal_plan::text = $7)
+          AND ($10::text IS NULL OR rp.refund_policy::text = $10)
+          AND ($11::text IS NULL OR rp.audience::text = $11)
           -- A room whose class we do not know never matches a class we DO
           -- know: rt.room_class is NULL on the LEFT JOIN, so the comparison
           -- yields NULL and the row drops. Same rule as the terms match —
@@ -207,11 +218,11 @@ export async function findCompetitorRates(
       adults,
       children,
       currency,
-      terms.mealPlan,
+      terms?.mealPlan ?? null,
       limit,
       maxAgeHours,
-      terms.refundPolicy,
-      terms.audience,
+      terms?.refundPolicy ?? null,
+      terms?.audience ?? null,
       widen,
       roomClass,
       viewType,

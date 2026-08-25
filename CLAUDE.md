@@ -459,4 +459,15 @@ rather than inventing a fit, fit lists are capped at three and never padded,
 and model-written personalization passes the same allowlist/prediction/
 absent-evidence gate as the assessment or the deterministic one ships.
 
+Config v6 added the **price-only comp fallback** (docs/mvp/02, final section):
+when every terms-matched rung of the comparison ladder yields fewer than
+`minComps`, one last query drops the terms filter and compares price alone.
+Measured 2026-08-25, subject rates with unshared terms (packages, reward and
+members-only plans) were the largest cause of a null live score — 15 of 32
+sampled hotels. The rung is labeled `terms_basis: PRICE_ONLY` end to end,
+pinned at LOW confidence in `assessLiveConfidence` before any upgrade path,
+and the comp top-up still fires on it so a merely-unfetched market upgrades to
+a terms-matched comparison. It is not the rule-5 merge: nothing is presented
+as like-for-like, and baselines never see it.
+
 The weights in every version so far remain uncalibrated priors.

@@ -21,6 +21,7 @@ import {
   unknownDimensions,
   type CalendarResult,
   type CompSetResult,
+  type CompTermsBasis,
   type PremiumJustificationResult,
   type CompressionResult,
   type LiveScoreResult,
@@ -173,6 +174,12 @@ export interface LoadedLiveIntelligence {
     readonly availabilityInfluenced: boolean;
   };
   readonly compRoomMatch: CompRoomMatch;
+  /**
+   * MATCHED = the terms-matched ladder produced the comp set (every request
+   * before config v6). PRICE_ONLY = the final fallback rung compared price
+   * alone; confidence is LOW by construction and the caveat is rendered.
+   */
+  readonly compTermsMatch: CompTermsBasis;
   /** Is the price premium supported by what the rate includes? */
   readonly premium: PremiumJustificationResult;
   /**
@@ -517,6 +524,85 @@ export async function loadLiveIntelligence(
   }
 
   /**
+   * The last rung: price alone.
+   *
+   * Every rung above still required the competitors to sell on the SAME rate
+   * terms as the subject. A hotel whose only current rate is a package, a
+   * reward or a members-only plan therefore matched nothing anywhere —
+   * measured 2026-08-25, this was the single largest cause of a null score in
+   * production (15 of 32 sampled hotels). The honest recovery is to compare
+   * price alone and say so: same stay, same freshness bound, terms explicitly
+   * NOT matched. `compTermsMatch` rides in the result, the reasons carry the
+   * caveat, and confidence is pinned LOW in assessLiveConfidence — this rung
+   * can produce an answer, never a confident one. Baselines are untouched:
+   * nothing here writes or reads a baseline key.
+   */
+  let compTermsMatch: CompTermsBasis = 'MATCHED';
+  if (live.csi.priceOnlyFallback && competitors.length < live.csi.minComps) {
+    const priceOnly = await findCompetitorRates(
+      hotel.id,
+      request.checkIn,
+      request.nights,
+      request.adults,
+      request.children,
+      currency,
+      null,
+      compLimit,
+      live.csi.maxCompAgeHours,
+      // Stay on the basis the ladder already landed on; only fall through to
+      // the destination if the curated pool is still too small without terms.
+      compBasis === 'DESTINATION',
+      null,
+      null,
+      q,
+    );
+    let adopted = priceOnly;
+    let adoptedBasis = compBasis;
+    if (adopted.length < live.csi.minComps && hadCurated && compBasis === 'CURATED') {
+      const priceOnlyWidened = await findCompetitorRates(
+        hotel.id,
+        request.checkIn,
+        request.nights,
+        request.adults,
+        request.children,
+        currency,
+        null,
+        compLimit,
+        live.csi.maxCompAgeHours,
+        true,
+        null,
+        null,
+        q,
+      );
+      if (priceOnlyWidened.length > adopted.length) {
+        adopted = priceOnlyWidened;
+        adoptedBasis = 'DESTINATION';
+      }
+    }
+    // Adopt only when it actually rescues the index — a price-only set that
+    // is still too small would report weaker evidence and change nothing.
+    if (adopted.length >= live.csi.minComps) {
+      competitors = adopted;
+      compTermsMatch = 'PRICE_ONLY';
+      compRoomMatch = 'ANY';
+      if (adoptedBasis !== compBasis) {
+        compBasis = adoptedBasis;
+        // Compression must describe the same market the comp set does.
+        compressionInput = await findMarketCompression(
+          hotel.id,
+          request.checkIn,
+          request.nights,
+          request.adults,
+          compLimit,
+          live.csi.maxCompAgeHours,
+          true,
+          q,
+        );
+      }
+    }
+  }
+
+  /**
    * What the SUBJECT's rate includes, per night — the same benefit machinery
    * factor F6 uses, reused rather than reimplemented.
    *
@@ -551,6 +637,7 @@ export async function loadLiveIntelligence(
     {
       strength: compMatchStrength(matchTerms),
       unknown: unknownDimensions(matchTerms),
+      termsBasis: compTermsMatch,
     },
     // The contextual penalty. Only when both sides' inclusions are known —
     // otherwise the price ratio stands exactly as it did.
@@ -591,6 +678,7 @@ export async function loadLiveIntelligence(
     currency,
     compBasis,
     compRoomMatch,
+    compTermsMatch,
     competitorWahIds: competitors.filter((c) => c.isAvailable).map((c) => c.hotelId),
     premium,
     roomTypeId: chosen.roomTypeId,
