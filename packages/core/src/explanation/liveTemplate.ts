@@ -70,7 +70,14 @@ function marketSentence(bundle: LiveExplanationBundle): string | null {
     const side = comps.pct_below_median >= 0 ? 'below' : 'above';
     const basis = comps.room_match === 'ANY' ? 'rooms' : 'comparable rooms';
     const at = median ? ` ${median} median` : ' median';
-    return `That is ${pct(comps.pct_below_median)} ${side} the${at} for ${basis} at ${count(comps.comps_used, 'nearby hotel')} on the same dates.`;
+    // The price-only rung compared rates whose terms were not held equal;
+    // the sentence must carry that limit itself, because it is the sentence
+    // a guest will quote.
+    const qualifier =
+      comps.terms_basis === 'PRICE_ONLY'
+        ? ', compared on price alone — rate terms and inclusions differ'
+        : '';
+    return `That is ${pct(comps.pct_below_median)} ${side} the${at} for ${basis} at ${count(comps.comps_used, 'nearby hotel')} on the same dates${qualifier}.`;
   }
 
   if (calendar.available && calendar.delta_pct !== null) {

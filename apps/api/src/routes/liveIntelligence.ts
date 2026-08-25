@@ -324,7 +324,13 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   let compTopUp: OnDemandResult | null = null;
   if (
     !isLiveLoadFailure(loaded) &&
-    loaded.compSet.signal.unavailableReason === 'INSUFFICIENT_COMPARABLES'
+    // Also when the price-only rung answered: that rung means the TERMS-
+    // matched ladder found nothing, and fresh comparables may fix that
+    // properly. The reload below re-runs the whole ladder, so a top-up that
+    // lands terms-matched comps upgrades the comparison and its confidence;
+    // one that does not leaves the price-only answer exactly as it was.
+    (loaded.compSet.signal.unavailableReason === 'INSUFFICIENT_COMPARABLES' ||
+      loaded.compTermsMatch === 'PRICE_ONLY')
   ) {
     try {
       compTopUp = await topUpComparablesOnDemand({
@@ -966,6 +972,10 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         // they do sell. Published so a premium room is never made to look
         // overpriced against entry-level rooms without the reader knowing.
         room_match: loaded.compRoomMatch,
+        // MATCHED = competitors sell on the same rate terms. PRICE_ONLY = the
+        // final fallback rung compared price alone (config v6); confidence is
+        // LOW by construction and the caveat rides in verdict.reasons.
+        terms_basis: compSet.termsBasis,
         unavailable_reason: compSet.signal.unavailableReason,
         sub_score: compSet.signal.subScore,
         weight: compSet.signal.weight,

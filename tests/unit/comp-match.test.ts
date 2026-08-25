@@ -105,6 +105,7 @@ function compSet(over: Partial<CompSetResult> = {}): CompSetResult {
     },
     matchStrength: 'RESOLVED',
     unknownDimensions: [],
+    termsBasis: 'MATCHED',
     csi: 95,
     band: 'MARKET_RATE',
     pctBelowMedian: 5,

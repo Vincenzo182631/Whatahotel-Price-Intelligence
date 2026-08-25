@@ -88,6 +88,20 @@ export interface CompetitorRate {
   readonly benefitValuePerNightMinor?: Minor;
 }
 
+/**
+ * Whether the competitors were required to sell on the SAME rate terms.
+ *
+ * `MATCHED` is every comparison this signal made before config v6: meal plan,
+ * refundability and audience all equal (with UNKNOWN matching only UNKNOWN).
+ * `PRICE_ONLY` is the last rung of the fallback ladder — the subject's rate
+ * carries terms no competitor shares (a package, a reward rate, a members-only
+ * plan), so the comparison holds hotel, stay and freshness fixed and compares
+ * price alone. That is real evidence about where the price sits in its market,
+ * but weaker evidence: it is capped at LOW confidence, and the caveat is
+ * emitted wherever the index is shown. It never feeds a baseline.
+ */
+export type CompTermsBasis = 'MATCHED' | 'PRICE_ONLY';
+
 export interface CompSetResult {
   readonly signal: LiveSignal;
   /**
@@ -98,6 +112,8 @@ export interface CompSetResult {
    * mode is a comparison presented as firmer than it is. See compMatch.ts.
    */
   readonly matchStrength: CompMatchStrength;
+  /** Whether rate terms were matched at all — see CompTermsBasis. */
+  readonly termsBasis: CompTermsBasis;
   /** Dimensions the source left unstated on both sides of the comparison. */
   readonly unknownDimensions: readonly string[];
   /** subject ÷ median competitor × 100. Null when unavailable. */
@@ -128,7 +144,12 @@ export function computeCompSetIndex(
    * How the competitors were matched. Defaults to RESOLVED so existing
    * callers and fixtures keep their meaning; the loader passes the real value.
    */
-  match: { strength: CompMatchStrength; unknown: readonly string[] } = {
+  match: {
+    strength: CompMatchStrength;
+    unknown: readonly string[];
+    /** Defaults to MATCHED — the price-only rung must be asked for. */
+    termsBasis?: CompTermsBasis;
+  } = {
     strength: 'RESOLVED',
     unknown: [],
   },
@@ -150,6 +171,7 @@ export function computeCompSetIndex(
   const cfg = config.live.csi;
   const weight = config.live.weight.compSet;
   const name = 'Comparable hotels';
+  const termsBasis: CompTermsBasis = match.termsBasis ?? 'MATCHED';
   const empty = {
     csi: null,
     band: null,
@@ -157,6 +179,7 @@ export function computeCompSetIndex(
     medianCompetitorNightlyMinor: null,
     matchStrength: match.strength,
     unknownDimensions: match.unknown,
+    termsBasis,
   } as const;
 
   if (!Number.isFinite(subjectNightlyMinor) || subjectNightlyMinor <= 0) {
@@ -205,6 +228,7 @@ export function computeCompSetIndex(
     },
     matchStrength: match.strength,
     unknownDimensions: match.unknown,
+    termsBasis,
     csi,
     band,
     pctBelowMedian,

@@ -77,6 +77,13 @@ export interface ScoringConfig {
       readonly fairMax: number;
       /** Fewer valid competitors than this and the signal is not produced. */
       readonly minComps: number;
+      /**
+       * When the whole terms-matched ladder yields fewer than `minComps`,
+       * allow one final rung that drops the rate-terms filter entirely and
+       * compares price alone. Capped at LOW confidence and disclosed wherever
+       * the index is shown — see CompTermsBasis in scoring/liveSignals.ts.
+       */
+      readonly priceOnlyFallback: boolean;
       /** Competitor rates older than this are not live-validated; excluded. */
       readonly maxCompAgeHours: number;
       /** CSI at which the sub-score hits 0 and 100 respectively. */
@@ -269,17 +276,21 @@ export interface ScoringConfig {
 }
 
 export const DEFAULT_CONFIG: ScoringConfig = {
-  // v4 — retires WAIT.
+  // v6 — adds the price-only comp-set fallback (`live.csi.priceOnlyFallback`):
+  // when every terms-matched rung of the comparison ladder comes up short, the
+  // index may compare price alone, capped at LOW confidence and disclosed in
+  // every rendering. Nothing else changes; scores that had a terms-matched
+  // comp set are byte-identical to v5's.
   //
-  // v3 added the `live` block: the comp-set / calendar / compression model that
-  // scores from rates existing today rather than from accrued history. v4
-  // finishes the job by removing the one output that was a forecast. The
-  // `rec.wait` block went with it; the two of its values that did non-predictive
-  // work are now `rec.shortLeadDays` and `rec.book.urgencyScarcityRooms`.
+  // v5 added Premium Justification. v4 retired WAIT. v3 added the `live`
+  // block: the comp-set / calendar / compression model that scores from rates
+  // existing today rather than from accrued history. The `rec.wait` block went
+  // with v4; the two of its values that did non-predictive work are now
+  // `rec.shortLeadDays` and `rec.book.urgencyScarcityRooms`.
   //
   // The v2 factor weights are retained unchanged, and every analysis records the
   // version that produced it, so older scores stay reproducible.
-  version: 5,
+  version: 6,
 
   score: {
     weight: {
@@ -307,6 +318,13 @@ export const DEFAULT_CONFIG: ScoringConfig = {
       // clothing. Confidence would also be LOW, but not producing the signal
       // is stronger than producing it apologetically.
       minComps: 3,
+      // Measured 2026-08-25 over 32 production hotels: 15 returned a null
+      // score, and the dominant cause was a subject rate whose terms no
+      // competitor shares (package, reward and members-only plans), so every
+      // terms-matched rung found nothing. The price-only rung answers those
+      // honestly: real prices, same stay, terms disclosed as unmatched,
+      // confidence pinned LOW.
+      priceOnlyFallback: true,
       maxCompAgeHours: 24,
       // CSI 130 → 0, CSI 70 → 100. Centred so parity (100) lands mid-scale.
       scoreAtCsi: { zero: 130, full: 70 },

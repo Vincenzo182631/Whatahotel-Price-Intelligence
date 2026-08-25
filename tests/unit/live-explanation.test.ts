@@ -56,6 +56,7 @@ interface Tweak {
   readonly subjectBenefit?: number | null;
   readonly reputation?: LiveBundleInput['reputation'];
   readonly comparableRatings?: readonly number[];
+  readonly termsBasis?: 'MATCHED' | 'PRICE_ONLY';
 }
 
 function bundleFor(tweak: Tweak = {}): LiveExplanationBundle {
@@ -76,7 +77,7 @@ function bundleFor(tweak: Tweak = {}): LiveExplanationBundle {
     comps,
     DEFAULT_CONFIG,
     NOW,
-    { strength: 'RESOLVED', unknown: [] },
+    { strength: 'RESOLVED', unknown: [], termsBasis: tweak.termsBasis ?? 'MATCHED' },
     premium.level === 'HIGH' || premium.level === 'MODERATE' || premium.level === 'LOW'
       ? premium.effectiveCsi
       : null,
@@ -282,5 +283,24 @@ describe('every numeral the renderer writes is in the allowlist', () => {
         expect(allowed.has(Math.round(n * 10) / 10), `${n} in "${text}"`).toBe(true);
       }
     }
+  });
+});
+
+describe('the price-only comparison is disclosed wherever it is rendered', () => {
+  it('carries terms_basis on the bundle and the qualifier in the narrative', () => {
+    const bundle = bundleFor({ termsBasis: 'PRICE_ONLY' });
+    expect(bundle.market.comp_set.terms_basis).toBe('PRICE_ONLY');
+
+    const rendered = renderLiveExplanation(bundle);
+    expect(rendered.text).toContain('compared on price alone');
+    // The disclosure must not cost the renderer its own validator.
+    const check = validateNarrative(rendered.text, bundle.constraints);
+    expect(check.violations).toEqual([]);
+  });
+
+  it('a terms-matched bundle never carries the qualifier', () => {
+    const bundle = bundleFor();
+    expect(bundle.market.comp_set.terms_basis).toBe('MATCHED');
+    expect(renderLiveExplanation(bundle).text).not.toContain('compared on price alone');
   });
 });
