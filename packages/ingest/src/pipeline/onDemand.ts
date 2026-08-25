@@ -170,9 +170,17 @@ export async function collectStayOnDemand(
     return NOT_PERFORMED('RECENTLY_FRUITLESS');
   }
 
-  await discoverCityComparablesQuietly(stay);
-
-  const comparables = await findComparableIdentities(stay.hotelId, options.maxComparables);
+  // Look before discovering: when the catalogue already holds a full slate
+  // of comparables for this hotel, the cityrates discovery call (2–4s of the
+  // guest's wait) improves nothing THIS request can use — the next scheduled
+  // collection refreshes the slate anyway. A thin slate still discovers
+  // inline, because a comp set is worth the wait when the alternative is
+  // scoring from nothing.
+  let comparables = await findComparableIdentities(stay.hotelId, options.maxComparables);
+  if (comparables.length < options.maxComparables) {
+    await discoverCityComparablesQuietly(stay);
+    comparables = await findComparableIdentities(stay.hotelId, options.maxComparables);
+  }
   const { queries, hotelIdByWahId } = planOnDemandQueries(
     stay,
     comparables,
@@ -210,10 +218,14 @@ export async function topUpComparablesOnDemand(
   // Ask the source who this city's hotels ARE before deciding who to compare
   // against. cityrates returns its own ranked top-15 for these exact dates, so
   // the comp set is the source's shortlist rather than an accident of which
-  // ids the catalogue happens to hold. Cached per stay; never fatal.
-  await discoverCityComparablesQuietly(stay);
-
-  const comparables = await findComparableIdentities(stay.hotelId, options.maxComparables);
+  // ids the catalogue happens to hold. Cached per stay; never fatal. Skipped
+  // when the catalogue already holds a full slate — same latency rule as the
+  // subject path above.
+  let comparables = await findComparableIdentities(stay.hotelId, options.maxComparables);
+  if (comparables.length < options.maxComparables) {
+    await discoverCityComparablesQuietly(stay);
+    comparables = await findComparableIdentities(stay.hotelId, options.maxComparables);
+  }
   if (comparables.length === 0) return NOT_PERFORMED('NO_COMPARABLES');
 
   // One fresh attempt row is enough to know the pass already happened: a
@@ -277,7 +289,12 @@ async function fetchIngestRecord(
   const soldOut = new Set<string>();
   const queryKey = queryKeyOf;
   const adapter = createWhataHotelAdapter({
-    concurrency: 6,
+    // 9, not the collector's 6: subject + 8 comparables is exactly one wave,
+    // so the guest waits for the SLOWEST single source call instead of two
+    // rounds of them. The scheduled collector keeps 6 — it runs for minutes
+    // against thousands of stays and politeness there is cheap; here every
+    // second is someone watching a spinner.
+    concurrency: 9,
     continueOnError: true,
     onError: (query) => failures.add(queryKey(query)),
     onNoAvailability: (query) => soldOut.add(queryKey(query)),

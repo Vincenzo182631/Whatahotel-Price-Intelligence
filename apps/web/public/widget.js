@@ -2582,10 +2582,50 @@
     });
   }
 
+  /**
+   * Warm a stay before anyone asks to see it.
+   *
+   * A cold stay makes the API fetch live rates before it can score — tens of
+   * seconds. The guest spends longer than that just LOOKING at the hotel page
+   * before pressing Rate Intel, so start the work the moment the page knows
+   * the stay: by the time the panel opens, the answer is stored and arrives
+   * in under a second.
+   *
+   * Two forms, both fire the same GET the panel itself would:
+   *   - `WahPriceIntelligence.prefetch({hotelId, checkIn, checkOut, …})`
+   *   - any element carrying `data-wah-pi-prefetch` plus the usual
+   *     data-attributes (it is never mounted — a hidden div works).
+   *
+   * Fire-and-forget: the response is discarded here (the server now holds the
+   * rates), failures are silent, and each distinct stay is warmed once per
+   * page view.
+   */
+  var prefetched = {};
+  function prefetch(options) {
+    try {
+      var config = options || {};
+      if (configProblem(config)) return;
+      var url = buildUrl(config, config.model !== 'history');
+      if (prefetched[url]) return;
+      prefetched[url] = true;
+      fetch(url).catch(function () {
+        /* warming is best-effort; the panel's own request handles errors */
+      });
+    } catch (e) {
+      /* never break the host page */
+    }
+  }
+
+  function prefetchMarked() {
+    var nodes = document.querySelectorAll('[data-wah-pi-prefetch]');
+    for (var i = 0; i < nodes.length; i++) prefetch(autoConfig(nodes[i]));
+  }
+
   function initAuto() {
     if (typeof document === 'undefined') return;
     lastSignature = stateSignature();
     watchPageState();
+    prefetchMarked();
     var nodes = document.querySelectorAll(MOUNT_SELECTOR);
     for (var i = 0; i < nodes.length; i++) {
       watchNode(nodes[i]);
@@ -2657,6 +2697,7 @@
 
   global.WahPriceIntelligence = {
     mount: mount,
+    prefetch: prefetch,
     formatOutOfTen: formatOutOfTen,
     // Exposed for the host page and for tests.
     formatMoney: formatMoney,
