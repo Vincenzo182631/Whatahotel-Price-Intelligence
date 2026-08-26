@@ -29,6 +29,28 @@ import { validateNarrative } from './validate.js';
 import type { AssessmentConfidence } from './assessment.js';
 import { THEME_PROSE } from './themes.js';
 
+/**
+ * The view the source stated for this room, in customer words.
+ *
+ * A room feature we hold first-hand and normalize ourselves (rule 11 makes
+ * view a hard classification, because five view categories spanning a 37%
+ * price range once collapsed into one "room type"). Naming it is a fact about
+ * what is being priced, not a claim that it is desirable — this map therefore
+ * carries no ranking, and CITY and INTERIOR are described as plainly as OCEAN.
+ * Ranking them would be an advantage the data does not state.
+ *
+ * UNKNOWN is absent on purpose: the source said nothing, so neither do we.
+ */
+const VIEW_PROSE: Readonly<Record<string, string>> = {
+  OCEAN: 'an ocean view',
+  PARTIAL_OCEAN: 'a partial ocean view',
+  GARDEN: 'a garden view',
+  POOL: 'a pool view',
+  MOUNTAIN: 'a mountain view',
+  CITY: 'a city view',
+  INTERIOR: 'an interior aspect',
+};
+
 /** At most this many chips are DISPLAYED; the citable list is wider. */
 export const MAX_DISPLAY_SIGNALS = 4;
 
@@ -113,7 +135,8 @@ const listOut = (items: readonly string[]): string =>
 export function deterministicHotelValue(bundle: LiveExplanationBundle): HotelValue | null {
   const rep = bundle.reputation.subject;
   const { perks, review_themes: themes } = bundle.hotel_facts;
-  if (!rep && perks.length === 0 && themes.length === 0) return null;
+  const statedView = bundle.subject.room_view ? VIEW_PROSE[bundle.subject.room_view] : undefined;
+  if (!rep && perks.length === 0 && themes.length === 0 && !statedView) return null;
 
   const evidence = new Set<HotelValueEvidence>();
   const sentences: string[] = [];
@@ -143,6 +166,15 @@ export function deterministicHotelValue(bundle: LiveExplanationBundle): HotelVal
         : `Booking here also carries ${listOut(named)}.`,
     );
     evidence.add('hotel_perks');
+  }
+
+  // The room itself is part of what the rate buys, and the view is the one
+  // room feature this source states and we normalize. Placed after the
+  // reputation and inclusions so it adds detail rather than leading with it.
+  const viewProse = bundle.subject.room_view ? VIEW_PROSE[bundle.subject.room_view] : undefined;
+  if (viewProse) {
+    sentences.push(`The category being priced has ${viewProse}.`);
+    evidence.add('room_category');
   }
 
   // The suite rule (§17): a room the guest chose from a menu with cheaper
