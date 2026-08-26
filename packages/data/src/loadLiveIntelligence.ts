@@ -442,8 +442,6 @@ export async function loadLiveIntelligence(
     q,
   );
 
-  const hadCurated = await hasCuratedComparables(hotel.id, q);
-
   interface RadiusAttempt {
     readonly competitors: Awaited<ReturnType<typeof findCompetitorRates>>;
     readonly compressionInput: Awaited<ReturnType<typeof findMarketCompression>>;
@@ -452,6 +450,13 @@ export async function loadLiveIntelligence(
   }
 
   const selectAtRadius = async (radiusKm: number): Promise<RadiusAttempt> => {
+    // Asked at THIS rung's radius, because the answer becomes compBasis — the
+    // label saying where the comparison came from. A curated comparable the
+    // ladder cannot reach is not part of the curated set for this comparison,
+    // and answering from the table alone made the label claim CURATED while
+    // the comps had actually come from the destination fallback.
+    const hadCurated = await hasCuratedComparables(hotel.id, radiusKm, q);
+
     const competitorsFor = (roomClass: string | null, viewType: string | null) =>
       findCompetitorRates(
         hotel.id,
@@ -632,7 +637,9 @@ export async function loadLiveIntelligence(
     );
     let adopted = priceOnly;
     let adoptedBasis = compBasis;
-    if (adopted.length < live.csi.minComps && hadCurated && compBasis === 'CURATED') {
+    // compBasis is only CURATED when a curated set was found in range, so the
+    // basis alone carries what hadCurated used to say here.
+    if (adopted.length < live.csi.minComps && compBasis === 'CURATED') {
       const priceOnlyWidened = await findCompetitorRates(
         hotel.id,
         request.checkIn,
