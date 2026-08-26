@@ -395,14 +395,29 @@ export function parseHotel(hotel: WahHotel): ParsedHotel | null {
   const str = (v: string | undefined): string | null =>
     v === undefined || v === '' || v === 'NULL' ? null : v;
 
+  // The `hotel` method can jam BOTH coordinates into loc-lat
+  // ("12.519021737497715, -70.03774231571535") and leave loc-long empty —
+  // measured 2026-08-26 on hotel 4734 (Renaissance Windcreek Aruba), whose
+  // coordinates the catalogue therefore stored as null, which removed it
+  // from every comp radius. The `search` method sends the same hotel's
+  // coordinates as two proper fields. Split the combined form; each half
+  // still passes the bounded coord() validation like any other value.
+  let rawLat = hotel['loc-lat'];
+  let rawLng = hotel['loc-long'];
+  if (rawLat && (rawLng === undefined || rawLng === '') && String(rawLat).includes(',')) {
+    const [half1, half2] = String(rawLat).split(',');
+    rawLat = half1?.trim();
+    rawLng = half2?.trim();
+  }
+
   return {
     wahHotelId: hotel.hotelID,
     name: hotel.name,
     city: str(hotel.city),
     region: str(hotel.region),
     country: str(hotel.country),
-    latitude: coord(hotel['loc-lat'], 90),
-    longitude: coord(hotel['loc-long'], 180),
+    latitude: coord(rawLat, 90),
+    longitude: coord(rawLng, 180),
     cityRank: num(hotel.rank),
     amadeusProperty: str(hotel['ama-property']),
     perks: parsePerks(hotel.perks),
