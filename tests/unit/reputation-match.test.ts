@@ -33,6 +33,7 @@ const MIAMI: ResolvableHotel = {
   city: 'Miami',
   latitude: 25.7663,
   longitude: -80.1902,
+  streetAddress: null,
   placeId: null,
 };
 
@@ -172,7 +173,7 @@ describe('resolveHotel', () => {
     expect(outcome.status).toBe('NO_MATCH');
   });
 
-  it('does not even ask about a hotel we hold no coordinates for', async () => {
+  it('does not even ask about a hotel we hold NO geography for', async () => {
     // scoreMatch caps such a candidate below the threshold, so no answer
     // Google could give would clear the bar. Asking would spend a Text Search
     // call on a foregone UNVERIFIED — and UNVERIFIED is never retried, so one
@@ -191,6 +192,35 @@ describe('resolveHotel', () => {
     const outcome = await resolveHotel(client, { ...MIAMI, latitude: null, longitude: null }, MIN);
     expect(outcome.status).toBe('SKIPPED_NO_GEO');
     expect(asked).toBe(false);
+  });
+
+  it('DOES ask when it holds a street address but no coordinates', async () => {
+    // The address answers the same question distance answers, so the ceiling
+    // that made the call pointless no longer applies. Skipping here would
+    // leave the hotel unrated forever while holding the evidence to rate it.
+    let asked = false;
+    const client = {
+      searchText: async () => {
+        asked = true;
+        return [
+          candidate({
+            displayName: 'Four Seasons Hotel Miami',
+            formattedAddress: '1435 Brickell Ave, Miami, FL 33131, USA',
+            latitude: null,
+            longitude: null,
+          }),
+        ];
+      },
+      details: async () => null,
+    } as unknown as PlacesClient;
+
+    const outcome = await resolveHotel(
+      client,
+      { ...MIAMI, latitude: null, longitude: null, streetAddress: '1435 Brickell Avenue' },
+      MIN,
+    );
+    expect(asked).toBe(true);
+    expect(outcome.status).toBe('VERIFIED');
   });
 
   it('still refreshes a mapped hotel that has no coordinates', async () => {

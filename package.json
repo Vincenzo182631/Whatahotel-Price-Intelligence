@@ -30,6 +30,7 @@
     "api:dev": "npm run build && npm run api",
     "collect": "node --env-file-if-exists=.env scripts/collect.mjs",
     "places": "node --env-file-if-exists=.env scripts/resolve-places.mjs",
+    "pages": "node --env-file-if-exists=.env scripts/sync-pages.mjs",
     "smoke": "node --env-file-if-exists=.env scripts/smoke-api.mjs",
     "probe": "node --env-file-if-exists=.env scripts/live-probe.mjs",
     "diagnose:compset": "node --env-file-if-exists=.env scripts/compset-diagnose.mjs",

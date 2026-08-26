@@ -262,3 +262,64 @@ export async function listSiblingRoomTypeIds(roomTypeId: number, q?: Queryable):
   );
   return rows.map((r) => r.id as number);
 }
+
+/** Facts read from a hotel's public page. See adapters/whatahotel/page.ts. */
+export interface HotelPageFacts {
+  readonly streetAddress: string | null;
+  readonly postalCode: string | null;
+  readonly bookableOnline: boolean | null;
+}
+
+/**
+ * Hotels whose public page has never been read, or was read longest ago.
+ *
+ * Ordered so the ones that would unlock a Google match come first: a hotel
+ * with no coordinates cannot be resolved at all until it has an address,
+ * where one with coordinates is merely gaining a second opinion.
+ */
+export async function findHotelsNeedingPageFacts(
+  limit: number,
+  refreshHours: number,
+  q?: Queryable,
+): Promise<{ hotelId: number; wahHotelId: string }[]> {
+  const { rows } = await db(q).query(
+    `SELECT h.id, h.wah_hotel_id
+       FROM hotel h
+      WHERE h.is_active
+        AND (h.page_fetched_at IS NULL
+             OR h.page_fetched_at < now() - ($2 || ' hours')::interval)
+      ORDER BY (h.latitude IS NOT NULL), h.page_fetched_at NULLS FIRST, h.id
+      LIMIT $1`,
+    [limit, refreshHours],
+  );
+  return rows.map((row) => ({
+    hotelId: row.id as number,
+    wahHotelId: row.wah_hotel_id as string,
+  }));
+}
+
+/**
+ * Store what the page said.
+ *
+ * `page_fetched_at` is stamped on every successful parse, including one that
+ * found no address — that is a real answer about the page and must not leave
+ * the hotel spinning at the front of the refresh queue forever. A FAILED
+ * fetch never reaches here, so it stays queued. Same split as the Places
+ * resolver, for the same reason.
+ */
+export async function saveHotelPageFacts(
+  hotelId: number,
+  facts: HotelPageFacts,
+  q?: Queryable,
+): Promise<void> {
+  await db(q).query(
+    `UPDATE hotel
+        SET street_address  = COALESCE($2, street_address),
+            postal_code     = COALESCE($3, postal_code),
+            bookable_online = $4,
+            page_fetched_at = now(),
+            updated_at      = now()
+      WHERE id = $1`,
+    [hotelId, facts.streetAddress, facts.postalCode, facts.bookableOnline],
+  );
+}

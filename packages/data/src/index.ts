@@ -4,13 +4,20 @@ export type { Pool, PoolClient, Queryable } from './client.js';
 export {
   findComparableIdentities,
   findHotelByWahId,
+  findHotelsNeedingPageFacts,
   hasCuratedComparables,
   listRoomTypes,
   listSiblingRoomTypeIds,
   promoteHotelForCollection,
+  saveHotelPageFacts,
   searchHotels,
 } from './repositories/hotels.js';
-export type { HotelRow, HotelSearchResult, RoomTypeRow } from './repositories/hotels.js';
+export type {
+  HotelPageFacts,
+  HotelRow,
+  HotelSearchResult,
+  RoomTypeRow,
+} from './repositories/hotels.js';
 
 export {
   findAvailableRates,

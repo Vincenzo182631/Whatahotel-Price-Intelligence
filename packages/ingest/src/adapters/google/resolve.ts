@@ -26,6 +26,8 @@ export interface ResolvableHotel {
   readonly city: string | null;
   readonly latitude: number | null;
   readonly longitude: number | null;
+  /** Merchant street address, from the public hotel page. See match.ts. */
+  readonly streetAddress: string | null;
   /** Already resolved? Refresh the reputation without paying for a search. */
   readonly placeId: string | null;
 }
@@ -56,8 +58,16 @@ export interface ResolutionOutcome {
 export type Resolution =
   ResolutionOutcome | { readonly status: 'FAILED' } | { readonly status: 'SKIPPED_NO_GEO' };
 
+/**
+ * The Text Search query.
+ *
+ * The street address goes in when we hold one. It narrows the candidate set
+ * at no extra cost — the call is billed the same either way — and it is the
+ * difference between Google offering us every Four Seasons in the state and
+ * offering us the one on this street.
+ */
 export function searchQuery(hotel: ResolvableHotel): string {
-  return [hotel.name, hotel.city].filter(Boolean).join(' ');
+  return [hotel.name, hotel.streetAddress, hotel.city].filter(Boolean).join(' ');
 }
 
 const reputationOf = (
@@ -110,18 +120,23 @@ export async function resolveHotel(
     };
   }
 
-  // No coordinates on OUR side, and no existing mapping to refresh.
+  // Nothing geographic on OUR side, and no existing mapping to refresh.
   //
   // scoreMatch caps such a candidate at 0.65 — below the 0.7 threshold — so
-  // there is no candidate Google could return that would clear the bar. Asking
-  // anyway would spend a Text Search call to obtain a foregone UNVERIFIED, and
-  // UNVERIFIED is never retried: one sweep would permanently retire every
-  // hotel whose coordinates we happen not to hold yet.
+  // there is no candidate Google could return that would clear the bar.
+  // Asking anyway would spend a Text Search call to obtain a foregone
+  // UNVERIFIED, and UNVERIFIED is never retried: one sweep would permanently
+  // retire every hotel whose geography we happen not to hold yet.
   //
-  // That is a gap in our own catalogue, not a fact about the hotel, and it
-  // closes the moment coordinates arrive. So: do not call, do not write, and
-  // let the next sweep find it again. Same reasoning as FAILED.
-  if (hotel.latitude === null || hotel.longitude === null) {
+  // A street address lifts that cap, so holding one is reason enough to ask
+  // even with no coordinates. With neither, this is a gap in our own
+  // catalogue rather than a fact about the hotel, and it closes the moment
+  // either arrives. So: do not call, do not write, and let the next sweep
+  // find it again. Same reasoning as FAILED.
+  // `== null` rather than `=== null`: a caller that simply omits the address
+  // means the same thing as one that states it has none, and reading undefined
+  // as "present" would spend a doomed Text Search call on every such hotel.
+  if ((hotel.latitude === null || hotel.longitude === null) && hotel.streetAddress == null) {
     return { status: 'SKIPPED_NO_GEO' };
   }
 
