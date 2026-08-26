@@ -20,6 +20,7 @@
 //   node scripts/db-maintain.mjs             # measure only
 //   node scripts/db-maintain.mjs --apply     # truncate + slim + vacuum
 //   node scripts/db-maintain.mjs --squeeze   # TRUNCATE observations, migrate
+//   node scripts/db-maintain.mjs --broken   # hotels whose rate lookups keep failing
 //   node scripts/db-maintain.mjs --market 6792 2026-08-30 1 2
 //                                            # read-only market probe: why does
 //                                            # this hotel's comp pool look the
@@ -71,6 +72,45 @@ async function measure(label) {
      WHERE observation_slot < now() - interval '${KEEP_DAYS} days' AND raw IS NOT NULL`);
   console.log(`raw older than ${KEEP_DAYS}d:`, rawStats);
   console.log('ingest_reject:', await sql(`SELECT count(*) || ' rows, ' || pg_size_pretty(pg_total_relation_size('ingest_reject'))  FROM ingest_reject`));
+}
+
+// Read-only report: hotels whose rate lookups keep failing.
+//
+// The collector records every fruitless attempt in collection_attempt so it
+// can back off (migration 0010). That ledger is also, incidentally, the best
+// evidence we have about which hotels the BOOKING SYSTEM cannot price at all:
+// a hotel that fails across many different stay slots, for days, is not a
+// hotel that happens to be sold out — it is a hotel whose Amadeus property
+// mapping is broken, and whatahotel.com cannot sell it either.
+//
+// Names the candidates and their stored Amadeus property code, so the list
+// can be handed to whoever owns that mapping. Read-only; verify each one
+// against the live API before acting on it.
+const BROKEN = process.argv.includes('--broken');
+if (BROKEN) {
+  console.log('\n── hotels whose rate lookups keep failing ──');
+  console.log(
+    await sql(`
+      SELECT h.wah_hotel_id || ' | ' || rpad(left(h.name, 38), 38)
+          || ' | ' || rpad(COALESCE(left(d.name, 20), '?'), 20)
+          || ' | ama=' || rpad(COALESCE(h.amadeus_property, 'NULL'), 10)
+          || ' | failing slots=' || lpad(count(*)::text, 3)
+          || ' | worst streak=' || lpad(max(a.consecutive_failures)::text, 3)
+          || ' | last tried ' || to_char(max(a.last_attempt_at) AT TIME ZONE 'UTC', 'Mon DD HH24:MI')
+        FROM collection_attempt a
+        JOIN hotel h ON h.id = a.hotel_id
+        LEFT JOIN destination d ON d.id = h.destination_id
+       WHERE a.last_outcome = 'ERROR'
+         AND a.consecutive_failures >= 2
+       GROUP BY h.wah_hotel_id, h.name, d.name, h.amadeus_property
+      HAVING count(*) >= 2
+       ORDER BY count(*) DESC, max(a.consecutive_failures) DESC
+       LIMIT 80`),
+  );
+  console.log(
+    '\n(A hotel failing across MANY slots is a broken mapping; one or two slots is ordinary sold-out noise.)',
+  );
+  process.exit(0);
 }
 
 // Read-only market probe. Answers, from the database itself, the question the
