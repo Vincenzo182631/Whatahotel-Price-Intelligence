@@ -112,6 +112,10 @@ export async function findComparableIdentities(
             (SELECT destination_id, latitude, longitude FROM hotel WHERE id = $1) s
       WHERE h.is_active
         AND h.id <> $1
+        -- A hotel a guest cannot book is not an alternative, and fetching its
+        -- rates spends the source's quota on a hotel the comparison discards.
+        -- NULL means the page never said, which is not "unbookable".
+        AND h.bookable_online IS DISTINCT FROM false
         -- Distance first, label second — byte-for-byte the predicate the
         -- comp-set CTE applies. These two queries must not diverge: a fetch
         -- list narrower than the comparison fetches rates we never use while

@@ -152,3 +152,35 @@ describe('curated peer sets are bounded by distance too', () => {
     expect(similarityBetween({ ...placed }, { ...unplaced })).toBeGreaterThan(0);
   });
 });
+
+describe('what qualification may and may not key on', () => {
+  // The line this codebase must not cross, stated as a test because the
+  // pressure to cross it is permanent and reasonable-sounding.
+  //
+  // CSI is subject ÷ MEDIAN comparable. So excluding cheaper hotels — or
+  // lower-rated ones, which correlate with cheaper — raises the median,
+  // lowers the index and raises the Deal Score. Every time, for every hotel.
+  // That is a score improvement produced by choosing the comparison rather
+  // than by the hotel being good value, which is exactly what a comparison
+  // is supposed to rule out.
+  //
+  // Qualification therefore keys only on things independent of price:
+  // proximity, room equivalence, rate terms, freshness, availability, and
+  // whether a guest can book the hotel at all. Reputation stays where rule 22
+  // put it — evidence beside the price, never a term in it.
+  it('demonstrates that dropping the cheapest comparable raises the score', () => {
+    const nightly = [200_00, 300_00, 400_00, 500_00];
+    const median = (xs: number[]) => {
+      const s = [...xs].sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+    };
+    const subject = 450_00;
+    const csiAll = (subject / median(nightly)) * 100;
+    const csiTrimmed = (subject / median(nightly.slice(1))) * 100;
+
+    // A LOWER index is a BETTER score, so trimming the cheap comp flatters
+    // the subject without a single fact about the subject having changed.
+    expect(csiTrimmed).toBeLessThan(csiAll);
+  });
+});

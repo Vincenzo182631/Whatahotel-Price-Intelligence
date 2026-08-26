@@ -77,6 +77,13 @@ function compSetCte(limitParam: string, widenParam: string, radiusParam: string)
          JOIN hotel ch ON ch.id = c.comparable_id,
               (SELECT latitude, longitude FROM hotel WHERE id = $1) cs
         WHERE c.hotel_id = $1 AND NOT ${widenParam}
+          -- A hotel a guest cannot book is not an alternative. The public
+          -- page states this outright for some properties (migration 0016);
+          -- the rates API answers an ambiguous 500 for the same stay, so this
+          -- flag is the only place the fact is legible. NULL means the page
+          -- never said, which is not the same as "unbookable" — hence
+          -- IS DISTINCT FROM false rather than a plain <> .
+          AND ch.bookable_online IS DISTINCT FROM false
           AND (
             CASE
               WHEN ${radiusParam}::float8 > 0
@@ -101,6 +108,9 @@ function compSetCte(limitParam: string, widenParam: string, radiusParam: string)
          WHERE NOT EXISTS (SELECT 1 FROM curated)
            AND h.is_active
            AND h.id <> $1
+           -- Not an alternative if a guest cannot book it. See the curated
+           -- branch above for why NULL is kept.
+           AND h.bookable_online IS DISTINCT FROM false
            -- DISTANCE FIRST, label second.
            --
            -- Location is part of what a rate buys, so the primary competitive

@@ -1005,6 +1005,20 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         // customer copy.
         competitive_radius_miles: loaded.competitiveRadiusMiles,
         radius_expanded: loaded.radiusExpanded,
+        // One string naming every rung the selection actually landed on, so a
+        // comp set can be audited at a glance instead of reconstructed from
+        // four fields. Diagnostic only; the widget never renders it.
+        //
+        // What it does NOT encode, deliberately: any filter on the comparable
+        // hotels' PRICE or RATING. Excluding cheaper or lower-rated hotels
+        // would raise the median and so raise the Deal Score, every time — a
+        // score improvement produced by choosing the comparison rather than
+        // by the hotel being good value. The quality story belongs in the
+        // explanation layer, where premium_justification already carries it.
+        comparable_selection_method:
+          `${loaded.compBasis}@${loaded.competitiveRadiusMiles}mi` +
+          `${loaded.radiusExpanded ? '+' : ''}/${loaded.compRoomMatch}/${compSet.termsBasis}`,
+        qualified_comparable_count: compSet.compsUsed,
         unavailable_reason: compSet.signal.unavailableReason,
         sub_score: compSet.signal.subScore,
         weight: compSet.signal.weight,
