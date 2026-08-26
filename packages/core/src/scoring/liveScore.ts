@@ -105,11 +105,9 @@ export function assessLiveConfidence(
   // valid competitors must not read as reliable.
   if (!compSet.signal.available || compSet.compsUsed < cfg.mediumMinComps) return 'LOW';
 
-  // A comparison built on terms the source never stated is real evidence but
-  // weaker evidence, and it must not be able to reach the top band. OPAQUE —
-  // nothing stated on either side — is weaker still: the competitors are alike
-  // only in being unclassifiable, which is a thin basis for a confident
-  // verdict. See normalize/compMatch.ts for why the tolerant key exists at all.
+  // OPAQUE — nothing stated on either side — is the thin case: the competitors
+  // are alike only in being unclassifiable, which cannot support a confident
+  // verdict. See normalize/compMatch.ts for why the tolerant key exists.
   if (compSet.matchStrength === 'OPAQUE') return 'LOW';
 
   // The price-only rung compared rates whose terms were not held equal at
@@ -121,10 +119,29 @@ export function assessLiveConfidence(
   const strongComps = compSet.compsUsed >= cfg.highMinComps;
   const strongCalendar =
     calendar.signal.available && calendar.neighboursUsed >= cfg.highMinNeighbours;
-  const resolvedMatch = compSet.matchStrength === 'RESOLVED';
 
-  if (strongComps && strongCalendar && resolvedMatch) return 'HIGH';
-  if (compSet.compsUsed >= cfg.mediumMinComps) return 'MEDIUM';
+  // HIGH used to require RESOLVED — every rate term stated on both sides.
+  //
+  // That made HIGH unreachable for the entire catalogue, not for any reason
+  // about a particular comparison: this source never states refundability for
+  // ANY hotel (measured over 10 production hotels, 6 MEDIUM / 4 LOW / 0 HIGH).
+  // A gate no evidence can ever open is not a confidence signal, it is a
+  // constant, and it told a customer nothing about how good the comparison in
+  // front of them actually was.
+  //
+  // PARTIAL is not the same weakness. The tolerant key matches UNKNOWN only
+  // to UNKNOWN, so a PARTIAL match means the dimension is unstated on BOTH
+  // sides — symmetric ignorance, which rule 5 argues is a fair comparison.
+  // What stays excluded is OPAQUE, above, where nothing was stated at all.
+  //
+  // This is not the same as making confidence easier. Two gates below are
+  // NEW, and both describe the comparison rather than our field coverage.
+  const locallySupplied = !compSet.radiusExpanded;
+  const enoughToBeMoreThanAnecdote = compSet.compsUsed >= cfg.highMinComps;
+
+  if (strongComps && strongCalendar && locallySupplied && enoughToBeMoreThanAnecdote) {
+    return 'HIGH';
+  }
   return 'MEDIUM';
 }
 

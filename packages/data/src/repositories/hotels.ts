@@ -71,10 +71,13 @@ export async function findComparableIdentities(
   /**
    * Km radius the same-destination fallback may reach beyond the label —
    * the SAME widening the scoring-time comp set applies
-   * (live.csi.nearbyRadiusKm), so the hotels we fetch are the hotels we will
+   * (live.csi.radiusMiles), so the hotels we fetch are the hotels we will
    * compare against. 0 disables it.
    */
-  nearbyRadiusKm: number = DEFAULT_CONFIG.live.csi.nearbyRadiusKm,
+  // Miles→km at the caller; this takes km so the SQL stays in one unit. The
+  // default is the ladder's FIRST rung: a caller that does not care which ring
+  // it is asking about gets the primary competitive market, never the widest.
+  nearbyRadiusKm: number = (DEFAULT_CONFIG.live.csi.radiusMiles[0] ?? 0) * 1.609344,
   q?: Queryable,
 ): Promise<{ hotelId: number; wahHotelId: string }[]> {
   const { rows } = await db(q).query(
@@ -109,28 +112,28 @@ export async function findComparableIdentities(
             (SELECT destination_id, latitude, longitude FROM hotel WHERE id = $1) s
       WHERE h.is_active
         AND h.id <> $1
-        -- Same destination, PLUS anything within the nearby radius. The same
-        -- widening the comp-set CTE applies: destination labels fragment real
-        -- markets (Palm Beach Aruba vs Oranjestad), and a fetch list narrower
-        -- than the comparison would fetch rates we never use while starving
-        -- the ones we do.
+        -- Distance first, label second — byte-for-byte the predicate the
+        -- comp-set CTE applies. These two queries must not diverge: a fetch
+        -- list narrower than the comparison fetches rates we never use while
+        -- starving the ones we do, and a wider one spends the source's
+        -- quota on hotels the comparison will discard.
         AND (
-          (s.destination_id IS NOT NULL AND h.destination_id = s.destination_id)
-          OR (
-            $3::float8 > 0
-            AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
-            AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
-            AND power(111.32 * (h.latitude - s.latitude)::float8, 2)
-              + power(111.32 * cos(radians(s.latitude::float8))
-                  * (h.longitude - s.longitude)::float8, 2)
-              <= power($3::float8, 2)
-          )
+          CASE
+            WHEN $3::float8 > 0
+              AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+            THEN h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+              AND power(111.32 * (h.latitude - s.latitude)::float8, 2)
+                + power(111.32 * cos(radians(s.latitude::float8))
+                    * (h.longitude - s.longitude)::float8, 2)
+                <= power($3::float8, 2)
+            ELSE s.destination_id IS NOT NULL AND h.destination_id = s.destination_id
+          END
         )
-      -- Same-destination first, then source ranking, then distance. Same
-      -- order the scoring-time comp set uses, so the hotels we FETCH are the
-      -- hotels we will compare against.
-      ORDER BY (h.destination_id = s.destination_id) IS NOT TRUE,
-               (h.city_rank IS NULL),
+      -- Source ranking first, distance as the tie-break — the radius has
+      -- already done the location work, and rule 19 keeps city_rank as the
+      -- chooser within it. Same order the scoring-time comp set uses, so the
+      -- hotels we FETCH are the hotels we will compare against.
+      ORDER BY (h.city_rank IS NULL),
                h.city_rank DESC,
                (h.latitude IS NULL OR s.latitude IS NULL),
                (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,

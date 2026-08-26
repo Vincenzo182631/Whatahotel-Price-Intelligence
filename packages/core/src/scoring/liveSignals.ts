@@ -114,6 +114,15 @@ export interface CompSetResult {
   readonly matchStrength: CompMatchStrength;
   /** Whether rate terms were matched at all — see CompTermsBasis. */
   readonly termsBasis: CompTermsBasis;
+  /**
+   * Whether the radius ladder had to climb past its primary ring to field
+   * this set (config v8, `live.csi.radiusMiles`).
+   *
+   * Evidence quality, not a score input. A comp set the LOCAL market could
+   * not supply is a weaker statement about this location than one it could,
+   * so it caps confidence below HIGH — see assessLiveConfidence.
+   */
+  readonly radiusExpanded: boolean;
   /** Dimensions the source left unstated on both sides of the comparison. */
   readonly unknownDimensions: readonly string[];
   /** subject ÷ median competitor × 100. Null when unavailable. */
@@ -149,6 +158,13 @@ export function computeCompSetIndex(
     unknown: readonly string[];
     /** Defaults to MATCHED — the price-only rung must be asked for. */
     termsBasis?: CompTermsBasis;
+    /**
+     * Defaults to false — the primary ring. A caller that climbed the radius
+     * ladder must say so; confidence caps below HIGH on an expanded set,
+     * because a comp set the local market could not supply is a weaker
+     * statement about this location than one it could.
+     */
+    radiusExpanded?: boolean;
   } = {
     strength: 'RESOLVED',
     unknown: [],
@@ -172,6 +188,7 @@ export function computeCompSetIndex(
   const weight = config.live.weight.compSet;
   const name = 'Comparable hotels';
   const termsBasis: CompTermsBasis = match.termsBasis ?? 'MATCHED';
+  const radiusExpanded = match.radiusExpanded ?? false;
   const empty = {
     csi: null,
     band: null,
@@ -180,6 +197,7 @@ export function computeCompSetIndex(
     matchStrength: match.strength,
     unknownDimensions: match.unknown,
     termsBasis,
+    radiusExpanded,
   } as const;
 
   if (!Number.isFinite(subjectNightlyMinor) || subjectNightlyMinor <= 0) {
@@ -229,6 +247,7 @@ export function computeCompSetIndex(
     matchStrength: match.strength,
     unknownDimensions: match.unknown,
     termsBasis,
+    radiusExpanded,
     csi,
     band,
     pctBelowMedian,

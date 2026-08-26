@@ -146,6 +146,16 @@ export interface LoadedLiveIntelligence {
   readonly currency: string;
   readonly compBasis: CompBasis;
   /**
+   * Which ring of the radius ladder the comparison actually used, in miles,
+   * and whether it had to climb to get there.
+   *
+   * Diagnostic, not customer copy. It exists so "is WhataRate! comparing this
+   * hotel against realistic alternatives or merely nearby ones" is a question
+   * with an answer, rather than something inferred from the comp count.
+   */
+  readonly competitiveRadiusMiles: number;
+  readonly radiusExpanded: boolean;
+  /**
    * The source ids of the competitors the comparison actually used.
    *
    * Their PRICES are deliberately not returned — another hotel's commercial
@@ -392,101 +402,57 @@ export async function loadLiveIntelligence(
    * move is to compare on what exists and say so. `compRoomMatch` rides in the
    * response for exactly that reason.
    */
-  const competitorsFor = (roomClass: string | null, viewType: string | null) =>
-    findCompetitorRates(
-      hotel.id,
-      request.checkIn,
-      request.nights,
-      request.adults,
-      request.children,
-      currency,
-      // Terms, not the class: the comparability class is hotel-specific and
-      // can never match a competitor. See normalize/compMatch.ts.
-      subjectTerms,
-      // One more than needed, so a single stale comp does not drop the set
-      // below the minimum.
-      compLimit,
-      live.csi.maxCompAgeHours,
-      false,
-      roomClass,
-      viewType,
-      live.csi.nearbyRadiusKm,
-      q,
-    );
-
-  const [curatedCompetitors, neighbours, curatedCompression] = await Promise.all([
-    competitorsFor(chosen.roomClass, chosen.viewType),
-    findNearbyDateRates(
-      hotel.id,
-      chosen.roomTypeId,
-      chosen.comparabilityClass,
-      request.checkIn,
-      request.nights,
-      request.adults,
-      request.children,
-      currency,
-      live.calendar.windowDays,
-      live.csi.maxCompAgeHours,
-      q,
-    ),
-    findMarketCompression(
-      hotel.id,
-      request.checkIn,
-      request.nights,
-      request.adults,
-      compLimit,
-      // Deliberately the same freshness bound as the comp-set query: the two
-      // signals must agree about which hotels are bookable.
-      live.csi.maxCompAgeHours,
-      false,
-      live.csi.nearbyRadiusKm,
-      q,
-    ),
-  ]);
-
   /**
-   * A curated comp set that yields too few USABLE rates falls back, exactly as
-   * an empty one does.
+   * The competitive radius ladder (config v8, `live.csi.radiusMiles`).
    *
-   * "Curated set exists" was the wrong trigger. Existing and useless is the
-   * worse case and it was the one left unhandled: hotel 1198 held a ranked
-   * comp set that produced 0 usable rates on three separate stays, so the
-   * index — 45% of the live score — was permanently unavailable in our
-   * best-collected destination. The on-demand top-up could not rescue it
-   * either; it fetched 128 competitor rates and inserted none, because every
-   * one was already stored and none matched the subject's terms. The pool was
-   * wrong, not stale.
+   * Location is part of what a rate buys, so the primary comparison is what a
+   * guest wanting THIS location could book instead. The ladder climbs one rung
+   * only when the tighter ring cannot field `minComps` — never to gather more
+   * comparables than that, because three relevant competitors are worth more
+   * than ten loose ones.
    *
-   * Only widen when it would actually help. If the destination yields no more
-   * than the curated set did, the curated answer stands, and the basis keeps
-   * saying CURATED — reporting a fallback that changed nothing would be a
-   * false admission of weaker evidence.
+   * The room-equivalence ladder is the INNER loop: at each radius every room
+   * rung is tried before reaching for more distance. Relaxing which room we
+   * compare is a smaller concession than comparing against a different
+   * neighbourhood, and rule 20's measurement stands either way.
+   *
+   * Cost measured 2026-08-26 across 3,036 geo-located hotels — share holding
+   * three neighbours in range: 2 mi 48%, 3 mi 53%, 5 mi 58%, against 74% at
+   * the old flat 30 km. The ladder stops at 5 miles deliberately.
    */
-  // Walk down the room-equivalence ladder only as far as necessary.
-  let compRoomMatch: CompRoomMatch = 'CLASS_AND_VIEW';
-  let roomMatched = curatedCompetitors;
-  if (roomMatched.length < live.csi.minComps) {
-    const byClass = await competitorsFor(chosen.roomClass, null);
-    if (byClass.length > roomMatched.length) {
-      roomMatched = byClass;
-      compRoomMatch = 'CLASS';
-    }
-  }
-  if (roomMatched.length < live.csi.minComps) {
-    const anyRoom = await competitorsFor(null, null);
-    if (anyRoom.length > roomMatched.length) {
-      roomMatched = anyRoom;
-      compRoomMatch = 'ANY';
-    }
-  }
+  const MILES_TO_KM = 1.609344;
+  const rungs: readonly number[] = live.csi.radiusMiles.length > 0 ? live.csi.radiusMiles : [0];
+  // Non-empty by construction above; `?? 0` satisfies the compiler without
+  // pretending an empty ladder is reachable.
+  const firstRung = rungs[0] ?? 0;
+
+  // Nearby-date evidence describes the SUBJECT hotel's own calendar and does
+  // not depend on the radius. Fetched once, outside the ladder.
+  const neighbours = await findNearbyDateRates(
+    hotel.id,
+    chosen.roomTypeId,
+    chosen.comparabilityClass,
+    request.checkIn,
+    request.nights,
+    request.adults,
+    request.children,
+    currency,
+    live.calendar.windowDays,
+    live.csi.maxCompAgeHours,
+    q,
+  );
 
   const hadCurated = await hasCuratedComparables(hotel.id, q);
-  let competitors = roomMatched;
-  let compressionInput = curatedCompression;
-  let compBasis: CompBasis = hadCurated ? 'CURATED' : 'DESTINATION';
 
-  if (hadCurated && competitors.length < live.csi.minComps) {
-    const [widened, widenedCompression] = await Promise.all([
+  interface RadiusAttempt {
+    readonly competitors: Awaited<ReturnType<typeof findCompetitorRates>>;
+    readonly compressionInput: Awaited<ReturnType<typeof findMarketCompression>>;
+    readonly compRoomMatch: CompRoomMatch;
+    readonly compBasis: CompBasis;
+  }
+
+  const selectAtRadius = async (radiusKm: number): Promise<RadiusAttempt> => {
+    const competitorsFor = (roomClass: string | null, viewType: string | null) =>
       findCompetitorRates(
         hotel.id,
         request.checkIn,
@@ -494,38 +460,141 @@ export async function loadLiveIntelligence(
         request.adults,
         request.children,
         currency,
+        // Terms, not the class: the comparability class is hotel-specific and
+        // can never match a competitor. See normalize/compMatch.ts.
         subjectTerms,
+        // One more than needed, so a single stale comp does not drop the set
+        // below the minimum.
         compLimit,
         live.csi.maxCompAgeHours,
-        true,
-        // The widened set drops the room filter too. It exists precisely
-        // because nothing closer was available, so re-imposing equivalence
-        // here would guarantee it finds nothing either.
-        null,
-        null,
-        live.csi.nearbyRadiusKm,
+        false,
+        roomClass,
+        viewType,
+        radiusKm,
         q,
-      ),
+      );
+
+    const [curatedCompetitors, curatedCompression] = await Promise.all([
+      competitorsFor(chosen.roomClass, chosen.viewType),
       findMarketCompression(
         hotel.id,
         request.checkIn,
         request.nights,
         request.adults,
         compLimit,
+        // Deliberately the same freshness bound as the comp-set query: the two
+        // signals must agree about which hotels are bookable.
         live.csi.maxCompAgeHours,
-        true,
-        live.csi.nearbyRadiusKm,
+        false,
+        radiusKm,
         q,
       ),
     ]);
-    if (widened.length > competitors.length) {
-      competitors = widened;
-      compRoomMatch = 'ANY';
-      // Compression must describe the same market the comp set does.
-      compressionInput = widenedCompression;
-      compBasis = 'DESTINATION';
+
+    // Walk down the room-equivalence ladder only as far as necessary.
+    let roomMatch: CompRoomMatch = 'CLASS_AND_VIEW';
+    let roomMatched = curatedCompetitors;
+    if (roomMatched.length < live.csi.minComps) {
+      const byClass = await competitorsFor(chosen.roomClass, null);
+      if (byClass.length > roomMatched.length) {
+        roomMatched = byClass;
+        roomMatch = 'CLASS';
+      }
+    }
+    if (roomMatched.length < live.csi.minComps) {
+      const anyRoom = await competitorsFor(null, null);
+      if (anyRoom.length > roomMatched.length) {
+        roomMatched = anyRoom;
+        roomMatch = 'ANY';
+      }
+    }
+
+    /**
+     * A curated comp set that yields too few USABLE rates falls back, exactly
+     * as an empty one does.
+     *
+     * "Curated set exists" was the wrong trigger. Existing and useless is the
+     * worse case and it was the one left unhandled: hotel 1198 held a ranked
+     * comp set that produced 0 usable rates on three separate stays, so the
+     * index — 45% of the live score — was permanently unavailable in our
+     * best-collected destination.
+     *
+     * Only widen when it would actually help. If the destination yields no
+     * more than the curated set did, the curated answer stands and the basis
+     * keeps saying CURATED — reporting a fallback that changed nothing would
+     * be a false admission of weaker evidence.
+     */
+    let competitors = roomMatched;
+    let compressionInput = curatedCompression;
+    let compBasis: CompBasis = hadCurated ? 'CURATED' : 'DESTINATION';
+
+    if (hadCurated && competitors.length < live.csi.minComps) {
+      const [widened, widenedCompression] = await Promise.all([
+        findCompetitorRates(
+          hotel.id,
+          request.checkIn,
+          request.nights,
+          request.adults,
+          request.children,
+          currency,
+          subjectTerms,
+          compLimit,
+          live.csi.maxCompAgeHours,
+          true,
+          // The widened set drops the room filter too. It exists precisely
+          // because nothing closer was available, so re-imposing equivalence
+          // here would guarantee it finds nothing either.
+          null,
+          null,
+          radiusKm,
+          q,
+        ),
+        findMarketCompression(
+          hotel.id,
+          request.checkIn,
+          request.nights,
+          request.adults,
+          compLimit,
+          live.csi.maxCompAgeHours,
+          true,
+          radiusKm,
+          q,
+        ),
+      ]);
+      if (widened.length > competitors.length) {
+        competitors = widened;
+        roomMatch = 'ANY';
+        // Compression must describe the same market the comp set does.
+        compressionInput = widenedCompression;
+        compBasis = 'DESTINATION';
+      }
+    }
+
+    return { competitors, compressionInput, compRoomMatch: roomMatch, compBasis };
+  };
+
+  let attempt = await selectAtRadius(firstRung * MILES_TO_KM);
+  let radiusMilesUsed = firstRung;
+  let radiusExpanded = false;
+  for (let rung = 1; rung < rungs.length; rung += 1) {
+    if (attempt.competitors.length >= live.csi.minComps) break;
+    const widerMiles = rungs[rung] ?? firstRung;
+    const wider = await selectAtRadius(widerMiles * MILES_TO_KM);
+    // Climb only if the wider ring actually found more. A rung that adds
+    // nothing should not be reported as an expansion — that would claim a
+    // weaker basis than the one actually used.
+    if (wider.competitors.length > attempt.competitors.length) {
+      attempt = wider;
+      radiusMilesUsed = widerMiles;
+      radiusExpanded = true;
     }
   }
+
+  let { competitors, compressionInput, compRoomMatch, compBasis } = attempt;
+  // The price-only rung below is the last resort at whatever radius the ladder
+  // settled on — widening the geography there too would quietly undo the
+  // ladder at the exact moment the evidence is weakest.
+  const settledRadiusKm = radiusMilesUsed * MILES_TO_KM;
 
   /**
    * The last rung: price alone.
@@ -558,7 +627,7 @@ export async function loadLiveIntelligence(
       compBasis === 'DESTINATION',
       null,
       null,
-      live.csi.nearbyRadiusKm,
+      settledRadiusKm,
       q,
     );
     let adopted = priceOnly;
@@ -577,7 +646,7 @@ export async function loadLiveIntelligence(
         true,
         null,
         null,
-        live.csi.nearbyRadiusKm,
+        settledRadiusKm,
         q,
       );
       if (priceOnlyWidened.length > adopted.length) {
@@ -602,7 +671,7 @@ export async function loadLiveIntelligence(
           compLimit,
           live.csi.maxCompAgeHours,
           true,
-          live.csi.nearbyRadiusKm,
+          settledRadiusKm,
           q,
         );
       }
@@ -645,6 +714,7 @@ export async function loadLiveIntelligence(
       strength: compMatchStrength(matchTerms),
       unknown: unknownDimensions(matchTerms),
       termsBasis: compTermsMatch,
+      radiusExpanded,
     },
     // The contextual penalty. Only when both sides' inclusions are known —
     // otherwise the price ratio stands exactly as it did.
@@ -684,6 +754,8 @@ export async function loadLiveIntelligence(
     })),
     currency,
     compBasis,
+    competitiveRadiusMiles: radiusMilesUsed,
+    radiusExpanded,
     compRoomMatch,
     compTermsMatch,
     competitorWahIds: competitors.filter((c) => c.isAvailable).map((c) => c.hotelId),

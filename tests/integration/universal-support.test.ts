@@ -20,6 +20,7 @@ import {
   recordCollectionAttempts,
 } from '../../packages/data/src/repositories/collection.js';
 import {
+  findComparableIdentities,
   hasCuratedComparables,
   promoteHotelForCollection,
 } from '../../packages/data/src/repositories/hotels.js';
@@ -33,7 +34,10 @@ const SOURCE = 'US_SRC';
 const SUBJECT = 'US-SUBJECT';
 /** Ordered by distance from the subject: NEAR is closest, FAR is furthest. */
 const NEIGHBOURS = ['US-NEAR', 'US-MID', 'US-FAR'];
-/** Another destination entirely — it must never enter the comparison. */
+/**
+ * Another destination AND far away (157 km). It must never enter the
+ * comparison — under config v8 because of the distance, not the label.
+ */
 const OUTSIDER = 'US-OUTSIDER';
 const CLASS = 'WAH:US|OFFER';
 const TERMS = { mealPlan: 'ROOM_ONLY', refundPolicy: 'REFUNDABLE', audience: 'CONSORTIA' };
@@ -68,13 +72,26 @@ suite('integration · universal hotel support', () => {
        ON CONFLICT (slug) DO UPDATE SET name=EXCLUDED.name RETURNING id`,
     );
 
-    // Coordinates set the fallback's ordering. The subject sits at the origin.
+    // Coordinates now SELECT as well as order (config v8: the comp set keys on
+    // physical distance, not on the destination label). The geometry is
+    // therefore chosen in real units, subject at the origin:
+    //
+    //   US-NEAR   0.31 km    US-MID  1.26 km    US-FAR  2.36 km
+    //   OUTSIDER  157 km
+    //
+    // All three neighbours sit inside the 2-mile primary ring (3.219 km) and
+    // in that order, so the ordering assertions below still mean what they
+    // meant. OUTSIDER is now excluded by DISTANCE rather than by its label —
+    // which is the point of v8. It used to sit 111 m away and was kept out
+    // only because its destination differed, and a hotel 111 m away is the
+    // most realistic alternative a guest could have; excluding it was the
+    // Palm Beach / Oranjestad failure this design exists to stop.
     const places: Array<[string, number, number, number]> = [
       [SUBJECT, dest[0].id, 0, 0],
-      ['US-NEAR', dest[0].id, 0.01, 0.01],
-      ['US-MID', dest[0].id, 0.5, 0.5],
-      ['US-FAR', dest[0].id, 2, 2],
-      [OUTSIDER, other[0].id, 0.001, 0.001],
+      ['US-NEAR', dest[0].id, 0.002, 0.002],
+      ['US-MID', dest[0].id, 0.008, 0.008],
+      ['US-FAR', dest[0].id, 0.015, 0.015],
+      [OUTSIDER, other[0].id, 1, 1],
     ];
     for (const [code, destinationId, lat, lon] of places) {
       const { rows } = await pool.query(
@@ -166,8 +183,9 @@ suite('integration · universal hotel support', () => {
     await insert(hotelIds.get('US-MID')!, compSuiteRoomTypeIds.get('US-MID')!, 3000);
     await insert(hotelIds.get('US-FAR')!, compSuiteRoomTypeIds.get('US-FAR')!, 3200);
 
-    // Same price as the nearest neighbour, different destination. If it ever
-    // appears in the comp set the destination filter has stopped working.
+    // Same price as the nearest neighbour, and far outside every rung of the
+    // radius ladder. If it ever appears in the comp set, distance has stopped
+    // filtering — which under v8 is the filter that matters.
     await insert(hotelIds.get(OUTSIDER)!, null, 1800);
   }, 60_000);
 
@@ -240,6 +258,34 @@ suite('integration · universal hotel support', () => {
       48,
     );
     expect(byDistance.map((c) => c.hotelId).sort()).toEqual(['US-MID', 'US-NEAR']);
+  });
+
+  it('includes a hotel next door that carries a DIFFERENT destination label', async () => {
+    // The case config v8 exists for. Destination labels fragment real markets:
+    // Palm Beach Aruba and Oranjestad are 7 km apart on one island, and the
+    // split left the St. Regis with two comparables in a four-hotel market.
+    // A hotel a guest could walk to is a realistic alternative whatever the
+    // catalogue calls its neighbourhood.
+    const near = await getPool().query(
+      `UPDATE hotel SET latitude = 0.004, longitude = 0.004 WHERE wah_hotel_id = $1
+       RETURNING id`,
+      [OUTSIDER],
+    );
+    expect(near.rowCount).toBe(1);
+    try {
+      const comps = await findComparableIdentities(
+        hotelIds.get(SUBJECT)!,
+        10,
+        DEFAULT_CONFIG.live.csi.radiusMiles[0]! * 1.609344,
+      );
+      expect(comps.map((c) => c.wahHotelId)).toContain(OUTSIDER);
+    } finally {
+      // Put it back where the rest of the suite expects it.
+      await getPool().query(
+        `UPDATE hotel SET latitude = 1, longitude = 1 WHERE wah_hotel_id = $1`,
+        [OUTSIDER],
+      );
+    }
   });
 
   it('falls back to the nearest hotels in the destination when nothing is curated', async () => {
