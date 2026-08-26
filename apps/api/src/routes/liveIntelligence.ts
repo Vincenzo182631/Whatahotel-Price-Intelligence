@@ -996,6 +996,15 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         // final fallback rung compared price alone (config v6); confidence is
         // LOW by construction and the caveat rides in verdict.reasons.
         terms_basis: compSet.termsBasis,
+        // Which ring of the radius ladder supplied this set, in miles, and
+        // whether it had to climb (config v8, live.csi.radiusMiles: 2/3/5).
+        // Published so "is this hotel being compared against realistic
+        // alternatives, or merely nearby ones" is answerable rather than
+        // inferred from the comp count. The widget does not render either —
+        // they are for calibration and for verifying the comparison, not
+        // customer copy.
+        competitive_radius_miles: loaded.competitiveRadiusMiles,
+        radius_expanded: loaded.radiusExpanded,
         unavailable_reason: compSet.signal.unavailableReason,
         sub_score: compSet.signal.subScore,
         weight: compSet.signal.weight,
