@@ -680,3 +680,41 @@ describe('toRecords over a captured response', () => {
     expect(raw.room.images).toBeUndefined();
   });
 });
+
+describe('coordinates jammed into one field', () => {
+  // Measured 2026-08-26 on hotel 4734: the `hotel` method can emit
+  // loc-lat as "lat, lng" with loc-long empty. Without the split, both
+  // coordinates parsed to null and the hotel fell out of every comp radius.
+  it('splits "lat, lng" out of loc-lat when loc-long is empty', () => {
+    const parsed = parseHotel({
+      hotelID: '4734',
+      name: 'Renaissance Windcreek Aruba',
+      'loc-lat': '12.519021737497715, -70.03774231571535',
+      'loc-long': '',
+    } as never);
+    expect(parsed?.latitude).toBeCloseTo(12.519021737497715, 6);
+    expect(parsed?.longitude).toBeCloseTo(-70.03774231571535, 6);
+  });
+
+  it('leaves the separate-fields form exactly as it was', () => {
+    const parsed = parseHotel({
+      hotelID: '6792',
+      name: 'St. Regis Aruba Resort',
+      'loc-lat': '12.5649666',
+      'loc-long': '-70.0493864',
+    } as never);
+    expect(parsed?.latitude).toBeCloseTo(12.5649666, 6);
+    expect(parsed?.longitude).toBeCloseTo(-70.0493864, 6);
+  });
+
+  it('still refuses a non-coordinate in either half', () => {
+    const parsed = parseHotel({
+      hotelID: '4237',
+      name: 'Melia Serengeti Lodge',
+      'loc-lat': '5464062, 12.0',
+      'loc-long': '',
+    } as never);
+    expect(parsed?.latitude).toBeNull();
+    expect(parsed?.longitude).toBeCloseTo(12.0, 6);
+  });
+});
