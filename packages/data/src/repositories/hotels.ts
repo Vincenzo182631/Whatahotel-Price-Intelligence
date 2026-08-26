@@ -129,12 +129,14 @@ export async function findComparableIdentities(
             ELSE s.destination_id IS NOT NULL AND h.destination_id = s.destination_id
           END
         )
-      -- Nearest first, then source ranking. Same order the scoring-time comp
-      -- set uses, so the hotels we FETCH are the hotels we will compare against.
-      ORDER BY (h.latitude IS NULL OR s.latitude IS NULL),
-               (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
-               (h.city_rank IS NULL),
+      -- Source ranking first, distance as the tie-break — the radius has
+      -- already done the location work, and rule 19 keeps city_rank as the
+      -- chooser within it. Same order the scoring-time comp set uses, so the
+      -- hotels we FETCH are the hotels we will compare against.
+      ORDER BY (h.city_rank IS NULL),
                h.city_rank DESC,
+               (h.latitude IS NULL OR s.latitude IS NULL),
+               (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
                h.id
       LIMIT $2`,
     [hotelId, limit, nearbyRadiusKm],

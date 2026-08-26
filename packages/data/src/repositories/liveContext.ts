@@ -104,13 +104,19 @@ function compSetCte(limitParam: string, widenParam: string, radiusParam: string)
                ELSE s.destination_id IS NOT NULL AND h.destination_id = s.destination_id
              END
            )
-         -- Within the ring, nearer is more relevant, all else equal. city_rank
-         -- still breaks ties for what the source has ranked; it orders and
-         -- never scores (see CLAUDE.md rule 19).
-         ORDER BY (h.latitude IS NULL OR s.latitude IS NULL),
-                  (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
-                  (h.city_rank IS NULL),
+         -- The RADIUS does the location work; the ORDER does the relevance
+         -- work. Distance must not become the only factor once every
+         -- candidate is already inside the ring, and city_rank is one of the
+         -- few positioning signals this source actually gives us: the
+         -- cityrates method answers "the best hotels in this city" in rank
+         -- order.
+         -- So the source's ranking orders, and distance breaks ties for
+         -- whatever it has not ranked. It orders and never scores; what it
+         -- counts is undocumented (CLAUDE.md rule 19).
+         ORDER BY (h.city_rank IS NULL),
                   h.city_rank DESC,
+                  (h.latitude IS NULL OR s.latitude IS NULL),
+                  (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
                   h.id
          LIMIT ${limitParam})
      )`;
