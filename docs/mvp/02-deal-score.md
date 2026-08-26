@@ -389,3 +389,47 @@ separate cities together. 0 disables the widening.
 **Scenario impact:** none — S1–S9 exercise the history model, and curated comp
 sets are untouched: the radius applies only to the label fallback that runs
 before a destination has baselines to rank.
+
+## Justifying the premium from evidence that is not money (2026-08-26)
+
+**The gap.** Premium Justification measures money against money: what this
+rate INCLUDES versus what the comparables include. That is the only fully
+commensurable evidence and it is usually **absent** — the source states
+inclusions for neither side on most stays. So the customer-facing answer on
+exactly the hotels whose premium most needs explaining was a shrug: "the
+available data does not clearly identify what accounts for the difference."
+
+**What now answers it.** `premiumSupport()` (explanation/assessment.ts) builds
+the reading from the evidence we do hold, ranked strongest first:
+
+1. **Rating measured against the comparables' own median** — the strongest,
+   because it is measured on the same comparison the premium is.
+2. **A strong absolute rating** on a deep review sample, when there is no
+   comparable median to measure against.
+3. **What recent reviewers single out** (themes, positive reviews only).
+4. **What the rate carries** — the source's stated perks, named not valued.
+
+It feeds `paying_more_for`, which the widget renders under WHAT YOU'RE PAYING
+MORE FOR, and `key_positive_factors`. The model is instructed to do the same,
+ranked the same way, and may now cite `google_review_themes` and
+`google_editorial_summary` in a premium verdict (both schema-pinned).
+
+**Three rules this must never break.**
+
+- **A rating is never money.** "4.7 out of 5" is differentiation, never
+  "worth $200 more". Reputation still moves no score
+  (`reputation_is_not_scored`), and a test asserts no currency symbol can
+  appear in a support clause.
+- **A relative claim needs both sides.** The rating clause may claim an
+  advantage only when the comparables' median rating exists AND the subject
+  is above it by more than noise (0.1). A property rated at or below its
+  comparables is simply not described as out-rating them — the absence of a
+  claim, never the opposite claim. We do not tell a guest the hotel is worse
+  than its neighbours.
+- **No evidence means no reason.** With no rating, themes or perks, the line
+  states the gap and stops.
+
+**"Above all comparable hotels" is now a checked claim.**
+`premium.dearer_than_all_comparables` is true only when the rate is dearer
+than every usable comparable, not merely their median. The stronger sentence
+is only allowed when the stronger fact holds.

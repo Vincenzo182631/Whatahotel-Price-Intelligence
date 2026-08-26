@@ -468,6 +468,16 @@ export interface PremiumJustificationResult {
   readonly medianCompBenefitPerNightMinor: Minor | null;
   /** How many comparables told us what they include. */
   readonly compsWithBenefits: number;
+  /**
+   * True when the subject is dearer than EVERY usable comparable, not merely
+   * dearer than their median. A guest reading "priced above comparable
+   * hotels" deserves to know which of those two claims is being made — and
+   * "above all of them" is the case that most needs justifying. Null when
+   * there were too few comparables to say anything at all.
+   */
+  readonly dearerThanAllComps: boolean | null;
+  /** Usable comparables the premium was measured against. */
+  readonly compsPriced: number;
 }
 
 /**
@@ -498,6 +508,8 @@ export function computePremiumJustification(
     subjectBenefitPerNightMinor: subjectBenefitPerNightMinor,
     medianCompBenefitPerNightMinor: null,
     compsWithBenefits: 0,
+    dearerThanAllComps: null,
+    compsPriced: 0,
   };
 
   if (usable.length < config.live.csi.minComps || subjectNightlyMinor <= 0) return none;
@@ -505,12 +517,17 @@ export function computePremiumJustification(
   const compMedian = median(usable.map((c) => c.nightlyMinor));
   if (compMedian <= 0) return none;
   const premiumPct = ((subjectNightlyMinor - compMedian) / compMedian) * 100;
+  // Dearer than the dearest comparable, not merely dearer than the middle.
+  const dearestComp = Math.max(...usable.map((c) => c.nightlyMinor));
+  const dearerThanAllComps = subjectNightlyMinor > dearestComp;
+  const measured = { dearerThanAllComps, compsPriced: usable.length };
 
   // Cheaper than the comp set: there is no premium to justify. Say so plainly
   // rather than inventing a verdict about a question nobody asked.
   if (premiumPct <= cfg.premiumThresholdPct) {
     return {
       ...none,
+      ...measured,
       premiumPct,
       level: 'NOT_PREMIUM',
       confidence: 'HIGH',
@@ -527,7 +544,7 @@ export function computePremiumJustification(
   if (!haveEvidence) {
     // The common case today, and the honest one: we can see the price gap and
     // nothing about what either side gives for it. The penalty stands.
-    return { ...none, premiumPct, level: 'LIMITED_DATA', confidence: 'LOW' };
+    return { ...none, ...measured, premiumPct, level: 'LIMITED_DATA', confidence: 'LOW' };
   }
 
   const medianCompBenefit = median(known.map((c) => c.benefitValuePerNightMinor as number));
@@ -564,5 +581,6 @@ export function computePremiumJustification(
     subjectBenefitPerNightMinor: subjectBenefit,
     medianCompBenefitPerNightMinor: medianCompBenefit,
     compsWithBenefits,
+    ...measured,
   };
 }

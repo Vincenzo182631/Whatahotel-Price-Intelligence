@@ -24,8 +24,10 @@ import {
   deterministicAssessment,
   evidenceConfidence,
   evidencePresent,
+  premiumSupport,
   validateAssessment,
 } from '../../packages/core/src/explanation/assessment.js';
+import { validateNarrative } from '../../packages/core/src/explanation/validate.js';
 import { DEFAULT_CONFIG } from '../../packages/core/src/index.js';
 import { buildLiveExplanationBundle } from '../../packages/core/src/explanation/liveBundle.js';
 import {
@@ -48,6 +50,8 @@ interface Shape {
   readonly reputation?: { rating: number; count: number } | null;
   readonly comparableRatings?: readonly number[];
   readonly roomMatch?: string;
+  readonly perks?: readonly string[];
+  readonly themes?: readonly string[];
 }
 
 function bundleFor(shape: Shape = {}) {
@@ -106,6 +110,8 @@ function bundleFor(shape: Shape = {}) {
         }
       : null,
     comparableRatings: shape.comparableRatings ?? [],
+    perks: shape.perks ?? [],
+    reviewThemes: shape.themes ?? [],
   });
 }
 
@@ -273,5 +279,96 @@ describe('evidencePresent — the citation whitelist is grounded in the bundle',
     const rated = evidencePresent(bundleFor({ reputation: { rating: 4.5, count: 100 } }));
     expect(rated.has('google_rating')).toBe(true);
     expect(rated.has('google_review_count')).toBe(true);
+  });
+});
+
+describe('justifying the premium when the money cannot', () => {
+  it("cites the rating measured against the comparables' own median", () => {
+    const bundle = bundleFor({
+      reputation: { rating: 4.7, count: 2770 },
+      comparableRatings: [4.1, 4.2, 4.3],
+    });
+    const support = premiumSupport(bundle);
+    expect(support.sentence).toContain('4.7');
+    expect(support.sentence).toMatch(/above the 4\.2 median/);
+    expect(support.evidence).toContain('comparable_google_ratings');
+    expect(support.factors.length).toBeGreaterThan(0);
+  });
+
+  it('never claims an advantage the ratings do not show', () => {
+    // Rated BELOW its comparables: the honest move is to say nothing about
+    // the rating, never to invert the claim and call the hotel worse.
+    const bundle = bundleFor({
+      reputation: { rating: 3.9, count: 400 },
+      comparableRatings: [4.5, 4.6, 4.7],
+      themes: ['service', 'location'],
+    });
+    const support = premiumSupport(bundle);
+    expect(support.sentence).not.toMatch(/above the/);
+    expect(support.sentence).not.toMatch(/3\.9/);
+    expect(support.sentence).not.toMatch(/below|worse|poor/i);
+    // The themes still speak for the property.
+    expect(support.sentence).toMatch(/recent reviewers single out/i);
+  });
+
+  it('stands on a strong rating when there is nothing to compare it against', () => {
+    const bundle = bundleFor({ reputation: { rating: 4.6, count: 1200 } });
+    const support = premiumSupport(bundle);
+    expect(support.sentence).toContain('4.6');
+    expect(support.sentence).toContain('1,200');
+    expect(support.evidence).toContain('google_rating');
+  });
+
+  it('turns a rating into differentiation, never into money', () => {
+    const bundle = bundleFor({
+      reputation: { rating: 4.8, count: 900 },
+      comparableRatings: [4.0, 4.1, 4.2],
+      perks: ['Breakfast for two'],
+    });
+    const support = premiumSupport(bundle);
+    // No price anywhere in the support clause: "4.8 stars" must never be
+    // rendered as an amount the guest is buying.
+    expect(support.sentence).not.toMatch(/[$£€]/);
+  });
+
+  it('says nothing rather than inventing a reason when no evidence exists', () => {
+    const bundle = bundleFor();
+    expect(premiumSupport(bundle).sentence).toBe('');
+    const assessment = deterministicAssessment(bundle);
+    expect(assessment?.paying_more_for).toContain('do not state what each includes');
+    expect(assessment?.key_positive_factors).toEqual([]);
+  });
+
+  it('claims "above every comparable" only when the rate really is', () => {
+    const aboveAll = bundleFor({ compNightlies: [60_000, 62_000, 64_000] });
+    expect(aboveAll.premium.dearer_than_all_comparables).toBe(true);
+    expect(deterministicAssessment(aboveAll)?.paying_more_for).toContain(
+      'above every comparable hotel checked',
+    );
+
+    // Dearer than the median, cheaper than the dearest — the claim is false
+    // here and must not be made.
+    const midField = bundleFor({ compNightlies: [60_000, 62_000, 100_000] });
+    expect(midField.premium.dearer_than_all_comparables).toBe(false);
+    expect(deterministicAssessment(midField)?.paying_more_for).not.toContain('every comparable');
+  });
+
+  it('has nothing to justify when the rate is not above the comparables', () => {
+    const cheap = bundleFor({ subjectNightly: 40_000 });
+    expect(deterministicAssessment(cheap)).toBeNull();
+  });
+
+  it("the justification passes the engine's own validator", () => {
+    for (const shape of [
+      { reputation: { rating: 4.7, count: 2770 }, comparableRatings: [4.1, 4.2, 4.3] },
+      { reputation: { rating: 4.6, count: 1200 }, themes: ['service', 'beach'] },
+      { perks: ['Breakfast for two', 'Hotel credit'] },
+      {},
+    ]) {
+      const bundle = bundleFor(shape);
+      const text = deterministicAssessment(bundle)?.paying_more_for ?? '';
+      const check = validateNarrative(text, { ...bundle.constraints, max_sentences: 2 });
+      expect(check.violations, text).toEqual([]);
+    }
   });
 });

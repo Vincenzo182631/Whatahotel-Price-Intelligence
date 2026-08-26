@@ -29,6 +29,7 @@
 
 import type { LiveExplanationBundle } from './liveBundle.js';
 import { validateNarrative } from './validate.js';
+import { THEME_PROSE } from './themes.js';
 
 export type AssessmentLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT_DATA';
 export type AssessmentConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
@@ -63,6 +64,8 @@ export const ASSESSMENT_EVIDENCE = [
   'google_rating',
   'google_review_count',
   'comparable_google_ratings',
+  'google_review_themes',
+  'google_editorial_summary',
   'room_match',
   'calendar_position',
   'market_availability',
@@ -136,6 +139,8 @@ export function evidencePresent(bundle: LiveExplanationBundle): Set<AssessmentEv
     if (bundle.reputation.subject.review_count !== null) present.add('google_review_count');
   }
   if (bundle.reputation.comparable_median_rating !== null) present.add('comparable_google_ratings');
+  if (bundle.hotel_facts.review_themes.length > 0) present.add('google_review_themes');
+  if (bundle.hotel_facts.editorial_summary) present.add('google_editorial_summary');
   if (comps.room_match !== null) present.add('room_match');
   if (bundle.market.calendar.available) present.add('calendar_position');
   if (bundle.market.compression.available) present.add('market_availability');
@@ -219,6 +224,116 @@ export function premiumJustificationSummary(level: string): string {
 }
 
 /**
+ * WHY the rate stands above the comparables — from evidence, when the money
+ * cannot say it.
+ *
+ * The deterministic premium verdict is money against money: what this rate
+ * INCLUDES versus what the comparables include. That is the only fully
+ * commensurable evidence, and it is usually absent — the source states
+ * inclusions for neither side on most stays, which left the customer-facing
+ * answer as a shrug ("the data does not identify what accounts for the
+ * difference") on exactly the hotels whose premium most needs explaining.
+ *
+ * A premium can also be supported by evidence that is not money: how guests
+ * rate the property AGAINST ITS OWN COMPARABLES, what those guests
+ * consistently single out, and what the rate carries. This builds that
+ * reading, ranked strongest first, and it obeys three rules:
+ *
+ *   1. **No rating is ever converted into money.** "4.7 stars" never becomes
+ *      "worth $200 more". The rating is cited as differentiation, never as a
+ *      price, and it still moves no score (`reputation_is_not_scored`).
+ *   2. **Relative evidence needs both sides.** The rating clause is only
+ *      allowed to claim an advantage when we hold the comparables' median
+ *      rating AND the subject is genuinely above it. A hotel that rates at or
+ *      below its comp set is simply not described as out-rating them — the
+ *      absence of a claim, never a claim in the opposite direction.
+ *   3. **Every clause is a fact the bundle carries**, so each one names the
+ *      evidence key it rests on and nothing here can cite what is not there.
+ */
+export interface PremiumSupport {
+  /** One sentence naming what supports the premium. Empty when nothing does. */
+  readonly sentence: string;
+  /** Short factor lines, for `key_positive_factors`. */
+  readonly factors: readonly string[];
+  readonly evidence: readonly AssessmentEvidence[];
+}
+
+/** Above this margin, a rating advantage is a difference rather than noise. */
+const RATING_EDGE = 0.1;
+/** A rating this strong, on a sample this deep, stands on its own. */
+const STRONG_RATING = 4.4;
+const STRONG_SAMPLE = 100;
+
+const joinProse = (items: readonly string[]): string =>
+  items.length === 1
+    ? (items[0] as string)
+    : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1] as string}`;
+
+export function premiumSupport(bundle: LiveExplanationBundle): PremiumSupport {
+  const rep = bundle.reputation.subject;
+  const compRating = bundle.reputation.comparable_median_rating;
+  const themes = bundle.hotel_facts.review_themes
+    .map((t) => THEME_PROSE[t])
+    .filter((t): t is string => !!t);
+  const perks = bundle.hotel_facts.perks;
+
+  const clauses: string[] = [];
+  const factors: string[] = [];
+  const evidence: AssessmentEvidence[] = [];
+
+  // 1. Rated above the very hotels it is being compared against. The
+  //    strongest non-money support there is, because it is measured on the
+  //    same comparison the premium itself is measured on.
+  if (rep && compRating !== null && rep.rating >= compRating + RATING_EDGE) {
+    clauses.push(
+      `guests rate it ${rep.rating} out of 5, above the ${compRating} median for those comparable hotels`,
+    );
+    factors.push(
+      `Rated ${rep.rating} out of 5 by guests, above the ${compRating} median of the comparable hotels`,
+    );
+    evidence.push('google_rating', 'comparable_google_ratings');
+  } else if (rep && rep.rating >= STRONG_RATING) {
+    // 2. No comparable ratings to measure against (or no advantage to claim):
+    //    a strong rating on a deep sample is still evidence about the
+    //    property, stated as exactly that and nothing more.
+    const sample =
+      rep.review_count !== null && rep.review_count >= STRONG_SAMPLE
+        ? ` across ${rep.review_count.toLocaleString('en-US')} reviews`
+        : '';
+    clauses.push(`guests rate it ${rep.rating} out of 5${sample}`);
+    factors.push(`Rated ${rep.rating} out of 5 by guests${sample}`);
+    evidence.push('google_rating');
+    if (sample) evidence.push('google_review_count');
+  }
+
+  // 3. What those guests consistently single out — the texture behind the
+  //    number. Always "recent reviewers": the sample is five reviews, not
+  //    every guest who ever stayed.
+  if (themes.length > 0) {
+    clauses.push(`recent reviewers single out ${joinProse(themes.slice(0, 3))}`);
+    factors.push(`Recent reviewers single out ${joinProse(themes.slice(0, 3))}`);
+    evidence.push('google_review_themes');
+  }
+
+  // 4. What the rate itself carries. Money-adjacent but not money: these are
+  //    the source's own stated inclusions, named rather than valued.
+  if (clauses.length < 2 && perks.length > 0) {
+    clauses.push(`the rate carries ${joinProse(perks.slice(0, 3).map((p) => p.toLowerCase()))}`);
+    factors.push(`The rate carries ${joinProse(perks.slice(0, 3).map((p) => p.toLowerCase()))}`);
+    evidence.push('included_value');
+  }
+
+  if (clauses.length === 0) return { sentence: '', factors: [], evidence: [] };
+
+  const body = joinProse(clauses.slice(0, 2));
+  return {
+    sentence: `${body.charAt(0).toUpperCase()}${body.slice(1)}.`,
+    factors: factors.slice(0, 3),
+    evidence,
+  };
+}
+
+/**
  * The assessment the system stands behind with no model at all.
  *
  * Null when there is no premium to justify. The factor lists stay empty on
@@ -236,6 +351,23 @@ export function deterministicAssessment(bundle: LiveExplanationBundle): PremiumA
   if (level === null || level === undefined) return null;
   const comps = bundle.market.comp_set;
   const diff = bundle.premium.price_difference_display;
+  const dearer =
+    diff !== null &&
+    bundle.premium.price_difference_nightly_minor !== null &&
+    bundle.premium.price_difference_nightly_minor > 0;
+  // What supports the premium when the money cannot say it. See premiumSupport:
+  // rating measured against the comparables' own median, what recent reviewers
+  // single out, what the rate carries — facts, never a rating turned into a
+  // price. Only when the rate really is dearer; there is nothing to justify
+  // otherwise.
+  const support = dearer ? premiumSupport(bundle) : { sentence: '', factors: [], evidence: [] };
+  // "Above every one of them" is a stronger claim than "above their median",
+  // and it is the one a guest is actually looking at. Made only when true.
+  const lead = dearer
+    ? bundle.premium.dearer_than_all_comparables === true
+      ? `You're paying about ${diff} more per night than the comparable median, and this rate sits above every comparable hotel checked.`
+      : `You're paying about ${diff} more per night than the comparable median.`
+    : '';
   return {
     level,
     position: premiumPosition(
@@ -244,17 +376,20 @@ export function deterministicAssessment(bundle: LiveExplanationBundle): PremiumA
       bundle.availability.availability_influenced,
     ),
     reasoning: premiumJustificationSummary(bundle.premium.level),
-    paying_more_for:
-      diff !== null &&
-      bundle.premium.price_difference_nightly_minor !== null &&
-      bundle.premium.price_difference_nightly_minor > 0
-        ? `You're paying about ${diff} more per night than the comparable median. The available data does not clearly identify what accounts for the full difference.`
-        : '',
+    paying_more_for: !dearer
+      ? ''
+      : support.sentence
+        ? `${lead} ${support.sentence}`
+        : // Nothing in the bundle speaks to differentiation. State the gap and
+          // stop rather than dressing an absence as a reason.
+          `${lead} The rates themselves do not state what each includes.`,
     availability_context: availabilityContextSentence(bundle),
     alternative_reason: bundle.alternative
       ? 'A comparable stay is currently available at a lower rate.'
       : '',
-    key_positive_factors: [],
+    // Not decoration: each line is a fact the bundle states, built by
+    // premiumSupport from the same evidence the sentence cites.
+    key_positive_factors: support.factors,
     key_negative_factors: [],
     confidence: evidenceConfidence(
       comps.comps_used,
@@ -262,7 +397,7 @@ export function deterministicAssessment(bundle: LiveExplanationBundle): PremiumA
       bundle.reputation.subject !== null,
     ),
     recommendation: bundle.verdict.verdict_label,
-    evidence_used: [...evidencePresent(bundle)].filter(
+    evidence_used: [...new Set([...support.evidence, ...evidencePresent(bundle)])].filter(
       (k) => k !== 'calendar_position' && k !== 'market_availability',
     ),
     source: 'DETERMINISTIC',

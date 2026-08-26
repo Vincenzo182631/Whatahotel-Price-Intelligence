@@ -683,6 +683,11 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       comparable_included_value_nightly: money(premium.medianCompBenefitPerNightMinor, currency),
       comparables_with_included_value: premium.compsWithBenefits,
       effective_index: round1(premium.effectiveCsi),
+      // Above the dearest comparable, not merely above their median — the
+      // stronger of the two claims, published so a client never has to guess
+      // which one "priced above comparable hotels" is making.
+      dearer_than_all_comparables: premium.dearerThanAllComps,
+      comparables_priced: premium.compsPriced,
       // A LIMITED_DATA summary asserts "priced above the competitive set" —
       // supportable only when a premium was actually measured. With no
       // premium_pct there is no measured gap, and the honest summary says
