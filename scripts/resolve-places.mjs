@@ -19,6 +19,7 @@
 import { findResolutionTargets, closePool } from '../packages/data/dist/index.js';
 import {
   PlacesClient,
+  addressCanConfirm,
   googleConfigured,
   googleSettings,
   sweepPlaces,
@@ -45,7 +46,15 @@ if (flag('--dry-run')) {
   // Hotels a real run would skip without calling Google. This is the number
   // that decides whether the key is worth spending on, so it is on the
   // headline rather than inferable from the 25 rows printed below.
-  const noGeo = targets.filter((t) => !t.placeId && t.latitude === null).length;
+  //
+  // It must agree with resolveHotel's OWN skip condition, or the estimate is
+  // wrong in the one direction a cost estimate must never be wrong in. Since
+  // the street address can lift the no-coordinates cap, a hotel holding an
+  // address that CAN confirm is asked about — counting it as skipped
+  // under-reported the spend by 48 calls on the 2026-08-26 catalogue.
+  const unplaceable = (t) =>
+    !t.placeId && t.latitude === null && !addressCanConfirm(t.streetAddress ?? null);
+  const noGeo = targets.filter(unplaceable).length;
   console.log(
     `${targets.length} hotel(s) queued (limit ${limit}, refresh ${settings.refreshHours}h) — ` +
       `${fresh} never looked up, ${targets.length - fresh} due a refresh, ` +
@@ -58,7 +67,8 @@ if (flag('--dry-run')) {
   for (const t of targets.slice(0, 25)) {
     console.log(
       `  ${t.hotelId}  ${t.name}${t.city ? ` — ${t.city}` : ''}${t.placeId ? '  [refresh]' : ''}` +
-        `${t.latitude === null ? '  (no coordinates — cannot be verified)' : ''}`,
+        `${unplaceable(t) ? '  (no usable location — cannot be verified)' : ''}` +
+        `${t.latitude === null && !unplaceable(t) ? '  (no coordinates — street address may confirm)' : ''}`,
     );
   }
   if (targets.length > 25) console.log(`  … and ${targets.length - 25} more`);

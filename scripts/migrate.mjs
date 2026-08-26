@@ -33,11 +33,37 @@ async function psql(sql) {
   return stdout;
 }
 
+/**
+ * Surface what a migration says about itself.
+ *
+ * psql writes RAISE NOTICE to STDERR, and this helper used to destructure
+ * stdout alone — so migration 0017 reported the number of rows it repaired
+ * and the run log showed nothing. A data migration that cannot say what it
+ * did is a migration nobody can verify, which defeats the point of reporting.
+ *
+ * Only NOTICE lines are echoed. psql is chatty on stderr (connection notices,
+ * "CREATE INDEX will create implicit index" and friends), and reprinting all
+ * of it would bury the one line worth reading.
+ */
+function noticesIn(stderr) {
+  return (
+    (stderr ?? '')
+      .split('\n')
+      .filter((line) => /NOTICE:/i.test(line))
+      // Strip psql's "psql:<file>:<line>: " prefix, keeping the notice itself.
+      // The line number matters: a non-greedy .*? stops at the FIRST colon and
+      // leaves "52: NOTICE: …" behind.
+      .map((line) => line.replace(/^\s*psql:\S*:\d+:\s*/i, '').trim())
+  );
+}
+
 async function psqlFile(path) {
-  const { stdout } = await run('psql', [DATABASE_URL, '-v', 'ON_ERROR_STOP=1', '-1', '-f', path], {
-    maxBuffer: 32 * 1024 * 1024,
-  });
-  return stdout;
+  const { stdout, stderr } = await run(
+    'psql',
+    [DATABASE_URL, '-v', 'ON_ERROR_STOP=1', '-1', '-f', path],
+    { maxBuffer: 32 * 1024 * 1024 },
+  );
+  return { stdout, notices: noticesIn(stderr) };
 }
 
 async function listSql(dir) {
@@ -82,11 +108,14 @@ async function main() {
     const checksum = await sha256(sql);
 
     process.stdout.write(`• Applying ${file} … `);
-    await psqlFile(path);
+    const { notices } = await psqlFile(path);
     await psql(
       `INSERT INTO schema_migration (version, checksum) VALUES ('${version}', '${checksum}');`,
     );
     console.log('ok');
+    // After the "ok", so a notice reads as a detail of a completed step rather
+    // than an interruption of one.
+    for (const notice of notices) console.log(`    ${notice}`);
     count += 1;
   }
 
@@ -98,8 +127,9 @@ async function main() {
   if (doSeed) {
     for (const file of await listSql('db/seeds')) {
       process.stdout.write(`• Seeding ${file} … `);
-      await psqlFile(join(root, 'db/seeds', file));
+      const { notices } = await psqlFile(join(root, 'db/seeds', file));
       console.log('ok');
+      for (const notice of notices) console.log(`    ${notice}`);
     }
   }
 }
@@ -124,7 +154,7 @@ async function ensurePartitions() {
   if (!exists) return;
 
   const out = await psql(
-    'SELECT partition_name || \' — \' || action FROM ensure_rate_observation_partitions();',
+    "SELECT partition_name || ' — ' || action FROM ensure_rate_observation_partitions();",
   );
   const rows = out
     .split('\n')
