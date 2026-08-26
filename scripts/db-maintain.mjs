@@ -83,9 +83,11 @@ async function measure(label) {
 // hotel that happens to be sold out — it is a hotel whose Amadeus property
 // mapping is broken, and whatahotel.com cannot sell it either.
 //
-// Names the candidates and their stored Amadeus property code, so the list
-// can be handed to whoever owns that mapping. Read-only; verify each one
-// against the live API before acting on it.
+// Names the candidates so the list can be handed to whoever owns the Amadeus
+// mapping. The property CODE is not stored here — it comes back on the live
+// rates call, which is the authoritative check anyway: a broken mapping
+// answers status 500 with amadeus.amaID = "NULL" while the code itself is
+// present. Read-only; verify each candidate that way before acting on it.
 const BROKEN = process.argv.includes('--broken');
 if (BROKEN) {
   console.log('\n── hotels whose rate lookups keep failing ──');
@@ -93,7 +95,6 @@ if (BROKEN) {
     await sql(`
       SELECT h.wah_hotel_id || ' | ' || rpad(left(h.name, 38), 38)
           || ' | ' || rpad(COALESCE(left(d.name, 20), '?'), 20)
-          || ' | ama=' || rpad(COALESCE(h.amadeus_property, 'NULL'), 10)
           || ' | failing slots=' || lpad(count(*)::text, 3)
           || ' | worst streak=' || lpad(max(a.consecutive_failures)::text, 3)
           || ' | last tried ' || to_char(max(a.last_attempt_at) AT TIME ZONE 'UTC', 'Mon DD HH24:MI')
@@ -102,7 +103,7 @@ if (BROKEN) {
         LEFT JOIN destination d ON d.id = h.destination_id
        WHERE a.last_outcome = 'ERROR'
          AND a.consecutive_failures >= 2
-       GROUP BY h.wah_hotel_id, h.name, d.name, h.amadeus_property
+       GROUP BY h.wah_hotel_id, h.name, d.name
       HAVING count(*) >= 2
        ORDER BY count(*) DESC, max(a.consecutive_failures) DESC
        LIMIT 80`),
