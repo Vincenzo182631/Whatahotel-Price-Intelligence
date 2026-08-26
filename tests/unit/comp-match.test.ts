@@ -106,6 +106,7 @@ function compSet(over: Partial<CompSetResult> = {}): CompSetResult {
     matchStrength: 'RESOLVED',
     unknownDimensions: [],
     termsBasis: 'MATCHED',
+    radiusExpanded: false,
     csi: 95,
     band: 'MARKET_RATE',
     pctBelowMedian: 5,
@@ -157,15 +158,39 @@ describe('confidence reflects how much the comparison rested on stated terms', (
     expect(assess(compSet({ matchStrength: 'RESOLVED' }))).toBe('HIGH');
   });
 
-  it('caps a partial match below HIGH, however many competitors it found', () => {
-    // The evidence is real — it just cannot be called strong when a term the
-    // comparison depends on was never stated on either side.
+  it('lets a partial match reach HIGH — symmetric ignorance is a fair comparison', () => {
+    // This assertion was inverted in config v8, deliberately.
+    //
+    // HIGH used to require RESOLVED: every rate term stated on both sides.
+    // But this source never states refundability for ANY hotel, so the gate
+    // was unreachable for the entire catalogue — measured over 10 production
+    // hotels, 6 MEDIUM / 4 LOW / 0 HIGH. A gate no evidence can open is not a
+    // confidence signal, it is a constant, and it told the customer nothing
+    // about the comparison actually in front of them.
+    //
+    // PARTIAL is a different thing from weak. The tolerant key matches
+    // UNKNOWN only to UNKNOWN, so a PARTIAL match means the dimension is
+    // unstated on BOTH sides — which is exactly the symmetric ignorance
+    // rule 5 argues is fair.
     const partial = compSet({
       matchStrength: 'PARTIAL',
       unknownDimensions: ['cancellation terms'],
       compsUsed: 50,
     });
-    expect(assess(partial)).toBe('MEDIUM');
+    expect(assess(partial)).toBe('HIGH');
+  });
+
+  it('still caps below HIGH when the local market could not supply the set', () => {
+    // The replacement gate, and the reason this is not simply a loosening: a
+    // comp set the radius ladder had to climb for is a weaker statement about
+    // THIS location than one the primary ring supplied.
+    const stretched = compSet({ matchStrength: 'PARTIAL', radiusExpanded: true, compsUsed: 50 });
+    expect(assess(stretched)).toBe('MEDIUM');
+  });
+
+  it('caps below HIGH on too few competitors however tight the ring', () => {
+    const thin = compSet({ matchStrength: 'RESOLVED', compsUsed: 3 });
+    expect(assess(thin)).toBe('MEDIUM');
   });
 
   it('drops an opaque match to LOW', () => {

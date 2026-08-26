@@ -714,6 +714,7 @@ export async function loadLiveIntelligence(
       strength: compMatchStrength(matchTerms),
       unknown: unknownDimensions(matchTerms),
       termsBasis: compTermsMatch,
+      radiusExpanded,
     },
     // The contextual penalty. Only when both sides' inclusions are known —
     // otherwise the price ratio stands exactly as it did.
