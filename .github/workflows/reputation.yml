@@ -35,6 +35,19 @@ on:
         type: boolean
         required: false
         default: false
+      sync_pages:
+        description: >-
+          Read hotel pages for street addresses BEFORE sweeping. On by
+          default because the order matters: a hotel with no coordinates is
+          only resolvable once it has an address, and the sweep skips it
+          otherwise until the next refresh window.
+        type: boolean
+        required: false
+        default: true
+      pages_limit:
+        description: 'Max hotel pages to read in this run'
+        required: false
+        default: '400'
       refresh_hours:
         description: >-
           Refresh VERIFIED hotels older than this many hours (default 168).
@@ -93,6 +106,20 @@ jobs:
 
       - run: npm run build
 
+      # Addresses first. This is not a preference — a hotel with no
+      # coordinates cannot clear the match threshold at all, so sweeping
+      # before the address arrives spends nothing and skips exactly the
+      # hotels the address was meant to rescue. Reads whatahotel.com's public
+      # pages; no API key, and no rate-source calls.
+      - name: Read hotel pages for street addresses
+        if: inputs.sync_pages
+        run: |
+          set -o pipefail
+          npm run pages -- \
+            --limit "${{ inputs.pages_limit || 400 }}" \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            2>&1 | tee pages.log
+
       - name: Sweep
         run: |
           set -o pipefail
@@ -106,6 +133,16 @@ jobs:
         run: |
           {
             echo '### Reputation sweep'
+            echo
+            if [ -f pages.log ]; then
+              echo '**Hotel pages**'
+              echo
+              echo '```'
+              tail -10 pages.log
+              echo '```'
+              echo
+            fi
+            echo '**Google places**'
             echo
             echo '```'
             tail -30 places.log 2>/dev/null || echo 'no output captured'
@@ -126,5 +163,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: places-log-${{ github.run_id }}
-          path: places.log
+          path: |
+            places.log
+            pages.log
           retention-days: 14
