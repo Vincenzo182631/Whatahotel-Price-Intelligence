@@ -325,7 +325,11 @@ export function premiumSupport(bundle: LiveExplanationBundle): PremiumSupport {
 
   if (clauses.length === 0) return { sentence: '', factors: [], evidence: [] };
 
-  const body = joinProse(clauses.slice(0, 2));
+  // ", and" rather than " and": the clauses contain their own commas
+  // ("service, the beach and the pool"), and a bare conjunction runs the two
+  // halves together — "the pool and the rate carries breakfast" reads as one
+  // list of nonsense.
+  const body = clauses.slice(0, 2).join(', and ');
   return {
     sentence: `${body.charAt(0).toUpperCase()}${body.slice(1)}.`,
     factors: factors.slice(0, 3),
