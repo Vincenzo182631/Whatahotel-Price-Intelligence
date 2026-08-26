@@ -421,6 +421,27 @@ export async function loadLiveIntelligence(
    * the old flat 30 km. The ladder stops at 5 miles deliberately.
    */
   const MILES_TO_KM = 1.609344;
+  /**
+   * Curated peer sets are bound at the ladder's OUTER rung, not the current
+   * one.
+   *
+   * A curated set is a deliberately chosen peer list. The ladder exists to
+   * find comparables where no such judgement has been made, so applying its
+   * tightest ring to an explicit one overrides the judgement with geometry.
+   * Measured 2026-08-26 over the 32-hotel cohort, binding curated sets at the
+   * current rung cost two hotels their score outright and removed the only
+   * HIGH confidence in the set: the Ritz-Carlton Key Biscayne is on an island
+   * and has no catalogued neighbour inside 5 miles, so a peer list reaching
+   * the mainland was the only comparison available and it went dark.
+   *
+   * The outer rung still kills the comparison v8 was written to stop — 30 km
+   * reached across a whole metro area — and it makes this agree with
+   * rebuildComparables, which already bounds what it BUILDS at the same
+   * distance. The destination fallback keeps the strict 2 → 3 → 5 climb,
+   * because there we have no editorial judgement to respect.
+   */
+  const curatedRadiusKm =
+    Math.max(...(live.csi.radiusMiles.length > 0 ? live.csi.radiusMiles : [0]), 0) * MILES_TO_KM;
   const rungs: readonly number[] = live.csi.radiusMiles.length > 0 ? live.csi.radiusMiles : [0];
   // Non-empty by construction above; `?? 0` satisfies the compiler without
   // pretending an empty ladder is reachable.
@@ -450,12 +471,11 @@ export async function loadLiveIntelligence(
   }
 
   const selectAtRadius = async (radiusKm: number): Promise<RadiusAttempt> => {
-    // Asked at THIS rung's radius, because the answer becomes compBasis — the
-    // label saying where the comparison came from. A curated comparable the
-    // ladder cannot reach is not part of the curated set for this comparison,
-    // and answering from the table alone made the label claim CURATED while
-    // the comps had actually come from the destination fallback.
-    const hadCurated = await hasCuratedComparables(hotel.id, radiusKm, q);
+    // Asked at the CURATED bound, not this rung, and with the same predicate
+    // the curated branch of the query uses — the answer becomes compBasis,
+    // the label saying where the comparison came from, so the two must agree
+    // or the label describes a set that was never used.
+    const hadCurated = await hasCuratedComparables(hotel.id, curatedRadiusKm, q);
 
     const competitorsFor = (roomClass: string | null, viewType: string | null) =>
       findCompetitorRates(
@@ -476,6 +496,7 @@ export async function loadLiveIntelligence(
         roomClass,
         viewType,
         radiusKm,
+        curatedRadiusKm,
         q,
       );
 
@@ -492,6 +513,7 @@ export async function loadLiveIntelligence(
         live.csi.maxCompAgeHours,
         false,
         radiusKm,
+        curatedRadiusKm,
         q,
       ),
     ]);
@@ -552,6 +574,7 @@ export async function loadLiveIntelligence(
           null,
           null,
           radiusKm,
+          curatedRadiusKm,
           q,
         ),
         findMarketCompression(
@@ -563,6 +586,7 @@ export async function loadLiveIntelligence(
           live.csi.maxCompAgeHours,
           true,
           radiusKm,
+          curatedRadiusKm,
           q,
         ),
       ]);
@@ -633,6 +657,7 @@ export async function loadLiveIntelligence(
       null,
       null,
       settledRadiusKm,
+      curatedRadiusKm,
       q,
     );
     let adopted = priceOnly;
@@ -654,6 +679,7 @@ export async function loadLiveIntelligence(
         null,
         null,
         settledRadiusKm,
+        curatedRadiusKm,
         q,
       );
       if (priceOnlyWidened.length > adopted.length) {
@@ -679,6 +705,7 @@ export async function loadLiveIntelligence(
           live.csi.maxCompAgeHours,
           true,
           settledRadiusKm,
+          curatedRadiusKm,
           q,
         );
       }

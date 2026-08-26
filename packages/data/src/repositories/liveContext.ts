@@ -58,7 +58,18 @@ import { db, type Queryable } from '../client.js';
  * $1 is the subject hotel id; `limitParam` is the caller's own placeholder;
  * `widenParam` is a boolean that suppresses the curated branch entirely.
  */
-function compSetCte(limitParam: string, widenParam: string, radiusParam: string): string {
+function compSetCte(
+  limitParam: string,
+  widenParam: string,
+  radiusParam: string,
+  /**
+   * The bound for the CURATED branch, which is deliberately NOT the current
+   * rung. A curated set is a chosen peer list; the ladder exists to find
+   * comparables where no such choice was made, so the tightest ring is bound
+   * at the ladder's OUTER rung here. See loadLiveIntelligence.
+   */
+  curatedRadiusParam: string,
+): string {
   return `curated AS (
        -- The radius governs the CURATED set too.
        --
@@ -86,13 +97,13 @@ function compSetCte(limitParam: string, widenParam: string, radiusParam: string)
           AND ch.bookable_online IS DISTINCT FROM false
           AND (
             CASE
-              WHEN ${radiusParam}::float8 > 0
+              WHEN ${curatedRadiusParam}::float8 > 0
                 AND cs.latitude IS NOT NULL AND cs.longitude IS NOT NULL
               THEN ch.latitude IS NOT NULL AND ch.longitude IS NOT NULL
                 AND power(111.32 * (ch.latitude - cs.latitude)::float8, 2)
                   + power(111.32 * cos(radians(cs.latitude::float8))
                       * (ch.longitude - cs.longitude)::float8, 2)
-                  <= power(${radiusParam}::float8, 2)
+                  <= power(${curatedRadiusParam}::float8, 2)
               ELSE true
             END
           )
@@ -222,10 +233,16 @@ export async function findCompetitorRates(
   viewType: string | null = null,
   /** Km radius for the destination fallback's nearby widening; 0 disables. */
   nearbyRadiusKm = 0,
+  /**
+   * Km bound for the CURATED branch — the ladder's OUTER rung, not the current
+   * one. A curated set is a chosen peer list, so the tightest ring is not
+   * applied to it. See loadLiveIntelligence for the measurement behind this.
+   */
+  curatedRadiusKm = 0,
   q?: Queryable,
 ): Promise<CompetitorRate[]> {
   const { rows } = await db(q).query(
-    `WITH ${compSetCte('$8', '$12', '$15')},
+    `WITH ${compSetCte('$8', '$12', '$15', '$16')},
      latest AS (
        SELECT DISTINCT ON (o.hotel_id, o.room_type_id)
               o.hotel_id, o.nightly_amount_minor, o.observed_at, o.is_available
@@ -301,6 +318,7 @@ export async function findCompetitorRates(
       roomClass,
       viewType,
       nearbyRadiusKm,
+      curatedRadiusKm,
     ],
   );
 
@@ -413,10 +431,12 @@ export async function findMarketCompression(
   widen = false,
   /** Must also match the comp set's radius, for the same reason. */
   nearbyRadiusKm = 0,
+  /** And the comp set's curated bound, for the same reason again. */
+  curatedRadiusKm = 0,
   q?: Queryable,
 ): Promise<CompressionInput | null> {
   const { rows } = await db(q).query(
-    `WITH ${compSetCte('$5', '$7', '$8')},
+    `WITH ${compSetCte('$5', '$7', '$8', '$9')},
      priced AS (
        SELECT DISTINCT o.hotel_id
          FROM rate_observation o
@@ -437,7 +457,7 @@ export async function findMarketCompression(
        (SELECT count(*) FROM attempted)                                    AS attempted,
        (SELECT count(*) FROM attempted WHERE last_outcome = 'NO_AVAILABILITY'
            AND hotel_id NOT IN (SELECT hotel_id FROM priced))              AS sold_out`,
-    [hotelId, checkIn, nights, adults, limit, maxAgeHours, widen, nearbyRadiusKm],
+    [hotelId, checkIn, nights, adults, limit, maxAgeHours, widen, nearbyRadiusKm, curatedRadiusKm],
   );
 
   const row = rows[0];

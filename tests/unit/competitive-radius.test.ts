@@ -191,3 +191,40 @@ describe('what qualification may and may not key on', () => {
     expect(csiTrimmed).toBeLessThan(csiAll);
   });
 });
+
+describe('the curated bound is the outer rung, not the current one', () => {
+  // Measured, not preferred. Binding curated peer sets to the CURRENT rung
+  // cost two hotels their score outright and removed the only HIGH confidence
+  // in the 32-hotel cohort (2026-08-26): the Ritz-Carlton Key Biscayne is on
+  // an island with no catalogued neighbour inside 5 miles, so the peer list
+  // reaching the mainland was the only comparison available, and bounding it
+  // at 2 miles turned a scored hotel into a Hotel Value one.
+  //
+  // A curated set is a chosen peer list. The ladder exists to find comparables
+  // where no such choice was made, so applying its tightest ring to an
+  // explicit one replaces a judgement with geometry.
+  const rungs = DEFAULT_CONFIG.live.csi.radiusMiles;
+
+  it('bounds curated sets at the widest rung the ladder can reach', () => {
+    expect(Math.max(...rungs)).toBe(5);
+  });
+
+  it('is looser than the destination fallback starts, and that is the point', () => {
+    expect(Math.max(...rungs)).toBeGreaterThan(rungs[0]!);
+  });
+
+  it('still refuses the reach v8 was written to remove', () => {
+    // 30 km is ~18.6 miles — across a whole metro area. The curated bound is
+    // looser than 2 miles and nowhere near that.
+    expect(Math.max(...rungs) * MILES_TO_KM).toBeLessThan(10);
+  });
+
+  it('matches what the builder is allowed to BUILD', () => {
+    // Query-time and build-time must agree, or a set is created and then
+    // filtered out by the query that asked for it.
+    expect(DEFAULT_COMPARABLE_OPTIONS.maxDistanceKm).toBeCloseTo(
+      Math.max(...rungs) * MILES_TO_KM,
+      6,
+    );
+  });
+});
