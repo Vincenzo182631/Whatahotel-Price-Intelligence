@@ -85,11 +85,25 @@ export interface ScoringConfig {
        */
       readonly priceOnlyFallback: boolean;
       /**
-       * Km radius the destination comp fallback may reach beyond the
-       * subject's own destination label. 0 disables the widening. Same-
-       * destination hotels always outrank radius entries.
+       * The competitive radius ladder, in MILES, nearest first.
+       *
+       * Location is a component of the price, so a prime-district hotel must
+       * be compared against what a guest wanting that location could actually
+       * book instead — not against cheaper hotels many miles away that happen
+       * to carry the same destination label. The ladder climbs only when the
+       * tighter ring cannot field `minComps`; it never climbs to gather more
+       * comparables than that. Three relevant competitors beat ten loose ones.
+       *
+       * Measured 2026-08-26 over 3,036 geo-located hotels — median neighbours
+       * and the share holding at least three: 2 mi → 2 / 48%, 3 mi → 3 / 53%,
+       * 5 mi → 4 / 58%, 30 km → 9 / 74%. The ladder therefore trades reach for
+       * relevance with eyes open, and the last rung stops at 5 miles rather
+       * than restoring the old 30 km.
+       *
+       * Empty disables radius selection entirely and reverts to the
+       * destination label.
        */
-      readonly nearbyRadiusKm: number;
+      readonly radiusMiles: readonly number[];
       /** Competitor rates older than this are not live-validated; excluded. */
       readonly maxCompAgeHours: number;
       /** CSI at which the sub-score hits 0 and 100 respectively. */
@@ -282,11 +296,20 @@ export interface ScoringConfig {
 }
 
 export const DEFAULT_CONFIG: ScoringConfig = {
-  // v7 — adds `live.csi.nearbyRadiusKm`: the destination comp fallback may
+  // v8 — replaces v7's flat 30 km reach with `live.csi.radiusMiles`, a
+  // 2 → 3 → 5 mile ladder that climbs ONLY when the tighter ring cannot field
+  // minComps. Location is part of what a rate buys, so a prime-district hotel
+  // compared against suburban ones at 30 km was being measured against rooms
+  // its guest was never choosing between. The ladder narrows the primary
+  // market by design and the cost is real and measured: catalogue-wide, the
+  // share of hotels with three neighbours in range falls from 74% (30 km) to
+  // 58% (5 mi). That is the trade the direction asks for — three relevant
+  // competitors over ten loose ones — and it is not recovered by widening.
+  //
+  // v7 added `live.csi.nearbyRadiusKm`: the destination comp fallback could
   // reach 30 km beyond the subject's destination LABEL, because labels
-  // fragment physical markets (Palm Beach Aruba vs Oranjestad). Same-
-  // destination hotels always outrank radius entries, so dense cities are
-  // unchanged; only label-starved markets gain comparables.
+  // fragment physical markets (Palm Beach Aruba vs Oranjestad). v8 keeps that
+  // insight — physical distance, not the label — and tightens the distance.
   //
   // v6 added the price-only comp-set fallback (`live.csi.priceOnlyFallback`):
   // when every terms-matched rung of the comparison ladder comes up short, the
@@ -302,7 +325,7 @@ export const DEFAULT_CONFIG: ScoringConfig = {
   //
   // The v2 factor weights are retained unchanged, and every analysis records the
   // version that produced it, so older scores stay reproducible.
-  version: 7,
+  version: 8,
 
   score: {
     weight: {
@@ -337,13 +360,15 @@ export const DEFAULT_CONFIG: ScoringConfig = {
       // honestly: real prices, same stay, terms disclosed as unmatched,
       // confidence pinned LOW.
       priceOnlyFallback: true,
-      // Destination labels fragment physical markets: Palm Beach Aruba and
-      // Oranjestad are one island 7 km apart, and the split left the
-      // St. Regis with 2 comparables in a 4-hotel market (2026-08-25).
-      // 30 km holds the comparison to the same local market — it reaches
-      // across a resort island or a metro area (Versailles→Paris is ~18 km)
-      // without stitching separate cities together.
-      nearbyRadiusKm: 30,
+      // 2 miles is the primary market; 3 and 5 exist for the markets too
+      // sparse to field three comparables inside it. 5 is the end of the
+      // ladder deliberately — the previous 30 km reached across a whole metro
+      // area and compared a prime-district hotel with suburban ones, which is
+      // the comparison this ladder exists to stop making.
+      //
+      // The St. Regis Aruba case that motivated the old 30 km still resolves:
+      // its missing comparable is 7 km away, inside the 5-mile rung (8.05 km).
+      radiusMiles: [2, 3, 5],
       maxCompAgeHours: 24,
       // CSI 130 → 0, CSI 70 → 100. Centred so parity (100) lands mid-scale.
       scoreAtCsi: { zero: 130, full: 70 },

@@ -75,31 +75,42 @@ function compSetCte(limitParam: string, widenParam: string, radiusParam: string)
          WHERE NOT EXISTS (SELECT 1 FROM curated)
            AND h.is_active
            AND h.id <> $1
-           -- The same destination, PLUS anything within the nearby radius.
-           -- Destination labels fragment real markets: Palm Beach Aruba and
-           -- Oranjestad are 7 km apart on one island, and the label split
-           -- left the St. Regis with two comparables in a four-hotel market
-           -- (2026-08-25). Distance is symmetric and physical; the radius is
-           -- config (live.csi.nearbyRadiusKm), and 0 disables the widening.
-           -- Same-destination hotels still outrank radius entries below, so a
-           -- dense city never sees its comp set diluted by neighbours.
+           -- DISTANCE FIRST, label second.
+           --
+           -- Location is part of what a rate buys, so the primary competitive
+           -- set is what a guest wanting THIS location could book instead. A
+           -- shared destination label is not that: labels span a whole metro
+           -- area, and comparing a prime-district hotel with suburban ones
+           -- measured it against rooms its guest was never choosing between.
+           -- The radius is a ladder in config (live.csi.radiusMiles) and the
+           -- caller climbs it only when the tighter ring cannot field
+           -- minComps.
+           --
+           -- The label survives for exactly one case: a subject we hold no
+           -- coordinates for (5% of the catalogue, measured 2026-08-26).
+           -- There, distance cannot be computed at all, and a destination
+           -- comparison is better evidence than none. A comparable without
+           -- coordinates is excluded whenever the subject has them — we
+           -- cannot place it, so counting it would defeat the radius.
            AND (
-             (s.destination_id IS NOT NULL AND h.destination_id = s.destination_id)
-             OR (
-               ${radiusParam}::float8 > 0
-               AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
-               AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
-               AND power(111.32 * (h.latitude - s.latitude)::float8, 2)
-                 + power(111.32 * cos(radians(s.latitude::float8))
-                     * (h.longitude - s.longitude)::float8, 2)
-                 <= power(${radiusParam}::float8, 2)
-             )
+             CASE
+               WHEN ${radiusParam}::float8 > 0
+                 AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+               THEN h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+                 AND power(111.32 * (h.latitude - s.latitude)::float8, 2)
+                   + power(111.32 * cos(radians(s.latitude::float8))
+                       * (h.longitude - s.longitude)::float8, 2)
+                   <= power(${radiusParam}::float8, 2)
+               ELSE s.destination_id IS NOT NULL AND h.destination_id = s.destination_id
+             END
            )
-         ORDER BY (h.destination_id = s.destination_id) IS NOT TRUE,
+         -- Within the ring, nearer is more relevant, all else equal. city_rank
+         -- still breaks ties for what the source has ranked; it orders and
+         -- never scores (see CLAUDE.md rule 19).
+         ORDER BY (h.latitude IS NULL OR s.latitude IS NULL),
+                  (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
                   (h.city_rank IS NULL),
                   h.city_rank DESC,
-                  (h.latitude IS NULL OR s.latitude IS NULL),
-                  (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
                   h.id
          LIMIT ${limitParam})
      )`;
