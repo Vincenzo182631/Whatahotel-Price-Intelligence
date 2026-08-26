@@ -21,6 +21,9 @@
 //   node scripts/db-maintain.mjs --apply     # truncate + slim + vacuum
 //   node scripts/db-maintain.mjs --squeeze   # TRUNCATE observations, migrate
 //   node scripts/db-maintain.mjs --broken   # hotels whose rate lookups keep failing
+//   node scripts/db-maintain.mjs --coverage # which hotel attributes actually exist,
+//                                           # and how many neighbours a tighter
+//                                           # competitive radius would find
 //   node scripts/db-maintain.mjs --market 6792 2026-08-30 1 2
 //                                            # read-only market probe: why does
 //                                            # this hotel's comp pool look the
@@ -51,15 +54,22 @@ const KEEP_DAYS = Number(process.env.RAW_KEEP_DAYS ?? 14);
 const BATCH = Number(process.env.RAW_BATCH ?? 20_000);
 
 async function sql(query) {
-  const { stdout } = await run('psql', [DATABASE_URL, '-tA', '-v', 'ON_ERROR_STOP=1', '-c', query], {
-    maxBuffer: 16 * 1024 * 1024,
-  });
+  const { stdout } = await run(
+    'psql',
+    [DATABASE_URL, '-tA', '-v', 'ON_ERROR_STOP=1', '-c', query],
+    {
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  );
   return stdout.trim();
 }
 
 async function measure(label) {
   console.log(`\n── ${label} ──`);
-  console.log('database size:', await sql('SELECT pg_size_pretty(pg_database_size(current_database()))'));
+  console.log(
+    'database size:',
+    await sql('SELECT pg_size_pretty(pg_database_size(current_database()))'),
+  );
   const top = await sql(`
     SELECT relname || ' ' || pg_size_pretty(pg_total_relation_size(c.oid))
       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -71,7 +81,12 @@ async function measure(label) {
       FROM rate_observation
      WHERE observation_slot < now() - interval '${KEEP_DAYS} days' AND raw IS NOT NULL`);
   console.log(`raw older than ${KEEP_DAYS}d:`, rawStats);
-  console.log('ingest_reject:', await sql(`SELECT count(*) || ' rows, ' || pg_size_pretty(pg_total_relation_size('ingest_reject'))  FROM ingest_reject`));
+  console.log(
+    'ingest_reject:',
+    await sql(
+      `SELECT count(*) || ' rows, ' || pg_size_pretty(pg_total_relation_size('ingest_reject'))  FROM ingest_reject`,
+    ),
+  );
 }
 
 // Read-only report: hotels whose rate lookups keep failing.
@@ -88,6 +103,91 @@ async function measure(label) {
 // rates call, which is the authoritative check anyway: a broken mapping
 // answers status 500 with amadeus.amaID = "NULL" while the code itself is
 // present. Read-only; verify each candidate that way before acting on it.
+// Which hotel attributes actually EXIST, and how dense the map is.
+//
+// Written before narrowing the competitive radius, because that change rests
+// on two things nobody had measured: how many hotels carry coordinates at all
+// (no coordinates, no radius) and how many neighbours a 2/3/5-mile radius
+// actually finds. A radius tuned against an imagined catalogue would quietly
+// starve the comp set instead of sharpening it.
+//
+// It also answers, once, which of the attributes a comparable-qualification
+// model might key on are populated and which are columns nothing ever writes.
+// Read-only.
+const COVERAGE = process.argv.includes('--coverage');
+if (COVERAGE) {
+  console.log('\n── attribute coverage across active hotels ──');
+  console.log(
+    await sql(`
+      WITH a AS (SELECT * FROM hotel WHERE is_active)
+      SELECT 'active hotels          ' || count(*) FROM a
+      UNION ALL SELECT 'with coordinates       ' || count(*) || '  (' ||
+             round(100.0 * count(*) / NULLIF((SELECT count(*) FROM a), 0)) || '%)'
+        FROM a WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+      UNION ALL SELECT 'with google rating     ' || count(*) || '  (' ||
+             round(100.0 * count(*) / NULLIF((SELECT count(*) FROM a), 0)) || '%)'
+        FROM a WHERE google_match_status = 'VERIFIED' AND google_rating IS NOT NULL
+      UNION ALL SELECT 'with city_rank         ' || count(*) FROM a WHERE city_rank IS NOT NULL
+      UNION ALL SELECT 'with street_address    ' || count(*) FROM a WHERE street_address IS NOT NULL
+      UNION ALL SELECT 'with star_rating       ' || count(*) FROM a WHERE star_rating IS NOT NULL
+      UNION ALL SELECT 'with luxury_tier       ' || count(*) FROM a WHERE luxury_tier IS NOT NULL
+      UNION ALL SELECT 'with brand             ' || count(*) FROM a WHERE brand IS NOT NULL
+      UNION ALL SELECT 'with chain             ' || count(*) FROM a WHERE chain IS NOT NULL
+      UNION ALL SELECT 'with any perk/benefit  ' || count(DISTINCT hotel_id) FROM hotel_benefit
+      UNION ALL SELECT 'destinations           ' || count(DISTINCT destination_id) FROM a`),
+  );
+
+  // How many OTHER active hotels sit inside each candidate radius, for hotels
+  // that carry coordinates. Equirectangular, the same approximation the comp
+  // CTE uses, so the numbers describe the query that would actually run.
+  console.log('\n── neighbours within a candidate radius (hotels with coordinates) ──');
+  console.log(
+    await sql(`
+      WITH geo AS (
+        SELECT id, latitude::float8 AS lat, longitude::float8 AS lon
+          FROM hotel WHERE is_active AND latitude IS NOT NULL AND longitude IS NOT NULL
+      ),
+      pairs AS (
+        SELECT s.id,
+               sqrt(power(111.32 * (h.lat - s.lat), 2)
+                  + power(111.32 * cos(radians(s.lat)) * (h.lon - s.lon), 2)) AS km
+          FROM geo s JOIN geo h ON h.id <> s.id
+      ),
+      per AS (
+        SELECT s.id,
+               count(*) FILTER (WHERE p.km <= 3.219) AS within_2mi,
+               count(*) FILTER (WHERE p.km <= 4.828) AS within_3mi,
+               count(*) FILTER (WHERE p.km <= 8.047) AS within_5mi,
+               count(*) FILTER (WHERE p.km <= 30.0)  AS within_30km
+          FROM geo s LEFT JOIN pairs p ON p.id = s.id
+         GROUP BY s.id
+      )
+      SELECT 'radius  ' || rpad(label, 8)
+          || ' | median ' || lpad(med::text, 4)
+          || ' | >=3 comps ' || lpad(atleast3::text, 5)
+          || ' (' || lpad(round(100.0 * atleast3 / NULLIF(total, 0))::text, 3) || '%)'
+          || ' | zero ' || lpad(zero::text, 5)
+        FROM (
+          SELECT '2 mi' AS label,
+                 percentile_disc(0.5) WITHIN GROUP (ORDER BY within_2mi) AS med,
+                 count(*) FILTER (WHERE within_2mi >= 3) AS atleast3,
+                 count(*) FILTER (WHERE within_2mi = 0) AS zero,
+                 count(*) AS total, 1 AS ord FROM per
+          UNION ALL SELECT '3 mi', percentile_disc(0.5) WITHIN GROUP (ORDER BY within_3mi),
+                 count(*) FILTER (WHERE within_3mi >= 3), count(*) FILTER (WHERE within_3mi = 0),
+                 count(*), 2 FROM per
+          UNION ALL SELECT '5 mi', percentile_disc(0.5) WITHIN GROUP (ORDER BY within_5mi),
+                 count(*) FILTER (WHERE within_5mi >= 3), count(*) FILTER (WHERE within_5mi = 0),
+                 count(*), 3 FROM per
+          UNION ALL SELECT '30 km', percentile_disc(0.5) WITHIN GROUP (ORDER BY within_30km),
+                 count(*) FILTER (WHERE within_30km >= 3), count(*) FILTER (WHERE within_30km = 0),
+                 count(*), 4 FROM per
+        ) t ORDER BY ord`),
+  );
+
+  process.exit(0);
+}
+
 const BROKEN = process.argv.includes('--broken');
 if (BROKEN) {
   console.log('\n── hotels whose rate lookups keep failing ──');
@@ -228,7 +328,9 @@ const partitions = (
   await sql(`
     SELECT c.relname FROM pg_class c JOIN pg_inherits i ON i.inhrelid = c.oid
      WHERE i.inhparent = 'rate_observation'::regclass ORDER BY c.relname`)
-).split('\n').filter(Boolean);
+)
+  .split('\n')
+  .filter(Boolean);
 
 let total = 0;
 let batch = 500;
@@ -252,7 +354,8 @@ for (;;) {
       batch = Math.max(50, Math.floor(batch / 2));
       console.log(`  size limit hit — batch down to ${batch}, vacuuming …`);
       for (const part of partitions) await sql(`VACUUM ${part}`).catch(() => {});
-      if (failures > 12) throw new Error('cannot reclaim: repeated size-limit failures at minimum batch');
+      if (failures > 12)
+        throw new Error('cannot reclaim: repeated size-limit failures at minimum batch');
       continue;
     }
     throw err;
@@ -270,4 +373,6 @@ console.log('VACUUM ANALYZE rate_observation …');
 await sql('VACUUM ANALYZE rate_observation');
 
 await measure('after');
-console.log('\nDone. Note: freed pages are reused by new writes; the project size figure itself shrinks only as files are truncated or rewritten.');
+console.log(
+  '\nDone. Note: freed pages are reused by new writes; the project size figure itself shrinks only as files are truncated or rewritten.',
+);
