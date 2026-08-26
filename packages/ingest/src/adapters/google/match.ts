@@ -163,6 +163,24 @@ function streetWords(tokens: readonly string[]): Set<string> {
 }
 
 /**
+ * Could this address ever confirm anything?
+ *
+ * addressConfirms needs a shared house number, so an address without one can
+ * never lift the no-coordinates ceiling however well it reads. That makes the
+ * distinction load-bearing OUTSIDE the matcher too: resolveHotel uses it to
+ * decide whether asking Google is worth a call, because a foredoomed ask
+ * spends the hotel's ONE retry — UNVERIFIED is never re-queued — on an
+ * outcome that was decided before the request left.
+ *
+ * Learned the expensive way: gating the call on merely HAVING an address
+ * retired 35 hotels in a single sweep, which is exactly what the
+ * SKIPPED_NO_GEO comment was written to prevent.
+ */
+export function addressCanConfirm(address: string | null): boolean {
+  return !!address && houseNumbers(normalizeAddress(address)).size > 0;
+}
+
+/**
  * True when both records name the same building.
  *
  * Requires BOTH a shared house number and overlapping street words. Either

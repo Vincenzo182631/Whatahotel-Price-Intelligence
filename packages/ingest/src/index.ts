@@ -56,6 +56,7 @@ export type { PlaceSweepOptions, PlaceSweepResult } from './pipeline/resolvePlac
 export { PlacesClient } from './adapters/google/places.js';
 export type { PlaceReputation, PlacesClientOptions } from './adapters/google/places.js';
 export {
+  addressCanConfirm,
   addressConfirms,
   bestMatch,
   distanceKm,

@@ -13,7 +13,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { parseHotelPage } from '../../packages/ingest/src/adapters/whatahotel/page.js';
-import { addressConfirms, scoreMatch } from '../../packages/ingest/src/adapters/google/match.js';
+import {
+  addressCanConfirm,
+  addressConfirms,
+  scoreMatch,
+} from '../../packages/ingest/src/adapters/google/match.js';
 import type {
   HotelIdentity,
   PlaceCandidate,
@@ -145,5 +149,34 @@ describe('what an address does to a match', () => {
       candidate({ latitude: 26.1, longitude: -80.4 }),
     );
     expect(far.confidence).toBe(0);
+  });
+});
+
+describe('whether an address is worth spending a lookup on', () => {
+  // This gate is not an optimisation. UNVERIFIED is never re-queued, so a call
+  // that cannot possibly clear the bar does not merely waste money — it spends
+  // the hotel's ONE retry on an outcome fixed before the request left. Gating
+  // on merely HAVING an address retired 35 hotels in a single production
+  // sweep, which is precisely what SKIPPED_NO_GEO exists to prevent.
+  it('says yes only when a house number is present to match on', () => {
+    expect(addressCanConfirm('455 Grand Bay Drive')).toBe(true);
+    expect(addressCanConfirm('Mitropoleos 49')).toBe(true);
+    expect(addressCanConfirm('L.G. Smith Blvd # 103')).toBe(true);
+  });
+
+  it('says no to the addresses that can never lift the ceiling', () => {
+    // All three are real catalogue addresses.
+    expect(addressCanConfirm('Conference Centre Street')).toBe(false);
+    expect(addressCanConfirm('Centre Park House')).toBe(false);
+    expect(addressCanConfirm('Triple Bay')).toBe(false);
+    expect(addressCanConfirm(null)).toBe(false);
+    expect(addressCanConfirm('')).toBe(false);
+  });
+
+  it('agrees with addressConfirms — anything it rejects could never have matched', () => {
+    for (const ours of ['Conference Centre Street', 'Centre Park House', 'Triple Bay']) {
+      expect(addressCanConfirm(ours)).toBe(false);
+      expect(addressConfirms(ours, '1 Conference Centre Street, Doha, Qatar')).toBe(false);
+    }
   });
 });

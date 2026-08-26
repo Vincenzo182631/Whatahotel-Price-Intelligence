@@ -16,7 +16,7 @@
  */
 
 import type { PlaceCandidate } from './match.js';
-import { bestMatch } from './match.js';
+import { addressCanConfirm, bestMatch } from './match.js';
 import type { PlacesClient, PlaceReputation } from './places.js';
 import { extractReviewThemes } from './themes.js';
 
@@ -128,15 +128,23 @@ export async function resolveHotel(
   // UNVERIFIED, and UNVERIFIED is never retried: one sweep would permanently
   // retire every hotel whose geography we happen not to hold yet.
   //
-  // A street address lifts that cap, so holding one is reason enough to ask
-  // even with no coordinates. With neither, this is a gap in our own
+  // A street address lifts that cap — but only one that CAN confirm, meaning
+  // one carrying a house number. Holding an address with no number changes
+  // nothing about the ceiling, so asking on the strength of it is the same
+  // foredoomed call, and it costs more than the call: UNVERIFIED is never
+  // re-queued, so it spends the hotel's one retry on a decided outcome.
+  //
+  // With no usable geography of either kind, this is a gap in our own
   // catalogue rather than a fact about the hotel, and it closes the moment
   // either arrives. So: do not call, do not write, and let the next sweep
   // find it again. Same reasoning as FAILED.
   // `== null` rather than `=== null`: a caller that simply omits the address
   // means the same thing as one that states it has none, and reading undefined
   // as "present" would spend a doomed Text Search call on every such hotel.
-  if ((hotel.latitude === null || hotel.longitude === null) && hotel.streetAddress == null) {
+  if (
+    (hotel.latitude === null || hotel.longitude === null) &&
+    !addressCanConfirm(hotel.streetAddress ?? null)
+  ) {
     return { status: 'SKIPPED_NO_GEO' };
   }
 
