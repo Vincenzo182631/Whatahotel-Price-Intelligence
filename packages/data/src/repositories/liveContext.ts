@@ -60,9 +60,35 @@ import { db, type Queryable } from '../client.js';
  */
 function compSetCte(limitParam: string, widenParam: string, radiusParam: string): string {
   return `curated AS (
+       -- The radius governs the CURATED set too.
+       --
+       -- It did not, and that made the ladder half a feature: measured over 32
+       -- production hotels on 2026-08-26, most carry a curated peer set, so
+       -- tightening the destination branch to 2 miles moved exactly one score.
+       -- A curated comparable is chosen on price band within a shared
+       -- destination LABEL, and a label spans a metro area — which is the
+       -- comparison v8 exists to stop making, whoever chose it.
+       --
+       -- When the subject has no coordinates the curated set stands as built:
+       -- distance cannot be computed, and a same-destination peer set is
+       -- better evidence than none.
        SELECT c.comparable_id AS hotel_id, c.rank
          FROM hotel_comparable c
+         JOIN hotel ch ON ch.id = c.comparable_id,
+              (SELECT latitude, longitude FROM hotel WHERE id = $1) cs
         WHERE c.hotel_id = $1 AND NOT ${widenParam}
+          AND (
+            CASE
+              WHEN ${radiusParam}::float8 > 0
+                AND cs.latitude IS NOT NULL AND cs.longitude IS NOT NULL
+              THEN ch.latitude IS NOT NULL AND ch.longitude IS NOT NULL
+                AND power(111.32 * (ch.latitude - cs.latitude)::float8, 2)
+                  + power(111.32 * cos(radians(cs.latitude::float8))
+                      * (ch.longitude - cs.longitude)::float8, 2)
+                  <= power(${radiusParam}::float8, 2)
+              ELSE true
+            END
+          )
         ORDER BY c.rank
         LIMIT ${limitParam}
      ),
