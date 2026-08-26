@@ -27,6 +27,7 @@
 import type { LiveExplanationBundle } from './liveBundle.js';
 import { validateNarrative } from './validate.js';
 import type { AssessmentConfidence } from './assessment.js';
+import { THEME_PROSE } from './themes.js';
 
 /** At most this many chips are DISPLAYED; the citable list is wider. */
 export const MAX_DISPLAY_SIGNALS = 4;
@@ -54,21 +55,10 @@ export interface HotelValue {
   readonly source: 'MODEL' | 'DETERMINISTIC';
 }
 
-/** Prose for the theme keys, used by the deterministic summary. */
-export const THEME_PROSE: Readonly<Record<string, string>> = {
-  service: 'service',
-  location: 'the location',
-  beach: 'the beach',
-  pool: 'the pool',
-  spa: 'the spa',
-  rooms: 'the rooms',
-  dining: 'dining',
-  views: 'the views',
-  cleanliness: 'cleanliness',
-  quiet: 'the quiet atmosphere',
-  family: 'family stays',
-  grounds: 'the grounds',
-};
+// THEME_PROSE moved to themes.ts (the premium assessment reads it too, and
+// hotelValue <- assessment would otherwise be a cycle). Re-exported so every
+// existing importer of it from this module keeps working.
+export { THEME_PROSE } from './themes.js';
 
 /**
  * The verified signal chips — built into the bundle itself (liveBundle.ts)

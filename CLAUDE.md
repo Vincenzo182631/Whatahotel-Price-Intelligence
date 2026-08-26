@@ -481,4 +481,15 @@ stays null (rule 3), the engine is untouched, and the one message allowed to
 say a stay cannot be presented is the unbookable notice — phrased about the
 stay and the advisor, never about our data.
 
+**Premium justification is not only money** (2026-08-26): when the source
+states no inclusions — the common case — `premiumSupport()` justifies the
+premium from the rating measured against the COMPARABLES' median, the review
+themes, and the stated perks, ranked in that order (docs/mvp/02, final
+section). Three hard rules: a rating is never converted into money; a rating
+advantage may only be claimed when the comparables' median exists and the
+subject is genuinely above it (never the inverse claim — we do not tell a
+guest a hotel is worse than its neighbours); and with no evidence the line
+states the gap and stops. `premium.dearer_than_all_comparables` makes "above
+every comparable" a checked claim rather than a loose reading of the median.
+
 The weights in every version so far remain uncalibrated priors.

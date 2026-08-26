@@ -122,6 +122,14 @@ export interface LiveExplanationBundle {
     readonly price_difference_nightly_minor: number | null;
     /** The same figure as prose should carry it ("$230"). */
     readonly price_difference_display: string | null;
+    /**
+     * True when the rate is dearer than EVERY comparable checked, not just
+     * their median. Null when nothing was comparable. This is the claim that
+     * most needs justifying, so the assessment is allowed to make it — and
+     * only when it is true.
+     */
+    readonly dearer_than_all_comparables: boolean | null;
+    readonly comparables_priced: number;
   };
   /**
    * Where the selected rate sits in the hotel's currently available
@@ -468,6 +476,8 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
       price_difference_nightly_minor: priceDiffMinor,
       price_difference_display:
         priceDiffMinor === null ? null : displayMoney(input.currency, Math.abs(priceDiffMinor)),
+      dearer_than_all_comparables: premium.dearerThanAllComps,
+      comparables_priced: premium.compsPriced,
     },
     availability: {
       selected_position: input.availability?.position ?? null,
