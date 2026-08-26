@@ -112,6 +112,10 @@ export async function findComparableIdentities(
             (SELECT destination_id, latitude, longitude FROM hotel WHERE id = $1) s
       WHERE h.is_active
         AND h.id <> $1
+        -- A hotel a guest cannot book is not an alternative, and fetching its
+        -- rates spends the source's quota on a hotel the comparison discards.
+        -- NULL means the page never said, which is not "unbookable".
+        AND h.bookable_online IS DISTINCT FROM false
         -- Distance first, label second — byte-for-byte the predicate the
         -- comp-set CTE applies. These two queries must not diverge: a fetch
         -- list narrower than the comparison fetches rates we never use while
@@ -172,11 +176,49 @@ export async function promoteHotelForCollection(
   return (rowCount ?? 0) > 0;
 }
 
-/** Whether a curated comp set exists, or the destination fallback is in play. */
-export async function hasCuratedComparables(hotelId: number, q?: Queryable): Promise<boolean> {
+/**
+ * Whether a curated comp set exists IN RANGE, or the destination fallback is
+ * in play.
+ *
+ * The radius belongs here, not only in the comp-set query, because this
+ * answer becomes `compBasis` — the label published on every response saying
+ * where the comparison came from. Asking the table alone made that label lie:
+ * a curated comparable outside the ladder is filtered out of the comp-set
+ * CTE, which then falls through to the destination branch and returns
+ * destination hotels, while the basis still read CURATED because a row
+ * existed somewhere. Caught by the integration suite (2026-08-26) on a
+ * curated set 157 km from its subject.
+ *
+ * A curated comparable the ladder cannot reach is not part of the curated set
+ * for this comparison. The two questions must be answered by the same
+ * predicate or the label describes a set that was never used.
+ */
+export async function hasCuratedComparables(
+  hotelId: number,
+  nearbyRadiusKm: number = (DEFAULT_CONFIG.live.csi.radiusMiles[0] ?? 0) * 1.609344,
+  q?: Queryable,
+): Promise<boolean> {
   const { rows } = await db(q).query(
-    `SELECT EXISTS (SELECT 1 FROM hotel_comparable WHERE hotel_id = $1) AS curated`,
-    [hotelId],
+    `SELECT EXISTS (
+       SELECT 1
+         FROM hotel_comparable hc
+         JOIN hotel ch ON ch.id = hc.comparable_id,
+              (SELECT latitude, longitude FROM hotel WHERE id = $1) s
+        WHERE hc.hotel_id = $1
+          AND ch.bookable_online IS DISTINCT FROM false
+          AND (
+            CASE
+              WHEN $2::float8 > 0 AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+              THEN ch.latitude IS NOT NULL AND ch.longitude IS NOT NULL
+                AND power(111.32 * (ch.latitude - s.latitude)::float8, 2)
+                  + power(111.32 * cos(radians(s.latitude::float8))
+                      * (ch.longitude - s.longitude)::float8, 2)
+                  <= power($2::float8, 2)
+              ELSE true
+            END
+          )
+     ) AS curated`,
+    [hotelId, nearbyRadiusKm],
   );
   return rows[0]?.curated === true;
 }

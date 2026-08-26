@@ -146,11 +146,17 @@ describe('collection scheduling', () => {
 });
 
 describe('comparable similarity', () => {
+  // Coordinates are part of the profile since the builder gained a distance
+  // filter. Null here on purpose: these cases are about price and tier, and
+  // an unplaceable pair must still be scored — the builder keeps it rather
+  // than reading unknown distance as far.
   const hotel = (destinationId: number | null, tier: number | null, typical: number | null) => ({
     id: 1,
     destinationId,
     luxuryTier: tier,
     typicalNightlyMinor: typical,
+    latitude: null,
+    longitude: null,
   });
 
   it('is zero across destinations', () => {

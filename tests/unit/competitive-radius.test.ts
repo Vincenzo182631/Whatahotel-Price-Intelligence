@@ -15,6 +15,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_CONFIG } from '../../packages/core/src/config/defaults.js';
+import {
+  DEFAULT_COMPARABLE_OPTIONS,
+  similarityBetween,
+} from '../../packages/ingest/src/comparables/builder.js';
 
 const MILES_TO_KM = 1.609344;
 
@@ -125,5 +129,65 @@ describe('when the ladder climbs', () => {
     // absent measurement is absent, never a manufactured one.
     const r = climb(rungs, min, () => 2);
     expect(r.comps).toBeLessThan(min);
+  });
+});
+
+describe('curated peer sets are bounded by distance too', () => {
+  // The gap the 32-hotel cohort exposed. Tightening only the destination
+  // branch moved one score out of 32, because most hotels carry a curated
+  // set and the curated branch had no distance filter at all. A curated
+  // comparable is chosen on price band within a shared destination LABEL —
+  // and a label spans a metro area, which is the comparison v8 exists to stop.
+  it('never lets the builder reach further than the ladder does', () => {
+    const widestRungKm = Math.max(...DEFAULT_CONFIG.live.csi.radiusMiles) * MILES_TO_KM;
+    expect(DEFAULT_COMPARABLE_OPTIONS.maxDistanceKm).toBeCloseTo(widestRungKm, 6);
+  });
+
+  it('keeps a pair it cannot place, rather than calling unknown distance far', () => {
+    // 5% of the catalogue holds no coordinates. Dropping those from a peer
+    // set built on price would punish a gap in OUR data as though it were a
+    // fact about the hotel — the same error SKIPPED_NO_GEO exists to avoid.
+    const placed = {
+      id: 1,
+      destinationId: 7,
+      luxuryTier: null,
+      typicalNightlyMinor: 50_000,
+      latitude: null,
+      longitude: null,
+    };
+    const unplaced = { ...placed, id: 2 };
+    expect(similarityBetween({ ...placed }, { ...unplaced })).toBeGreaterThan(0);
+  });
+});
+
+describe('what qualification may and may not key on', () => {
+  // The line this codebase must not cross, stated as a test because the
+  // pressure to cross it is permanent and reasonable-sounding.
+  //
+  // CSI is subject ÷ MEDIAN comparable. So excluding cheaper hotels — or
+  // lower-rated ones, which correlate with cheaper — raises the median,
+  // lowers the index and raises the Deal Score. Every time, for every hotel.
+  // That is a score improvement produced by choosing the comparison rather
+  // than by the hotel being good value, which is exactly what a comparison
+  // is supposed to rule out.
+  //
+  // Qualification therefore keys only on things independent of price:
+  // proximity, room equivalence, rate terms, freshness, availability, and
+  // whether a guest can book the hotel at all. Reputation stays where rule 22
+  // put it — evidence beside the price, never a term in it.
+  it('demonstrates that dropping the cheapest comparable raises the score', () => {
+    const nightly = [200_00, 300_00, 400_00, 500_00];
+    const median = (xs: number[]) => {
+      const s = [...xs].sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+    };
+    const subject = 450_00;
+    const csiAll = (subject / median(nightly)) * 100;
+    const csiTrimmed = (subject / median(nightly.slice(1))) * 100;
+
+    // A LOWER index is a BETTER score, so trimming the cheap comp flatters
+    // the subject without a single fact about the subject having changed.
+    expect(csiTrimmed).toBeLessThan(csiAll);
   });
 });

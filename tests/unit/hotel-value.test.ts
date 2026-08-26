@@ -322,3 +322,46 @@ describe('every deterministic sentence passes its own bundle allowlist', () => {
     }
   });
 });
+
+describe('the room being priced is part of what the rate buys (§13)', () => {
+  const withView = (roomViewType: string | null) =>
+    deterministicHotelValue(bundle({ roomViewType }));
+
+  it('names the view the source stated', () => {
+    expect(withView('OCEAN')?.summary).toContain('an ocean view');
+    expect(withView('GARDEN')?.summary).toContain('a garden view');
+  });
+
+  it('describes a plain view as plainly as a desirable one', () => {
+    // Naming the view is a fact about what is being priced. Ranking views
+    // would be an advantage the data does not state, so CITY and INTERIOR
+    // read in exactly the same register as OCEAN.
+    expect(withView('CITY')?.summary).toContain('a city view');
+    expect(withView('INTERIOR')?.summary).toContain('an interior aspect');
+  });
+
+  it('says nothing when the source stated nothing', () => {
+    // UNKNOWN is the source declining to say. Inventing a view would be the
+    // fabrication the direction forbids, and an absent fact stays absent
+    // (rule 3).
+    // Matched on the sentence this feature emits, not on the word "view" —
+    // "recent reviewers mention" contains it, and a test that fails on its
+    // own vocabulary teaches nothing.
+    expect(withView('UNKNOWN')?.summary ?? '').not.toMatch(/category being priced/);
+    expect(withView(null)?.summary ?? '').not.toMatch(/category being priced/);
+  });
+
+  it('lets a stated view carry the section when nothing else can', () => {
+    const bare = deterministicHotelValue(
+      bundle({
+        reputation: null,
+        perks: [],
+        reviewThemes: [],
+        editorialSummary: null,
+        roomViewType: 'OCEAN',
+      }),
+    );
+    expect(bare).not.toBeNull();
+    expect(bare?.summary).toContain('an ocean view');
+  });
+});

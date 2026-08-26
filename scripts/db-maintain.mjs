@@ -238,46 +238,97 @@ if (MARKET !== -1) {
         FROM hotel h LEFT JOIN destination d ON d.id = h.destination_id
        WHERE h.wah_hotel_id = '${wahId.replace(/'/g, '')}'`),
   );
-  console.log('\ncandidates (same destination or within 30 km), with their stay data:');
+  // Which ring each candidate falls in, and — for the ones that do not make
+  // the set — WHY. "Nearby hotels we found" was never the question; the
+  // question is whether the comparison is against realistic alternatives, and
+  // that is answered by the rejections as much as by the survivors.
+  const RUNGS = [2, 3, 5];
+  const KM = 1.609344;
+  const q = (v) => String(v).replace(/'/g, '');
+  const subj = `'${q(wahId)}'`;
+  const stay = `o.check_in = '${q(checkIn)}'::date AND o.nights = ${Number(nights)} AND o.adults = ${Number(adults)}`;
+
+  console.log(`\nradius ladder: primary ${RUNGS[0]} mi, then ${RUNGS.slice(1).join(' mi, ')} mi`);
+  console.log('candidates, nearest first — ring, then why each is in or out:');
   console.log(
     await sql(`
       WITH s AS (
-        SELECT id, destination_id, latitude, longitude FROM hotel
-         WHERE wah_hotel_id = '${wahId.replace(/'/g, '')}'
+        SELECT id, destination_id, latitude, longitude FROM hotel WHERE wah_hotel_id = ${subj}
+      ),
+      cand AS (
+        SELECT h.id, h.wah_hotel_id, h.name, h.is_active, h.bookable_online,
+               h.google_rating, h.google_user_rating_count, h.city_rank,
+               d.slug AS dest,
+               CASE WHEN h.latitude IS NULL OR s.latitude IS NULL THEN NULL
+                    ELSE sqrt(power(111.32 * (h.latitude - s.latitude)::float8, 2)
+                            + power(111.32 * cos(radians(s.latitude::float8))
+                                * (h.longitude - s.longitude)::float8, 2)) END AS km,
+               (SELECT count(*) FROM rate_observation o
+                 WHERE o.hotel_id = h.id AND ${stay}
+                   AND o.observed_at >= now() - interval '24 hours') AS fresh,
+               (SELECT o.is_available FROM rate_observation o
+                 WHERE o.hotel_id = h.id AND ${stay}
+                 ORDER BY o.observed_at DESC LIMIT 1) AS avail
+          FROM hotel h JOIN s ON h.id <> s.id
+          LEFT JOIN destination d ON d.id = h.destination_id
       )
-      SELECT h.wah_hotel_id || ' ' || left(h.name, 34)
-          || ' | active=' || h.is_active
-          || ' | dest=' || COALESCE(d.slug, 'NULL')
-          || ' | coords=' || (h.latitude IS NOT NULL)
-          || ' | km=' || COALESCE(round(sqrt(
-                 power(111.32 * (h.latitude - s.latitude)::float8, 2)
-               + power(111.32 * cos(radians(s.latitude::float8))
-                   * (h.longitude - s.longitude)::float8, 2))::numeric, 1)::text, '?')
-          || ' | fresh_obs=' || (
-               SELECT count(*) FROM rate_observation o
-                WHERE o.hotel_id = h.id AND o.check_in = '${checkIn.replace(/'/g, '')}'::date
-                  AND o.nights = ${Number(nights)} AND o.adults = ${Number(adults)}
-                  AND o.observed_at >= now() - interval '24 hours')
-          || ' | avail=' || COALESCE((
-               SELECT o.is_available::text FROM rate_observation o
-                WHERE o.hotel_id = h.id AND o.check_in = '${checkIn.replace(/'/g, '')}'::date
-                  AND o.nights = ${Number(nights)} AND o.adults = ${Number(adults)}
-                ORDER BY o.observed_at DESC LIMIT 1), 'none')
-          || ' | attempt=' || COALESCE((
-               SELECT a.last_outcome || 'x' || a.consecutive_failures FROM collection_attempt a
-                WHERE a.hotel_id = h.id AND a.check_in = '${checkIn.replace(/'/g, '')}'::date
-                  AND a.nights = ${Number(nights)} AND a.adults = ${Number(adults)}
-                LIMIT 1), 'none')
-        FROM hotel h
-        JOIN s ON h.id <> s.id
-        LEFT JOIN destination d ON d.id = h.destination_id
-       WHERE (s.destination_id IS NOT NULL AND h.destination_id = s.destination_id)
-          OR (s.latitude IS NOT NULL AND h.latitude IS NOT NULL
-              AND power(111.32 * (h.latitude - s.latitude)::float8, 2)
-                + power(111.32 * cos(radians(s.latitude::float8))
-                    * (h.longitude - s.longitude)::float8, 2) <= power(30, 2))
-       ORDER BY h.wah_hotel_id`),
+      SELECT rpad(COALESCE(
+               CASE WHEN km IS NULL THEN 'no-geo'
+                    WHEN km <= ${RUNGS[0]} * ${KM} THEN '${RUNGS[0]}mi'
+                    WHEN km <= ${RUNGS[1]} * ${KM} THEN '${RUNGS[1]}mi'
+                    WHEN km <= ${RUNGS[2]} * ${KM} THEN '${RUNGS[2]}mi'
+                    ELSE 'outside' END, '?'), 8)
+          || rpad(wah_hotel_id, 7) || rpad(left(name, 30), 32)
+          || rpad(COALESCE(round(km::numeric, 2)::text || 'km', '—'), 10)
+          || rpad(CASE
+               WHEN NOT is_active                 THEN 'OUT inactive'
+               WHEN bookable_online IS false      THEN 'OUT not bookable online'
+               WHEN km IS NULL                    THEN 'OUT no coordinates'
+               WHEN km > ${RUNGS[2]} * ${KM}      THEN 'OUT beyond final rung'
+               WHEN fresh = 0                     THEN 'OUT no rate inside 24h'
+               WHEN avail IS NOT TRUE             THEN 'OUT rate not available'
+               ELSE 'in  qualifies' END, 26)
+          -- Context we HOLD, shown so the operator can judge the set. None of
+          -- it selects or scores: filtering comparables on rating or price
+          -- would raise the median and so raise the Deal Score by choosing
+          -- the comparison. See tests/unit/competitive-radius.test.ts.
+          || 'ctx rating=' || COALESCE(google_rating::text, '—')
+          || '/' || COALESCE(google_user_rating_count::text, '—')
+          || ' rank=' || COALESCE(city_rank::text, '—')
+          || ' dest=' || COALESCE(dest, '—')
+        FROM cand
+       ORDER BY (km IS NULL), km, wah_hotel_id`),
   );
+
+  console.log('\nring summary (qualifying candidates only):');
+  console.log(
+    await sql(`
+      WITH s AS (
+        SELECT id, latitude, longitude FROM hotel WHERE wah_hotel_id = ${subj}
+      ),
+      cand AS (
+        SELECT CASE WHEN h.latitude IS NULL OR s.latitude IS NULL THEN NULL
+                    ELSE sqrt(power(111.32 * (h.latitude - s.latitude)::float8, 2)
+                            + power(111.32 * cos(radians(s.latitude::float8))
+                                * (h.longitude - s.longitude)::float8, 2)) END AS km
+          FROM hotel h JOIN s ON h.id <> s.id
+         WHERE h.is_active AND h.bookable_online IS DISTINCT FROM false
+           AND (SELECT count(*) FROM rate_observation o
+                 WHERE o.hotel_id = h.id AND ${stay}
+                   AND o.observed_at >= now() - interval '24 hours') > 0
+           AND (SELECT o.is_available FROM rate_observation o
+                 WHERE o.hotel_id = h.id AND ${stay}
+                 ORDER BY o.observed_at DESC LIMIT 1) IS TRUE
+      )
+      SELECT 'within ' || rpad(label, 6) || lpad(n::text, 3) || ' qualified'
+          || CASE WHEN n >= 3 THEN '   <- ladder stops here' ELSE '' END
+        FROM (
+          SELECT '${RUNGS[0]} mi' AS label, count(*) FILTER (WHERE km <= ${RUNGS[0]} * ${KM}) AS n, 1 AS o FROM cand
+          UNION ALL SELECT '${RUNGS[1]} mi', count(*) FILTER (WHERE km <= ${RUNGS[1]} * ${KM}), 2 FROM cand
+          UNION ALL SELECT '${RUNGS[2]} mi', count(*) FILTER (WHERE km <= ${RUNGS[2]} * ${KM}), 3 FROM cand
+        ) t ORDER BY o`),
+  );
+
   process.exit(0);
 }
 

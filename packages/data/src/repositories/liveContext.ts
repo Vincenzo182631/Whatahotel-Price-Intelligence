@@ -60,9 +60,42 @@ import { db, type Queryable } from '../client.js';
  */
 function compSetCte(limitParam: string, widenParam: string, radiusParam: string): string {
   return `curated AS (
+       -- The radius governs the CURATED set too.
+       --
+       -- It did not, and that made the ladder half a feature: measured over 32
+       -- production hotels on 2026-08-26, most carry a curated peer set, so
+       -- tightening the destination branch to 2 miles moved exactly one score.
+       -- A curated comparable is chosen on price band within a shared
+       -- destination LABEL, and a label spans a metro area — which is the
+       -- comparison v8 exists to stop making, whoever chose it.
+       --
+       -- When the subject has no coordinates the curated set stands as built:
+       -- distance cannot be computed, and a same-destination peer set is
+       -- better evidence than none.
        SELECT c.comparable_id AS hotel_id, c.rank
          FROM hotel_comparable c
+         JOIN hotel ch ON ch.id = c.comparable_id,
+              (SELECT latitude, longitude FROM hotel WHERE id = $1) cs
         WHERE c.hotel_id = $1 AND NOT ${widenParam}
+          -- A hotel a guest cannot book is not an alternative. The public
+          -- page states this outright for some properties (migration 0016);
+          -- the rates API answers an ambiguous 500 for the same stay, so this
+          -- flag is the only place the fact is legible. NULL means the page
+          -- never said, which is not the same as "unbookable" — hence
+          -- IS DISTINCT FROM false rather than a plain <> .
+          AND ch.bookable_online IS DISTINCT FROM false
+          AND (
+            CASE
+              WHEN ${radiusParam}::float8 > 0
+                AND cs.latitude IS NOT NULL AND cs.longitude IS NOT NULL
+              THEN ch.latitude IS NOT NULL AND ch.longitude IS NOT NULL
+                AND power(111.32 * (ch.latitude - cs.latitude)::float8, 2)
+                  + power(111.32 * cos(radians(cs.latitude::float8))
+                      * (ch.longitude - cs.longitude)::float8, 2)
+                  <= power(${radiusParam}::float8, 2)
+              ELSE true
+            END
+          )
         ORDER BY c.rank
         LIMIT ${limitParam}
      ),
@@ -75,6 +108,9 @@ function compSetCte(limitParam: string, widenParam: string, radiusParam: string)
          WHERE NOT EXISTS (SELECT 1 FROM curated)
            AND h.is_active
            AND h.id <> $1
+           -- Not an alternative if a guest cannot book it. See the curated
+           -- branch above for why NULL is kept.
+           AND h.bookable_online IS DISTINCT FROM false
            -- DISTANCE FIRST, label second.
            --
            -- Location is part of what a rate buys, so the primary competitive
