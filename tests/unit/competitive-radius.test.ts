@@ -147,7 +147,14 @@ describe('curated peer sets are bounded by distance too', () => {
     // 5% of the catalogue holds no coordinates. Dropping those from a peer
     // set built on price would punish a gap in OUR data as though it were a
     // fact about the hotel — the same error SKIPPED_NO_GEO exists to avoid.
-    const placed = { id: 1, destinationId: 7, luxuryTier: null, typicalNightlyMinor: 50_000 };
+    const placed = {
+      id: 1,
+      destinationId: 7,
+      luxuryTier: null,
+      typicalNightlyMinor: 50_000,
+      latitude: null,
+      longitude: null,
+    };
     const unplaced = { ...placed, id: 2 };
     expect(similarityBetween({ ...placed }, { ...unplaced })).toBeGreaterThan(0);
   });
