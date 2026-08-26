@@ -61,7 +61,26 @@ export const DEFAULT_GRID_SPEC: GridSpec = {
   anchorLeadDays: [14, 17, 35, 38, 63, 66],
   satelliteOffsetDays: [-14, -7, 0, 7, 14],
   minLeadDays: 3,
-  nights: [1, 3],
+  // 1, 2 AND 3 nights.
+  //
+  // 2 was missing, and its absence was invisible because nothing reports it:
+  // findNearbyDateRates matches `nights` EXACTLY — comparing a two-night price
+  // against a three-night one would measure the product, not the dates — so a
+  // two-night stay could never find a neighbour, the Calendar signal was never
+  // available, and 35% of the live model was silently redistributed on every
+  // such request. Confidence could not reach HIGH either, since that needs
+  // nearby-date evidence.
+  //
+  // Measured 2026-08-26 on hotel 1198: at 3 nights, 14 neighbours and HIGH
+  // confidence; at 2 nights, zero neighbours and the calendar unavailable.
+  // Two nights is a weekend break — plausibly the commonest leisure stay
+  // there is, and the one length the system was blind on.
+  //
+  // Cost: the grid grows by half again, because stay length multiplies the
+  // whole date set. There is no cheaper route — the source has no calendar
+  // endpoint, so a nearby-date price exists only if it was collected as its
+  // own stay.
+  nights: [1, 2, 3],
   adults: 2,
   backoffAfterFailures: 3,
   backoffMaxHours: 168, // one week
