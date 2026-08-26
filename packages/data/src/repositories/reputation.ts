@@ -34,6 +34,8 @@ export interface ResolutionTarget {
   readonly city: string | null;
   readonly latitude: number | null;
   readonly longitude: number | null;
+  /** From the public hotel page. Lifts the matcher's no-coordinates cap. */
+  readonly streetAddress: string | null;
   readonly placeId: string | null;
 }
 
@@ -139,7 +141,8 @@ export async function findResolutionTargets(
   q?: Queryable,
 ): Promise<ResolutionTarget[]> {
   const { rows } = await db(q).query(
-    `SELECT h.id, h.name, d.name AS city, h.latitude, h.longitude, h.google_place_id
+    `SELECT h.id, h.name, d.name AS city, h.latitude, h.longitude,
+            h.street_address, h.google_place_id
        FROM hotel h
        LEFT JOIN destination d ON d.id = h.destination_id
       WHERE h.is_active
@@ -160,6 +163,7 @@ export async function findResolutionTargets(
     city: (row.city as string) ?? null,
     latitude: row.latitude === null ? null : Number(row.latitude),
     longitude: row.longitude === null ? null : Number(row.longitude),
+    streetAddress: (row.street_address as string) ?? null,
     placeId: (row.google_place_id as string) ?? null,
   }));
 }

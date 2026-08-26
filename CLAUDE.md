@@ -33,6 +33,9 @@ WAH_API_KEY=... npm run collect -- --catalog-sweep   # sync the WHOLE catalogue
 WAH_API_KEY=... npm run collect                      # top up the grid + refresh what is due
 WAH_API_KEY=... npm run collect -- --bootstrap       # grid only, skip the due-refresh
 WAH_API_KEY=... npm run collect -- --dry-run         # show the plan, call nothing
+
+npm run pages                     # read hotel pages: street address + bookability
+npm run pages -- --dry-run        # show the queue, fetch nothing
 ```
 
 **Setting up a production database:** run the **Database setup** workflow with
@@ -325,6 +328,44 @@ engine.
     because that is a statement about the price, not the verdict. 60 sits in
     the MARKET band, so the floored copy reads "Market rate / Consider
     booking", never a recommendation against the hotel.
+
+24. **The hotel PAGE states things the rates API does not — and one thing it
+    only appears to.** `https://www.whatahotel.com/hotels/<id>/` resolves
+    without the URL slug, so the public page is addressable from the same id
+    space the sweep already walks (`adapters/whatahotel/page.ts`, `npm run
+pages`). Two facts are read from it and stored on `hotel` (migration
+    0016): `street_address` and `bookable_online`.
+
+    **The address is the load-bearing one.** Places matching is decided by
+    geography, so a hotel with no coordinates is capped below the threshold
+    and permanently `SKIPPED_NO_GEO` — it can never earn a rating. The
+    merchant's street address answers the same question and reaches us from
+    OUTSIDE Google, so corroborating a candidate with it is independent
+    evidence rather than Google confirming itself. `addressConfirms` requires
+    BOTH a shared house number and overlapping street words — either alone is
+    worthless, since house number 1 is shared by half a city and one
+    destination holds a dozen Ocean Drives — and it may only ever CONFIRM,
+    never refute. Two records of one property routinely disagree on the house
+    number ("L.G. Smith Blvd # 103" against Google's "101"), and a false
+    refutation is permanent because UNVERIFIED is never retried. Distance keeps
+    the refuting role; it earns it by being unambiguous. Measured over 15
+    sampled ids: 12 real hotels, 11 with an address, 8 of those carrying a
+    house number.
+
+    **What the page only appears to state.** Its schema.org block carries
+    `starRating`, `priceRange` and `amenityFeature`, and all three were
+    byte-identical across all 12 real hotels — 5 stars, `$$$$`, and the same
+    five WhataHotel perks on a yacht collection and on an airport hotel alike.
+    It is an SEO template, not a measurement. `parseHotelPage` does not return
+    them, so nothing downstream can reach them, and a test asserts that. Rule
+    21's "this source has no star rating" therefore still stands: a constant
+    that reads as a quality signal is worse than no signal, because it looks
+    like evidence. Rule 9's principle, wearing a rating's clothes.
+
+    **`bookable_online` is how a 500 gets a meaning.** The page says outright
+    that some properties cannot be booked online; the rates API answers a bare
+    500 for the same stay, indistinguishable from an upstream fault. NULL means
+    the page did not say — never "bookable".
 
 ## Adding or changing a factor
 

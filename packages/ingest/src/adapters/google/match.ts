@@ -26,6 +26,13 @@ export interface HotelIdentity {
   readonly city: string | null;
   readonly latitude: number | null;
   readonly longitude: number | null;
+  /**
+   * The merchant's own street address, from the public hotel page.
+   *
+   * Independent of Google, which is the whole point: corroborating a Google
+   * candidate with a Google-derived address would be Google confirming itself.
+   */
+  readonly streetAddress?: string | null;
 }
 
 export interface MatchScore {
@@ -89,6 +96,97 @@ export function distanceKm(aLat: number, aLon: number, bLat: number, bLon: numbe
 }
 
 /**
+ * Street-address agreement between our record and a Google candidate.
+ *
+ * This exists to rescue the hotels that hold no coordinates. It is the same
+ * KIND of evidence as distance — where the building is, rather than what it
+ * is called — which is why it is allowed to lift the no-coordinates ceiling
+ * that name similarity alone can never lift.
+ *
+ * It is deliberately one-directional: it can CONFIRM, never refute. Two
+ * records of the same property routinely disagree on the house number
+ * ("L.G. Smith Blvd # 103" against Google's "L.G. Smith Blvd 101"), and a
+ * false refutation would retire a correct match permanently, because
+ * UNVERIFIED is never retried. Distance keeps the refuting role; it earns it
+ * by being unambiguous.
+ */
+
+const STREET_WORDS: Record<string, string> = {
+  street: 'st',
+  drive: 'dr',
+  road: 'rd',
+  avenue: 'ave',
+  boulevard: 'blvd',
+  lane: 'ln',
+  place: 'pl',
+  court: 'ct',
+  highway: 'hwy',
+  parkway: 'pkwy',
+  square: 'sq',
+  terrace: 'ter',
+  suite: 'ste',
+  north: 'n',
+  south: 's',
+  east: 'e',
+  west: 'w',
+};
+
+/** Lowercase, unaccented, with street suffixes reduced to one spelling. */
+function normalizeAddress(value: string): string[] {
+  return value
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .map((token) => STREET_WORDS[token] ?? token)
+    .filter(Boolean);
+}
+
+/**
+ * House numbers, wherever the local convention puts them.
+ *
+ * "455 Grand Bay Drive" leads with it, "Mitropoleos 49" trails it, so position
+ * carries no meaning across this catalogue and every standalone number counts.
+ * Long numbers are dropped: a postcode is not a house number, and Google's
+ * formatted address usually carries one.
+ */
+function houseNumbers(tokens: readonly string[]): Set<string> {
+  return new Set(tokens.filter((t) => /^[0-9]{1,4}$/.test(t)));
+}
+
+/** The words that actually name the street, minus numbers and suffixes. */
+function streetWords(tokens: readonly string[]): Set<string> {
+  const suffixes = new Set(Object.values(STREET_WORDS));
+  return new Set(tokens.filter((t) => !/^[0-9]+$/.test(t) && !suffixes.has(t) && t.length > 2));
+}
+
+/**
+ * True when both records name the same building.
+ *
+ * Requires BOTH a shared house number and overlapping street words. Either
+ * alone is far too weak: house number 1 is shared by half of every city, and
+ * "ocean drive" appears in a dozen places within one destination.
+ */
+export function addressConfirms(ours: string | null, theirs: string | null): boolean {
+  if (!ours || !theirs) return false;
+  const a = normalizeAddress(ours);
+  const b = normalizeAddress(theirs);
+
+  const numbersA = houseNumbers(a);
+  const numbersB = houseNumbers(b);
+  if (numbersA.size === 0 || numbersB.size === 0) return false;
+  if (![...numbersA].some((n) => numbersB.has(n))) return false;
+
+  const wordsA = streetWords(a);
+  const wordsB = streetWords(b);
+  if (wordsA.size === 0 || wordsB.size === 0) return false;
+  const shared = [...wordsA].filter((w) => wordsB.has(w)).length;
+  return shared / Math.min(wordsA.size, wordsB.size) >= 0.5;
+}
+
+/**
  * How confident are we that this candidate is this hotel?
  *
  * Name similarity is the base. Coordinates are the arbiter: within 300m is
@@ -98,7 +196,9 @@ export function distanceKm(aLat: number, aLon: number, bLat: number, bLon: numbe
  *
  * When we hold no coordinates for our own hotel the ceiling is capped, because
  * the one signal that separates same-brand properties is missing and a
- * confident answer would be unearned.
+ * confident answer would be unearned. A street address that agrees lifts that
+ * cap — it answers the same question coordinates answer, and it reaches us
+ * from the merchant rather than from Google.
  */
 export function scoreMatch(hotel: HotelIdentity, candidate: PlaceCandidate): MatchScore {
   const reasons: string[] = [];
@@ -133,6 +233,12 @@ export function scoreMatch(hotel: HotelIdentity, candidate: PlaceCandidate): Mat
       reasons.push('rejected: beyond 5km');
       return { confidence: 0, reasons };
     }
+  } else if (addressConfirms(hotel.streetAddress ?? null, candidate.formattedAddress)) {
+    // Same building by street address. Slightly under the 0.35 a sub-300m
+    // fix earns: an address is a transcription and can be stale, where a
+    // coordinate pair is a measurement.
+    confidence = Math.min(1, confidence + 0.3);
+    reasons.push('street address agrees');
   } else {
     reasons.push('no coordinates — capped');
     ceiling = 0.65;

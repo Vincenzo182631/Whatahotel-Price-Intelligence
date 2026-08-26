@@ -22,6 +22,9 @@ export {
   sourcePlanCodeFor,
 } from './parse.js';
 
+export { fetchHotelPage, parseHotelPage } from './page.js';
+export type { HotelPageFetchOptions, ParsedHotelPage } from './page.js';
+
 export { parseLenientJson, stripTrailingCommas } from './json.js';
 export type { LenientParseResult } from './json.js';
 export type { ParsedHotel, ParsedMoney, ParsedPerk, ParsedRatePlan, ParsedRoom } from './parse.js';

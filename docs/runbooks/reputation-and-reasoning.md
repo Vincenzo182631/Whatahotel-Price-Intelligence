@@ -345,3 +345,41 @@ OpenAI is called once per distinct set of facts per
 `OPENAI_INTELLIGENCE_CACHE_MINUTES`. The cache key is a hash of the bundle, so
 two guests looking at the same stay in the same hour share one call, and a stay
 whose price moved gets a fresh one.
+
+## Street addresses from the public hotel page
+
+`npm run pages` reads `https://www.whatahotel.com/hotels/<id>/` and stores the
+property's street address on `hotel.street_address` (migration 0016). No API
+key: this is the public marketing page, not `/data/api.cfm`.
+
+It exists to close one specific hole. Places matching is decided by geography,
+so a hotel whose coordinates we do not hold is capped at 0.65 — below the 0.7
+threshold — and returns `SKIPPED_NO_GEO` forever. It is not that such a hotel
+matches badly; it is that no answer Google could give would clear the bar. The
+merchant's own street address answers the same question, and because it comes
+from outside Google it corroborates rather than self-confirms.
+
+**The asymmetry is deliberate: an address may confirm a candidate, never
+refute one.** Two records of the same property routinely disagree on the house
+number, and a false refutation is permanent — UNVERIFIED is never retried.
+Distance keeps the refuting role.
+
+Run it before `npm run places`, or the addresses arrive after the sweep that
+needed them. The refresh interval defaults to ~180 days because hotel page
+content changes roughly twice a year; there is nothing to gain by asking more
+often, and this is our own client's site.
+
+```bash
+npm run pages -- --dry-run        # how many are queued, and which
+npm run pages -- --limit 500
+npm run pages && npm run places   # addresses first, then the Google sweep
+```
+
+### What this sweep deliberately does not read
+
+The page's schema.org block carries `starRating`, `priceRange` and
+`amenityFeature`. Measured across 12 real hotels on 2026-08-26, all three were
+byte-identical everywhere: 5 stars, `$$$$`, and the same five perks. They are
+an SEO template. `parseHotelPage` does not return them and a test asserts the
+returned shape, because a constant that reads as a quality signal is worse
+than no signal — it looks like evidence and contains none.

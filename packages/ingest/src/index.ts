@@ -55,7 +55,13 @@ export type { PlaceSweepOptions, PlaceSweepResult } from './pipeline/resolvePlac
 
 export { PlacesClient } from './adapters/google/places.js';
 export type { PlaceReputation, PlacesClientOptions } from './adapters/google/places.js';
-export { bestMatch, distanceKm, normalizeName, scoreMatch } from './adapters/google/match.js';
+export {
+  addressConfirms,
+  bestMatch,
+  distanceKm,
+  normalizeName,
+  scoreMatch,
+} from './adapters/google/match.js';
 export type { HotelIdentity, MatchScore, PlaceCandidate } from './adapters/google/match.js';
 export { resolveHotel, searchQuery } from './adapters/google/resolve.js';
 export type { Resolution, ResolutionOutcome, ResolvableHotel } from './adapters/google/resolve.js';

@@ -606,11 +606,25 @@ describe('credential handling', () => {
     // Enumerated, not listed: a fixture added later must be covered by this
     // check automatically, or the one that leaks is the one nobody added here.
     const dir = new URL('../fixtures/whatahotel/', import.meta.url);
-    const names = readdirSync(dir).filter((f) => f.endsWith('.json'));
-    expect(names.length).toBeGreaterThanOrEqual(8);
+    // Recursive and extension-agnostic. The first version enumerated only the
+    // top-level .json files, so the captured HTML pages added later sat in a
+    // subdirectory that nothing checked — exactly the gap enumeration exists
+    // to close.
+    const walk = (at: URL, prefix = ''): string[] =>
+      readdirSync(at, { withFileTypes: true }).flatMap((entry) =>
+        entry.isDirectory()
+          ? walk(new URL(`${entry.name}/`, at), `${prefix}${entry.name}/`)
+          : [`${prefix}${entry.name}`],
+      );
+    const names = walk(dir);
+    expect(names.length).toBeGreaterThanOrEqual(10);
+    expect(names.some((n) => n.endsWith('.html'))).toBe(true);
 
     for (const name of names) {
       const text = readFileSync(new URL(name, dir), 'utf8');
+      // Google's browser Maps key is published in the page markup by design,
+      // but a committed copy of it is still ours to leak, so it goes too.
+      expect(text, `${name} carries a Google API key`).not.toMatch(/AIza[0-9A-Za-z_-]{10}/);
       // Anything that is not the literal <scrubbed> placeholder is a leak.
       // The first version of this test allow-listed patterns and missed the
       // session tokens sitting inside bookingURL query strings.
