@@ -194,6 +194,35 @@ describe('resolveHotel', () => {
     expect(asked).toBe(false);
   });
 
+  it('does NOT ask on an address that could never confirm — it would burn the one retry', async () => {
+    // "Conference Centre Street" has no house number, so addressConfirms can
+    // never fire and the ceiling stays at 0.65. Asking anyway returns
+    // UNVERIFIED, which is never re-queued — so a foredoomed call retires the
+    // hotel from reputation permanently. Measured cost of getting this wrong:
+    // 35 hotels in one sweep.
+    let asked = false;
+    const client = {
+      searchText: async () => {
+        asked = true;
+        return [candidate()];
+      },
+      details: async () => null,
+    } as unknown as PlacesClient;
+
+    const outcome = await resolveHotel(
+      client,
+      {
+        ...MIAMI,
+        latitude: null,
+        longitude: null,
+        streetAddress: 'Conference Centre Street',
+      },
+      MIN,
+    );
+    expect(asked).toBe(false);
+    expect(outcome.status).toBe('SKIPPED_NO_GEO');
+  });
+
   it('DOES ask when it holds a street address but no coordinates', async () => {
     // The address answers the same question distance answers, so the ceiling
     // that made the call pointless no longer applies. Skipping here would
