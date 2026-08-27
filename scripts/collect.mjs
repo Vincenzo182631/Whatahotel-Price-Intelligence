@@ -76,6 +76,15 @@ const BOOTSTRAP = arg('bootstrap', false) !== false;
 // to an API spend it does not need.
 const REBUILD_ONLY = arg('rebuild-only', false) !== false;
 const MAX_TASKS = Number(arg('limit', DEFAULT_SCHEDULER_OPTIONS.maxTasks));
+// Share of each run reserved for refreshing stays we already track, when both
+// kinds of work compete for the same limit. See mergeTasks.
+//
+// A half, because that is what HOT freshness costs at the current shape: ~20
+// HOT slots per enrolled hotel across 245 hotels is ~4,900 stays wanting a
+// fetch every 6-hour cycle, and half of a 10,000 limit covers it with room for
+// the WARM tail behind it. It is a floor and not a quota — an unused half goes
+// straight back to the grid.
+const REFRESH_SHARE = Math.min(1, Math.max(0, Number(arg('refresh-share', 0.5))));
 const CONCURRENCY = Number(arg('concurrency', 4));
 
 function isoDate(offsetDays) {
@@ -99,15 +108,65 @@ async function missingGridTasks() {
   }));
 }
 
-/** Merge new-grid stays with due refreshes, newest-tracked first, deduped. */
-function mergeTasks(gridTasks, dueTasks, limit) {
-  const byKey = new Map();
-  for (const task of [...gridTasks, ...dueTasks]) {
-    const key = `${task.hotelId}|${task.checkIn}|${task.nights}|${task.adults}`;
-    if (!byKey.has(key)) byKey.set(key, task);
+/**
+ * Merge new-grid stays with due refreshes, deduped, giving refreshes a
+ * guaranteed share of the run.
+ *
+ * This used to be [...gridTasks, ...dueTasks].slice(0, limit), which serves
+ * grid top-up FIRST and refreshes with whatever survives. That is fine while
+ * the backlog is smaller than the limit and catastrophic the moment it is not:
+ * measured 2026-08-27, a 9,533-stay backlog against a 10,000 limit left 467
+ * slots for 8,486 due refreshes, and at the earlier 2,000 limit it left ZERO
+ * for days. The tier scheduler stopped running and nothing said so.
+ *
+ * What that costs is not abstract. A tracked stay that is never refreshed goes
+ * stale, assessLiveConfidence caps at LOW past maxRateAgeHours (12), and a
+ * guest sees confidence collapse on a hotel whose comp set and score are
+ * perfectly sound. Grid top-up buys future calendar neighbours; refreshes keep
+ * the price we are showing true. When they compete, the price we are already
+ * showing wins.
+ *
+ * The reservation wastes nothing. Each side is capped at what it can actually
+ * use, and whatever the other side does not want is handed straight back — a
+ * run with no backlog spends everything on refreshes, and a run with nothing
+ * due spends everything on the grid.
+ *
+ * Dedup runs BEFORE allocation, and grid wins a tie: one fetch of a stay that
+ * is both missing and due satisfies both, so counting it twice would reserve a
+ * slot for work already being done.
+ */
+function mergeTasks(gridTasks, dueTasks, limit, refreshShare = REFRESH_SHARE) {
+  const keyOf = (t) => `${t.hotelId}|${t.checkIn}|${t.nights}|${t.adults}`;
+
+  const gridKeys = new Set(gridTasks.map(keyOf));
+  const grid = [];
+  const seen = new Set();
+  for (const task of gridTasks) {
+    const k = keyOf(task);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    grid.push(task);
   }
-  const all = [...byKey.values()];
-  return { tasks: all.slice(0, limit), total: all.length };
+  // Disjoint by construction, so the two takes below cannot overlap.
+  const due = [];
+  for (const task of dueTasks) {
+    const k = keyOf(task);
+    if (gridKeys.has(k) || seen.has(k)) continue;
+    seen.add(k);
+    due.push(task);
+  }
+
+  // planCollection returns due stays sorted by tier then staleness, so slicing
+  // takes HOT before WARM before COLD — the reservation inherits that order
+  // rather than needing its own.
+  const reserved = Math.min(due.length, Math.floor(limit * refreshShare));
+  const gridTake = Math.min(grid.length, Math.max(0, limit - reserved));
+  const dueTake = Math.min(due.length, Math.max(0, limit - gridTake));
+
+  return {
+    tasks: [...grid.slice(0, gridTake), ...due.slice(0, dueTake)],
+    total: grid.length + due.length,
+  };
 }
 
 async function main() {
