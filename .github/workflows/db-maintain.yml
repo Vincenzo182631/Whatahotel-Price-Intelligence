@@ -27,6 +27,16 @@ on:
         description: 'Read-only comp-market probe: "<wahHotelId> <checkIn> <nights> <adults>", e.g. "6792 2026-08-30 1 2". Overrides confirm.'
         required: false
         default: ''
+      drop_partition:
+        description: >-
+          Drop ONE observation partition ahead of the retention schedule, e.g.
+          rate_observation_2026_08_25. For when the project is near its ceiling
+          and the scheduled drop is hours away — DROP is the only operation
+          that returns space. The two most recent partitions are always
+          refused, whatever is typed. Overrides confirm. The rows are gone and
+          this source cannot backfill them (U3).
+        required: false
+        default: ''
 
 concurrency:
   group: db-maintain
