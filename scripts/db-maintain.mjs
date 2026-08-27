@@ -24,6 +24,20 @@
 //   node scripts/db-maintain.mjs --coverage # which hotel attributes actually exist,
 //                                           # and how many neighbours a tighter
 //                                           # competitive radius would find
+//   node scripts/db-maintain.mjs --grid-coverage
+//                                           # why the missing-grid backlog
+//                                           # grows: coverage is read from a
+//                                           # five-day table
+//   node scripts/db-maintain.mjs --enrolment-plan
+//                                           # what enrolling more hotels costs
+//                                           # per hotel, and where it pays
+//   node scripts/db-maintain.mjs --collection-coverage
+//                                           # how much of the catalogue has
+//                                           # ever actually been collected
+//   node scripts/db-maintain.mjs --comp-funnel
+//                                           # why a hotel has no curated peer
+//                                           # set: which of the builder's
+//                                           # conditions actually binds
 //   node scripts/db-maintain.mjs --geo-gap  # how many hotels carry no coordinates,
 //                                           # how much of that gap is worth closing,
 //                                           # and the upper bound on what closing it buys
@@ -390,6 +404,440 @@ if (GEO_GAP) {
   console.log(
     '\n(Destination is a PROXY for proximity. A hotel in the same destination may still be\n' +
       ' more than five miles away once placed, so treat every count here as a ceiling.)',
+  );
+
+  process.exit(0);
+}
+
+// Why does a hotel have no curated peer set?
+//
+// The rebuild on 2026-08-27 wrote 2,024 pairs and left 2,779 of 3,209 hotels
+// with no comp set at all. That number invites a wrong conclusion — that the
+// 5-mile bound starved the peer sets — and the builder applies five conditions,
+// only one of which is distance. Guessing which one binds is exactly the kind
+// of thing that gets a working rule blamed for someone else's gap.
+//
+// The funnel below mirrors rebuildComparables. Its ORDER is chosen for
+// interpretability rather than copied from the code: a hotel excluded by two
+// conditions is attributed to the first one here, so each line reads as "this
+// is the first thing that stopped it". The code applies price and distance
+// before the destination test (which lives inside similarityBetween, where a
+// different destination scores 0 and falls under minSimilarity) — that changes
+// nothing about who ends up with a comp set, only which bucket explains it.
+//
+// maxTierDistance and minSimilarity are deliberately absent: both are inert in
+// production. The tier filter needs luxury_tier on BOTH sides and that column
+// is 0/3,209. And with both tiers null, similarityBetween returns
+// 0.5*price + 0.15 + 0.20, so its floor is exactly the 0.35 threshold even at
+// zero price agreement. Neither can reject anything, so neither is measured.
+//
+// Read-only.
+const COMP_FUNNEL = process.argv.includes('--comp-funnel');
+if (COMP_FUNNEL) {
+  console.log('\n── why a hotel has no curated peer set (first blocking condition) ──');
+  console.log(
+    await sql(`
+      WITH a AS (
+        SELECT h.id, h.destination_id,
+               h.latitude::float8 AS lat, h.longitude::float8 AS lon,
+               (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY b.p50_minor)
+                  FROM rate_baseline b
+                 WHERE b.hotel_id = h.id AND b.baseline_level = 'L3') AS typical
+          FROM hotel h
+         WHERE h.is_active
+      ),
+      f AS (
+        SELECT s.id,
+               (s.typical IS NOT NULL) AS has_own,
+               count(o.id) FILTER (
+                 WHERE s.destination_id IS NOT NULL
+                   AND o.destination_id = s.destination_id
+               ) AS same_dest,
+               count(o.id) FILTER (
+                 WHERE s.destination_id IS NOT NULL
+                   AND o.destination_id = s.destination_id
+                   AND o.typical IS NOT NULL
+               ) AS dest_priced,
+               count(o.id) FILTER (
+                 WHERE s.destination_id IS NOT NULL
+                   AND o.destination_id = s.destination_id
+                   AND o.typical IS NOT NULL AND s.typical IS NOT NULL
+                   AND GREATEST(s.typical, o.typical) / NULLIF(LEAST(s.typical, o.typical), 0) <= 2.0
+               ) AS in_band,
+               count(o.id) FILTER (
+                 WHERE s.destination_id IS NOT NULL
+                   AND o.destination_id = s.destination_id
+                   AND o.typical IS NOT NULL AND s.typical IS NOT NULL
+                   AND GREATEST(s.typical, o.typical) / NULLIF(LEAST(s.typical, o.typical), 0) <= 2.0
+                   -- Unknown distance is kept, exactly as the builder keeps it.
+                   AND (
+                     s.lat IS NULL OR s.lon IS NULL OR o.lat IS NULL OR o.lon IS NULL
+                     OR power(111.32 * (o.lat - s.lat), 2)
+                      + power(111.32 * cos(radians(s.lat)) * (o.lon - s.lon), 2)
+                        <= power(8.047, 2)
+                   )
+               ) AS in_range
+          FROM a s
+          LEFT JOIN a o ON o.id <> s.id
+         GROUP BY s.id, s.typical, s.destination_id
+      )
+      SELECT line FROM (
+        SELECT 1 AS ord, 'active hotels                          ' || count(*) AS line FROM f
+        UNION ALL SELECT 2, 'no L3 baseline of its own              ' || count(*)
+          FROM f WHERE NOT has_own
+        UNION ALL SELECT 3, 'no other hotel in its destination      ' || count(*)
+          FROM f WHERE has_own AND same_dest = 0
+        UNION ALL SELECT 4, 'no destination peer with a baseline    ' || count(*)
+          FROM f WHERE has_own AND same_dest > 0 AND dest_priced = 0
+        UNION ALL SELECT 5, 'none inside the 2.0x price band        ' || count(*)
+          FROM f WHERE has_own AND dest_priced > 0 AND in_band = 0
+        UNION ALL SELECT 6, 'none within 5 mi (8.05 km)             ' || count(*)
+          FROM f WHERE has_own AND in_band > 0 AND in_range = 0
+        UNION ALL SELECT 7, 'HAS a peer set                         ' || count(*)
+          FROM f WHERE has_own AND in_range > 0
+      ) t ORDER BY ord`),
+  );
+  console.log(
+    '\n(Attribution is to the FIRST condition in this order. A hotel with no baseline of\n' +
+      ' its own would also fail later tests; it is counted once, at the top.)',
+  );
+
+  process.exit(0);
+}
+
+// How much of the catalogue has ever actually been collected?
+//
+// The comp-set funnel put 96.3% of hotels without a peer set behind one
+// condition: no L3 baseline of their own. The rollup writes an L3 row on
+// HAVING count(*) >= 1, so "no L3 baseline" is very nearly "no usable rate
+// observation has ever been rolled up for this hotel". That makes peer-set
+// coverage a COLLECTION question, not a qualification one, and this measures
+// it directly instead of inferring it.
+//
+// One thing to get right before reading any of it: production retains five
+// days of rate_observation (RATE_OBSERVATION_RETAIN_DAYS in collect.yml, forced
+// by the 512 MB project ceiling — see migration 0015). So rate_observation
+// CANNOT answer "was this hotel ever collected"; it answers "was it collected
+// this week". The durable records are rate_baseline, which is a rollup and is
+// never dropped by retention, and collection_attempt, which is the ledger of
+// what was tried. Both are used below and each is labelled for what it is.
+//
+// Read-only.
+const COLLECTION_COVERAGE = process.argv.includes('--collection-coverage');
+if (COLLECTION_COVERAGE) {
+  console.log('\n── enrolment: what the scheduler is even willing to collect ──');
+  console.log(
+    await sql(`
+      WITH a AS (SELECT * FROM hotel WHERE is_active)
+      SELECT line FROM (
+        SELECT 1 AS ord, 'active hotels                     ' || count(*) AS line FROM a
+        UNION ALL SELECT 2, '  tier HOT                        ' || count(*) FROM a WHERE collection_tier = 'HOT'
+        UNION ALL SELECT 3, '  tier WARM                       ' || count(*) FROM a WHERE collection_tier = 'WARM'
+        UNION ALL SELECT 4, '  tier COLD                       ' || count(*) FROM a WHERE collection_tier = 'COLD'
+        UNION ALL SELECT 5, '  tier OFF (never scheduled)      ' || count(*) FROM a WHERE collection_tier = 'OFF'
+        UNION ALL SELECT 6, 'ENROLLED (tier <> OFF)            ' || count(*) || '  (' ||
+               round(100.0 * count(*) / NULLIF((SELECT count(*) FROM a), 0)) || '%)'
+          FROM a WHERE collection_tier <> 'OFF'
+      ) t ORDER BY ord`),
+  );
+
+  // The durable record. A baseline survives retention, so this is the closest
+  // thing to "has this hotel ever yielded a usable rate".
+  console.log('\n── has it ever produced a baseline? (survives the 5-day retention) ──');
+  console.log(
+    await sql(`
+      WITH a AS (SELECT * FROM hotel WHERE is_active)
+      SELECT line FROM (
+        SELECT 1 AS ord, 'active hotels                     ' || count(*) AS line FROM a
+        UNION ALL SELECT 2, 'with ANY rate_baseline row        ' || count(DISTINCT b.hotel_id)
+          FROM rate_baseline b JOIN a ON a.id = b.hotel_id
+        UNION ALL SELECT 3, '  with an L3 baseline             ' || count(DISTINCT b.hotel_id)
+          FROM rate_baseline b JOIN a ON a.id = b.hotel_id WHERE b.baseline_level = 'L3'
+        UNION ALL SELECT 4, 'with NO baseline of any kind      ' || count(*) || '  (' ||
+               round(100.0 * count(*) / NULLIF((SELECT count(*) FROM a), 0)) || '%)'
+          FROM a WHERE NOT EXISTS (SELECT 1 FROM rate_baseline b WHERE b.hotel_id = a.id)
+        UNION ALL SELECT 5, 'ENROLLED but no baseline          ' || count(*)
+          FROM a WHERE collection_tier <> 'OFF'
+            AND NOT EXISTS (SELECT 1 FROM rate_baseline b WHERE b.hotel_id = a.id)
+      ) t ORDER BY ord`),
+  );
+
+  // What was actually tried. consecutive_failures = 0 means the LAST attempt
+  // on that slot succeeded; the ledger keeps no "ever succeeded" flag, so a
+  // hotel whose slots are all currently failing may still have worked once.
+  // Said plainly rather than papered over.
+  console.log('\n── the attempt ledger: what was tried, and what came back ──');
+  console.log(
+    await sql(`
+      WITH a AS (SELECT * FROM hotel WHERE is_active)
+      SELECT line FROM (
+        SELECT 1 AS ord, 'active hotels in the ledger       ' || count(DISTINCT c.hotel_id) AS line
+          FROM collection_attempt c JOIN a ON a.id = c.hotel_id
+        UNION ALL SELECT 2, '  with a slot succeeding now      ' || count(DISTINCT c.hotel_id)
+          FROM collection_attempt c JOIN a ON a.id = c.hotel_id WHERE c.consecutive_failures = 0
+        UNION ALL SELECT 3, '  every slot currently failing    ' || count(*)
+          FROM (SELECT c.hotel_id FROM collection_attempt c JOIN a ON a.id = c.hotel_id
+                 GROUP BY c.hotel_id HAVING min(c.consecutive_failures) > 0) x
+        UNION ALL SELECT 4, 'NEVER attempted at all            ' || count(*)
+          FROM a WHERE NOT EXISTS (SELECT 1 FROM collection_attempt c WHERE c.hotel_id = a.id)
+        UNION ALL SELECT 5, '  of those, enrolled              ' || count(*)
+          FROM a WHERE collection_tier <> 'OFF'
+            AND NOT EXISTS (SELECT 1 FROM collection_attempt c WHERE c.hotel_id = a.id)
+      ) t ORDER BY ord`),
+  );
+
+  console.log('\n── last outcome across every tracked slot ──');
+  console.log(
+    await sql(`
+      SELECT rpad(COALESCE(c.last_outcome, '(none)'), 18) || lpad(count(*)::text, 7)
+          || ' slot(s), ' || lpad(count(DISTINCT c.hotel_id)::text, 5) || ' hotel(s)'
+        FROM collection_attempt c
+        JOIN hotel h ON h.id = c.hotel_id AND h.is_active
+       GROUP BY c.last_outcome
+       ORDER BY count(*) DESC`),
+  );
+
+  // The window that actually exists right now, so nobody reads a five-day
+  // table as a history.
+  console.log('\n── the retained observation window (five days, by design) ──');
+  console.log(
+    await sql(`
+      SELECT 'observations           ' || count(*)
+          || ' over ' || count(DISTINCT observed_date) || ' day(s), '
+          || COALESCE(min(observed_date)::text, 'none') || ' … '
+          || COALESCE(max(observed_date)::text, 'none')
+        FROM rate_observation
+      UNION ALL
+      SELECT 'active hotels observed ' || count(DISTINCT o.hotel_id)
+        FROM rate_observation o JOIN hotel h ON h.id = o.hotel_id AND h.is_active`),
+  );
+  console.log(
+    '\n(rate_observation is NOT a history: production drops partitions past five days.\n' +
+      ' "Ever collected" is answered by rate_baseline and collection_attempt, above.)',
+  );
+
+  process.exit(0);
+}
+
+// What would enrolling more of the catalogue cost, and where would it pay?
+//
+// 2,964 active hotels sit at tier OFF — the ID-space sweep enrols what it finds
+// at OFF by design — and that, not any qualification rule, is why 83% of the
+// catalogue has no baseline. Moving hotels to WARM is the lever, and it is a
+// budget decision, so it needs a per-hotel price and a ranked list of where the
+// money buys the most.
+//
+// Cost is measured from the ledger rather than derived from the grid spec. The
+// spec says 23 distinct lead times over three stay lengths, but what a hotel
+// ACTUALLY costs depends on how many of its slots yield and how many fall into
+// the HOT band (lead <= 30 days, refreshed every 6 hours) versus WARM (every
+// 24). Counting real rows answers that; multiplying spec constants assumes it.
+//
+// Payoff is measured by DISTANCE, not by destination label — the same rule the
+// competitive ladder uses. An OFF hotel is worth turning on when hotels that
+// ALREADY have a baseline sit within the ladder's outer rung of it, because
+// then it gains a comp set on its first successful collection instead of
+// waiting for its neighbours to be enrolled too.
+//
+// Read-only.
+const ENROLMENT_PLAN = process.argv.includes('--enrolment-plan');
+if (ENROLMENT_PLAN) {
+  console.log('\n── what one enrolled hotel actually costs (measured from the ledger) ──');
+  console.log(
+    await sql(`
+      WITH per AS (
+        SELECT c.hotel_id,
+               count(*) AS slots,
+               count(*) FILTER (WHERE c.lead_days <= 30) AS hot_slots,
+               count(*) FILTER (WHERE c.lead_days > 30)  AS warm_slots
+          FROM collection_attempt c
+          JOIN hotel h ON h.id = c.hotel_id AND h.is_active AND h.collection_tier <> 'OFF'
+         GROUP BY c.hotel_id
+      )
+      SELECT line FROM (
+        SELECT 1 AS ord, 'enrolled hotels in the ledger     ' || count(*) AS line FROM per
+        UNION ALL SELECT 2, 'median slots per hotel            ' ||
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY slots) FROM per
+        UNION ALL SELECT 3, '  of those HOT (lead <= 30d)      ' ||
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY hot_slots) FROM per
+        UNION ALL SELECT 4, '  of those WARM (lead > 30d)      ' ||
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY warm_slots) FROM per
+        -- HOT refreshes every 6h (one per cycle); WARM every 24h (one in four
+        -- cycles). This is the steady-state price, not the cold-fill price:
+        -- a newly enrolled hotel pays its whole grid once, up front.
+        UNION ALL SELECT 5, 'calls per hotel per 6h cycle      ~' ||
+               round(percentile_disc(0.5) WITHIN GROUP (ORDER BY hot_slots)
+                   + percentile_disc(0.5) WITHIN GROUP (ORDER BY warm_slots) / 4.0)
+          FROM per
+        UNION ALL SELECT 6, 'calls per hotel per DAY           ~' ||
+               round(percentile_disc(0.5) WITHIN GROUP (ORDER BY hot_slots) * 4
+                   + percentile_disc(0.5) WITHIN GROUP (ORDER BY warm_slots))
+          FROM per
+        UNION ALL SELECT 7, 'cold fill, one-off per hotel      ~' ||
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY slots) FROM per
+      ) t ORDER BY ord`),
+  );
+
+  console.log('\n── where enrolling pays: OFF hotels by baselined neighbours within 5 mi ──');
+  console.log(
+    await sql(`
+      WITH based AS (
+        SELECT h.id, h.latitude::float8 AS lat, h.longitude::float8 AS lon
+          FROM hotel h
+         WHERE h.is_active
+           AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+           AND h.bookable_online IS DISTINCT FROM false
+           AND EXISTS (SELECT 1 FROM rate_baseline b
+                        WHERE b.hotel_id = h.id AND b.baseline_level = 'L3')
+      ),
+      off_h AS (
+        SELECT h.id, h.destination_id,
+               h.latitude::float8 AS lat, h.longitude::float8 AS lon
+          FROM hotel h
+         WHERE h.is_active AND h.collection_tier = 'OFF'
+           AND h.bookable_online IS DISTINCT FROM false
+           AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+      ),
+      n AS (
+        SELECT o.id, o.destination_id, count(b.id) AS near
+          FROM off_h o
+          LEFT JOIN based b
+            ON power(111.32 * (b.lat - o.lat), 2)
+             + power(111.32 * cos(radians(o.lat)) * (b.lon - o.lon), 2) <= power(8.047, 2)
+         GROUP BY o.id, o.destination_id
+      )
+      SELECT line FROM (
+        SELECT 1 AS ord, 'OFF, bookable, placed             ' || count(*) AS line FROM n
+        UNION ALL SELECT 2, '  >=3 baselined within 5 mi       ' || count(*) FROM n WHERE near >= 3
+        UNION ALL SELECT 3, '  1-2 baselined within 5 mi       ' || count(*) FROM n WHERE near BETWEEN 1 AND 2
+        UNION ALL SELECT 4, '  none within 5 mi                ' || count(*) FROM n WHERE near = 0
+      ) t ORDER BY ord`),
+  );
+
+  console.log('\n── the shortlist: OFF hotels that would gain a comp set immediately ──');
+  console.log(
+    await sql(`
+      WITH based AS (
+        SELECT h.id, h.latitude::float8 AS lat, h.longitude::float8 AS lon
+          FROM hotel h
+         WHERE h.is_active
+           AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+           AND h.bookable_online IS DISTINCT FROM false
+           AND EXISTS (SELECT 1 FROM rate_baseline b
+                        WHERE b.hotel_id = h.id AND b.baseline_level = 'L3')
+      ),
+      off_h AS (
+        SELECT h.id, h.destination_id,
+               h.latitude::float8 AS lat, h.longitude::float8 AS lon
+          FROM hotel h
+         WHERE h.is_active AND h.collection_tier = 'OFF'
+           AND h.bookable_online IS DISTINCT FROM false
+           AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+      ),
+      n AS (
+        SELECT o.id, o.destination_id, count(b.id) AS near
+          FROM off_h o
+          LEFT JOIN based b
+            ON power(111.32 * (b.lat - o.lat), 2)
+             + power(111.32 * cos(radians(o.lat)) * (b.lon - o.lon), 2) <= power(8.047, 2)
+         GROUP BY o.id, o.destination_id
+      )
+      SELECT rpad(COALESCE(left(d.name, 30), '?'), 30)
+          || ' | would-gain ' || lpad(count(*) FILTER (WHERE n.near >= 3)::text, 4)
+          || ' | OFF here ' || lpad(count(*)::text, 4)
+        FROM n LEFT JOIN destination d ON d.id = n.destination_id
+       GROUP BY d.name
+      HAVING count(*) FILTER (WHERE n.near >= 3) > 0
+       ORDER BY count(*) FILTER (WHERE n.near >= 3) DESC
+       LIMIT 25`),
+  );
+  console.log(
+    '\n("would-gain" means >=3 already-baselined hotels sit within five miles, so the hotel\n' +
+      ' gets a comp set on its FIRST successful collection. It is a lower bound on the\n' +
+      ' payoff: enrolling a cluster together also lets its members comp each other.)',
+  );
+
+  process.exit(0);
+}
+
+// Why does the missing-grid backlog keep growing?
+//
+// Measured across four scheduled runs: 1,757 -> 1,170 -> 7,491 -> 10,206 "new"
+// stays, every run truncating at the 2,000 cap. Three candidate causes were
+// checked against the merge timeline and ruled out: the two-night grid change
+// (#94) merged AFTER the jump, the retention tightening (#74) landed a day
+// before it, and on-demand enrolment writes hotels at tier OFF so widget
+// traffic cannot grow the scheduled grid.
+//
+// What is left is structural, and this measures it. findMissingGridStays reads
+// coverage from rate_observation:
+//
+//     SELECT DISTINCT hotel_id, check_in, nights, adults
+//       FROM rate_observation WHERE check_in >= CURRENT_DATE
+//
+// rate_observation is retained for FIVE DAYS. Partitions are dropped by
+// observed_date, so a stay collected six days ago for a check-in sixty days out
+// vanishes from that set even though it was collected, and its grid slot
+// re-enters the queue as if it never had been. Coverage is therefore not a
+// record of what was collected; it is a record of what was collected THIS WEEK.
+//
+// The durable record already exists and is already keyed by grid slot:
+// collection_attempt, which migration 0010 rekeyed to hotel|lead|nights|adults
+// precisely because the slot is the thing that persists while the date moves.
+//
+// The query below compares the two, so the claim is a number rather than a
+// story: how many slots have a successful attempt on record but no surviving
+// observation to prove it. Those are the ones being re-collected forever.
+//
+// Read-only.
+const GRID_COVERAGE = process.argv.includes('--grid-coverage');
+if (GRID_COVERAGE) {
+  console.log('\n── the observation window that coverage is read from ──');
+  console.log(
+    await sql(`
+      SELECT to_char(observed_date, 'YYYY-MM-DD') || '  ' || lpad(count(*)::text, 8)
+          || ' observation(s), ' || lpad(count(DISTINCT hotel_id)::text, 5) || ' hotel(s)'
+        FROM rate_observation
+       GROUP BY observed_date
+       ORDER BY observed_date`),
+  );
+
+  console.log('\n── coverage: the ephemeral source vs the durable one ──');
+  console.log(
+    await sql(`
+      WITH enrolled AS (
+        SELECT id FROM hotel WHERE is_active AND collection_tier <> 'OFF'
+      ),
+      -- What findMissingGridStays actually counts as covered.
+      obs AS (
+        SELECT DISTINCT o.hotel_id, o.check_in, o.nights, o.adults
+          FROM rate_observation o
+          JOIN enrolled e ON e.id = o.hotel_id
+         WHERE o.check_in >= CURRENT_DATE
+      ),
+      -- The durable ledger, keyed by grid slot rather than by date.
+      slots AS (
+        SELECT c.hotel_id, c.lead_days, c.nights, c.adults,
+               c.last_outcome, c.last_attempt_at
+          FROM collection_attempt c
+          JOIN enrolled e ON e.id = c.hotel_id
+      )
+      SELECT line FROM (
+        SELECT 1 AS ord, 'enrolled hotels                       ' || count(*) AS line FROM enrolled
+        UNION ALL SELECT 2, 'grid slots in the ledger              ' || count(*) FROM slots
+        UNION ALL SELECT 3, '  last outcome OK                     ' || count(*)
+          FROM slots WHERE last_outcome = 'OK'
+        UNION ALL SELECT 4, '  OK, attempted within 5 days         ' || count(*)
+          FROM slots WHERE last_outcome = 'OK' AND last_attempt_at > now() - interval '5 days'
+        UNION ALL SELECT 5, '  OK, but OLDER than the window       ' || count(*)
+          FROM slots WHERE last_outcome = 'OK' AND last_attempt_at <= now() - interval '5 days'
+        UNION ALL SELECT 6, 'stays visible as covered right now    ' || count(*) FROM obs
+      ) t ORDER BY ord`),
+  );
+  console.log(
+    '\n(Line 5 is the leak: those slots WERE collected successfully, the ledger still says\n' +
+      ' so, and the observation proving it has been dropped by retention. findMissingGridStays\n' +
+      ' cannot see the ledger, so it re-queues every one of them, every run, forever.)',
   );
 
   process.exit(0);

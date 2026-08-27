@@ -83,6 +83,10 @@ jobs:
           set -o pipefail
           node scripts/db-maintain.mjs --coverage 2>&1 | tee -a compset.log
           node scripts/db-maintain.mjs --geo-gap 2>&1 | tee -a compset.log
+          node scripts/db-maintain.mjs --comp-funnel 2>&1 | tee -a compset.log
+          node scripts/db-maintain.mjs --collection-coverage 2>&1 | tee -a compset.log
+          node scripts/db-maintain.mjs --enrolment-plan 2>&1 | tee -a compset.log
+          node scripts/db-maintain.mjs --grid-coverage 2>&1 | tee -a compset.log
 
       - name: Summarise
         if: always()

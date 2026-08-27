@@ -218,6 +218,34 @@ async function main() {
           .join(' ') || 'none'
       })`,
   );
+  // Capacity, stated as stock against flow.
+  //
+  // The truncation warning below has fired on every scheduled run for days and
+  // nobody read it, because "some stays spilled" and "this system can never
+  // catch up" produce the same line. They are different conditions and want
+  // different responses.
+  //
+  // The distinction that matters is NOT a demand:capacity ratio — the plan
+  // total includes the standing backlog, so a ratio built from it mixes a
+  // stock with a flow and inflates with every run. What actually decides
+  // whether the queue can drain is the headroom left after this cycle's
+  // refreshes: due-refresh is served from the same limit, so if it alone
+  // reaches the cap there is nothing left for the grid and the backlog cannot
+  // shrink, however long it runs.
+  //
+  // dueTasks is itself capped at MAX_TASKS by planCollection, so a due count
+  // equal to the limit is a FLOOR, not a measurement — true demand is higher
+  // and unknown. Said explicitly, because a saturated number that looks exact
+  // is worse than one that admits it is a bound.
+  const dueSaturated = dueTasks.length >= MAX_TASKS;
+  const headroom = Math.max(0, MAX_TASKS - dueTasks.length);
+  console.log(
+    `• Capacity: limit ${MAX_TASKS}/run — due ${dueTasks.length}` +
+      `${dueSaturated ? ' (at the cap, true demand is higher)' : ''}, ` +
+      `grid backlog ${gridTasks.length} stay(s); ` +
+      `headroom for backlog after refreshes: ${headroom} stay(s)`,
+  );
+
   if (total > tasks.length) {
     // Never silent: a truncated plan means stays went uncollected today, and
     // with no rate history in this source that data cannot be recovered later.
@@ -226,6 +254,19 @@ async function main() {
         `Raise --limit (currently ${MAX_TASKS}) or run more often.`,
     );
   }
+
+  // The condition worth waking someone for. Spilling a little is routine and
+  // self-correcting — the next run picks it up. A backlog with no headroom is
+  // not: the surplus is never collected, the grid rolls forward underneath it,
+  // and the queue grows every run while the run still exits 0.
+  if (gridTasks.length > 0 && headroom === 0) {
+    console.warn(
+      `  !! BACKLOG CANNOT DRAIN: ${gridTasks.length} stay(s) are missing from the grid and ` +
+        `due refreshes alone consume the whole ${MAX_TASKS}-stay limit. ` +
+        'Raise --limit, shorten the schedule, or reduce the grid or the enrolled set.',
+    );
+  }
+
   if (tasks.length === 0) {
     console.log('  Nothing due and no gaps in the grid — up to date.');
     return;
