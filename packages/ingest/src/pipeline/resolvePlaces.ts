@@ -51,6 +51,14 @@ export interface PlaceSweepResult {
    * fixes.
    */
   readonly skippedNoGeo: number;
+  /**
+   * Hotels this run put on the map for the first time.
+   *
+   * Reported separately because it is a different kind of win from a rating:
+   * a placed hotel enters the competitive radius, and an unplaced one is
+   * rejected at every rung of the ladder however good its reputation.
+   */
+  readonly placed: number;
   readonly skipped: 'NOT_CONFIGURED' | null;
 }
 
@@ -62,6 +70,7 @@ export async function sweepPlaces(options: PlaceSweepOptions = {}): Promise<Plac
     noMatch: 0,
     failed: 0,
     skippedNoGeo: 0,
+    placed: 0,
   };
   const client = options.client === undefined ? PlacesClient.fromEnv() : options.client;
   if (!client) return { ...empty, skipped: 'NOT_CONFIGURED' };
@@ -78,6 +87,7 @@ export async function sweepPlaces(options: PlaceSweepOptions = {}): Promise<Plac
   let noMatch = 0;
   let failed = 0;
   let skippedNoGeo = 0;
+  let placed = 0;
 
   for (const hotel of targets) {
     const outcome = await resolveHotel(client, hotel, settings.minMatchConfidence);
@@ -114,11 +124,26 @@ export async function sweepPlaces(options: PlaceSweepOptions = {}): Promise<Plac
         displayName: outcome.displayName,
         formattedAddress: outcome.formattedAddress,
         mapsUri: outcome.mapsUri,
+        // saveResolution writes these only when the hotel holds no position
+        // of its own; it never overwrites the catalogue's own coordinates.
+        latitude: outcome.latitude,
+        longitude: outcome.longitude,
         editorialSummary: outcome.editorialSummary,
         reviewThemes: outcome.reviewThemes,
       },
       options.q,
     );
+
+    // Counted from what we knew BEFORE the write: the hotel had no position
+    // and the match supplied one. saveResolution applies the same condition.
+    if (
+      outcome.status === 'VERIFIED' &&
+      (hotel.latitude === null || hotel.longitude === null) &&
+      outcome.latitude !== null &&
+      outcome.longitude !== null
+    ) {
+      placed += 1;
+    }
 
     if (outcome.status === 'VERIFIED') verified += 1;
     else if (outcome.status === 'UNVERIFIED') unverified += 1;
@@ -139,6 +164,7 @@ export async function sweepPlaces(options: PlaceSweepOptions = {}): Promise<Plac
     noMatch,
     failed,
     skippedNoGeo,
+    placed,
     skipped: null,
   };
 }

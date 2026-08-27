@@ -28,6 +28,16 @@ export interface ResolvableHotel {
   readonly longitude: number | null;
   /** Merchant street address, from the public hotel page. See match.ts. */
   readonly streetAddress: string | null;
+  /**
+   * Where the coordinates above came from (migration 0018).
+   *
+   * 'GOOGLE' means they came from a previous VERIFIED match, and they are
+   * therefore NOT independent evidence about this hotel's position. Scoring a
+   * Google candidate against them would be Google confirming itself — the same
+   * error the street-address rule exists to prevent. Treated as absent when a
+   * fresh match is scored; a refresh never re-matches, so it is unaffected.
+   */
+  readonly coordinateSource?: 'SOURCE' | 'GOOGLE' | null;
   /** Already resolved? Refresh the reputation without paying for a search. */
   readonly placeId: string | null;
 }
@@ -41,6 +51,19 @@ export interface ResolutionOutcome {
   readonly displayName: string | null;
   readonly formattedAddress: string | null;
   readonly mapsUri: string | null;
+  /**
+   * The place's own coordinates, as Google returned them.
+   *
+   * Both field masks already request `location` — this is what the matcher
+   * uses to tell two same-brand properties apart — so these arrive on every
+   * VERIFIED outcome at no extra cost. They were being dropped here.
+   *
+   * Null on every non-VERIFIED outcome: an unmatched hotel has no place, and a
+   * place we did not trust enough to store a rating for is not one to take a
+   * position from either.
+   */
+  readonly latitude: number | null;
+  readonly longitude: number | null;
   /** Google's own short description of the place, verbatim. */
   readonly editorialSummary: string | null;
   /** Themes measured over the review sample. See themes.ts for the rules. */
@@ -80,6 +103,8 @@ const reputationOf = (
   | 'displayName'
   | 'formattedAddress'
   | 'mapsUri'
+  | 'latitude'
+  | 'longitude'
   | 'editorialSummary'
   | 'reviewThemes'
 > => ({
@@ -87,10 +112,34 @@ const reputationOf = (
   userRatingCount: place?.userRatingCount ?? null,
   displayName: place?.displayName ?? fallback.displayName,
   formattedAddress: place?.formattedAddress ?? fallback.formattedAddress,
+  // The Details response and the search candidate both carry a position. The
+  // candidate is the fallback because a failed Details call still leaves us
+  // holding the coordinates the match was scored on.
+  latitude: place?.latitude ?? fallback.latitude,
+  longitude: place?.longitude ?? fallback.longitude,
   mapsUri: place?.mapsUri ?? null,
   editorialSummary: place?.editorialSummary ?? null,
   reviewThemes: place ? extractReviewThemes(place.reviews) : [],
 });
+
+/**
+ * The geography of this hotel that is independent of Google.
+ *
+ * Coordinates written by a previous VERIFIED match are not evidence about the
+ * hotel — they are Google's own claim, and letting them corroborate a Google
+ * candidate is circular. Anything else is the source catalogue's own reading
+ * and stands on its own.
+ *
+ * Absent provenance is read as SOURCE: every row placed before migration 0018
+ * came from the catalogue, and the migration backfills them to say so.
+ */
+function independentGeography(hotel: ResolvableHotel): {
+  latitude: number | null;
+  longitude: number | null;
+} {
+  if (hotel.coordinateSource === 'GOOGLE') return { latitude: null, longitude: null };
+  return { latitude: hotel.latitude, longitude: hotel.longitude };
+}
 
 export async function resolveHotel(
   client: PlacesClient,
@@ -114,6 +163,11 @@ export async function resolveHotel(
       displayName: place.displayName,
       formattedAddress: place.formattedAddress,
       mapsUri: place.mapsUri,
+      // A refresh is how the 17 already-VERIFIED-but-unplaced hotels get
+      // placed: the mapping was made before this outcome carried a position,
+      // and Details has been returning one all along.
+      latitude: place.latitude,
+      longitude: place.longitude,
       editorialSummary: place.editorialSummary,
       reviewThemes: extractReviewThemes(place.reviews),
       reasons: ['refresh of an existing mapping'],
@@ -141,8 +195,21 @@ export async function resolveHotel(
   // `== null` rather than `=== null`: a caller that simply omits the address
   // means the same thing as one that states it has none, and reading undefined
   // as "present" would spend a doomed Text Search call on every such hotel.
+  //
+  // One more thing this check must NOT count as geography of our own:
+  // coordinates that came from Google in the first place (migration 0018).
+  // Scoring a Google candidate against Google's own earlier answer would find
+  // perfect agreement and mean nothing — the same self-confirmation the
+  // street-address rule exists to prevent, which is why
+  // google_formatted_address is kept apart from the merchant's street_address.
+  //
+  // The path is narrow: a hotel holding GOOGLE coordinates also holds a
+  // place_id, and the branch above short-circuits to a refresh before reaching
+  // here. It opens the moment a place_id is cleared to request a re-match,
+  // which is precisely when the guard has to already be in place.
+  const independent = independentGeography(hotel);
   if (
-    (hotel.latitude === null || hotel.longitude === null) &&
+    (independent.latitude === null || independent.longitude === null) &&
     !addressCanConfirm(hotel.streetAddress ?? null)
   ) {
     return { status: 'SKIPPED_NO_GEO' };
@@ -161,13 +228,15 @@ export async function resolveHotel(
       displayName: null,
       formattedAddress: null,
       mapsUri: null,
+      latitude: null,
+      longitude: null,
       editorialSummary: null,
       reviewThemes: [],
       reasons: ['Google returned no lodging for this query'],
     };
   }
 
-  const match = bestMatch(hotel, candidates, minConfidence);
+  const match = bestMatch({ ...hotel, ...independent }, candidates, minConfidence);
   if (!match) {
     // We DO record which candidate came closest, so a later threshold change
     // can be reasoned about — but nothing about it is stored as fact and
@@ -181,6 +250,8 @@ export async function resolveHotel(
       displayName: null,
       formattedAddress: null,
       mapsUri: null,
+      latitude: null,
+      longitude: null,
       editorialSummary: null,
       reviewThemes: [],
       reasons: [`best candidate below ${minConfidence}`],

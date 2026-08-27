@@ -118,6 +118,15 @@ console.log(
     `${result.noMatch} no match, ${result.failed} failed, ` +
     `${result.skippedNoGeo} skipped for want of coordinates.`,
 );
+if (result.placed > 0) {
+  // Worth its own line: a rating changes what the explanation can say, but a
+  // position changes whether the hotel can be compared at all.
+  console.log(
+    `${result.placed} hotel(s) were placed on the map for the first time, from the ` +
+      'coordinates their verified match already carried. They now enter the competitive ' +
+      'radius; before this they were rejected at every rung of the ladder.',
+  );
+}
 if (result.failed > 0) {
   // Not an error exit: failures write nothing and are retried next sweep.
   console.log('Failed lookups were not recorded and stay in the queue.');
