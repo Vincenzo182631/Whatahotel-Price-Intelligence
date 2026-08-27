@@ -50,7 +50,7 @@ on:
       limit:
         description: 'Max stays to collect in this run'
         required: false
-        default: '2000'
+        default: '10000'
       dry_run:
         description: 'Plan only — make no API calls and write nothing'
         type: boolean
@@ -97,12 +97,26 @@ jobs:
       # analyses persist; only raw observations age out. After a Neon plan
       # upgrade, delete this line and history accrues without limit.
       #
-      # 5, not 7, since the limit rose to 2000: measured growth at the new
-      # volume is ~50-60 MB/day of observations, and 7 days of that plus
-      # baselines projected to ~450-500 MB — inside the ceiling only on a
-      # good week. 5 days holds ~385 MB steady with real margin, and the
-      # live model reads rates far fresher than either window.
-      RATE_OBSERVATION_RETAIN_DAYS: '5'
+      # 7 -> 5 on 2026-08-25 when the limit rose to 2000. 5 -> 2 on 2026-08-27,
+      # paired with the raise to 10000 in the same change and not separable
+      # from it: at 2000 observations grew ~50-60 MB/day and five days plus
+      # baselines held ~385 MB. Five times the collection volume against an
+      # unchanged 512 MB ceiling projects past 1 GB, and a full project fails
+      # every insert while the run still reports success — the failure mode
+      # that once hid a two-day outage inside green runs. Recovery is
+      # --squeeze, which TRUNCATEs rate_observation, and under U3 this source
+      # cannot backfill what that discards.
+      #
+      # Two days costs the product nothing it uses. The live model reads rates
+      # far fresher than either window, baselines are UPSERTED and never
+      # deleted so they survive a hotel going uncollected, and the grid's ±1
+      # day coverage tolerance already means a slot needs re-collecting about
+      # every three days regardless of what is retained.
+      #
+      # What it does cost is diagnosis: a week of raw observations was useful
+      # for answering "what did this hotel price last Tuesday", and that
+      # question is now unanswerable. The Neon upgrade is what buys it back.
+      RATE_OBSERVATION_RETAIN_DAYS: '2'
 
     steps:
       - uses: actions/checkout@v4
@@ -162,14 +176,29 @@ jobs:
           npm run collect -- --catalog "${{ inputs.catalog }}" --concurrency 6 2>&1 | tee collect.log
 
       # The limit was 500 until 2026-08-20, then 800 briefly the same day,
-      # then 1200 (which cleared the demand measured at the time). Raised to
-      # 2000 on 2026-08-25: on-demand scoring auto-enrolls every hotel a
-      # guest asks about, and measured demand had grown to ~1,750–1,900
-      # stays per 6h — every run at 1200 truncated, and every truncated stay
-      # is a future cold 30-40s first load for some guest. It is a cap, not
-      # a target — runs with less due plan less — so quiet runs spend
-      # nothing extra. If truncation warnings return at 2000, that is the
-      # signal to re-measure demand, not to blindly raise again.
+      # then 1200 (which cleared the demand measured at the time), then 2000
+      # on 2026-08-25.
+      #
+      # 10000 on 2026-08-27, because 2000 was not a cap on spend any more, it
+      # was a cap on FUNCTION. mergeTasks serves grid top-up before refreshes,
+      # so once the backlog passed the limit every run spent its whole budget
+      # on top-up and refreshed nothing: measured 2026-08-27, "planning 2000
+      # grid top-up(s) and 0 refresh(es)" against a 9,231 backlog with at
+      # least 2,000 stays due. The tier scheduler had stopped running, tracked
+      # prices aged past assessLiveConfidence's 12-hour cap, and guests saw
+      # confidence fall on hotels whose comparisons were fine.
+      #
+      # 10000 clears the measured backlog (9,231) with room for refreshes.
+      # It is a cap, not a target: runs with less due plan less, so once the
+      # backlog drains the steady state costs far less than the peak.
+      #
+      # This raise is PAIRED with RATE_OBSERVATION_RETAIN_DAYS 5 -> 2 above and
+      # must not be read on its own: five times the collection volume against
+      # an unchanged 512 MB Neon ceiling projects past 1 GB, and a full project
+      # fails every insert while the run still reports success. The two moved
+      # together; moving this one back up without the other reopens exactly
+      # that hole. Watch the Database maintenance report over the first drain
+      # runs, because "close to the ceiling" is not visible in a green run.
       # Pure recomputation from stored data. Placed before Collect and guarded
       # on both sides so the two can never run in the same job: a rebuild is
       # cheap and a collection is not, and a flag that silently did both would
@@ -183,7 +212,7 @@ jobs:
         if: inputs.catalog == '' && !inputs.rebuild_only
         run: |
           npm run collect -- \
-            --limit "${{ inputs.limit || 2000 }}" \
+            --limit "${{ inputs.limit || 10000 }}" \
             --concurrency 6 \
             ${{ inputs.dry_run && '--dry-run' || '' }} \
             2>&1 | tee collect.log
