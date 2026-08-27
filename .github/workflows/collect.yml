@@ -206,8 +206,8 @@ jobs:
           # while the run still exits 0. One warning for both trained everyone
           # to ignore the warning, which is how the backlog reached 10,206
           # unnoticed.
-          if grep -q 'BACKLOG CANNOT DRAIN' collect.log; then
-            detail=$(grep -m1 'BACKLOG CANNOT DRAIN' collect.log | sed 's/^ *!! *//')
+          if grep -qE 'REFRESHES STARVED|BACKLOG CANNOT DRAIN' collect.log; then
+            detail=$(grep -m1 -E 'REFRESHES STARVED|BACKLOG CANNOT DRAIN' collect.log | sed 's/^ *!! *//')
             echo "::warning::$detail"
           elif grep -q 'plan truncated' collect.log; then
             echo "::warning::Plan was truncated — raise --limit or collect more often."
