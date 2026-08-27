@@ -97,12 +97,26 @@ jobs:
       # analyses persist; only raw observations age out. After a Neon plan
       # upgrade, delete this line and history accrues without limit.
       #
-      # 5, not 7, since the limit rose to 2000: measured growth at the new
-      # volume is ~50-60 MB/day of observations, and 7 days of that plus
-      # baselines projected to ~450-500 MB — inside the ceiling only on a
-      # good week. 5 days holds ~385 MB steady with real margin, and the
-      # live model reads rates far fresher than either window.
-      RATE_OBSERVATION_RETAIN_DAYS: '5'
+      # 7 -> 5 on 2026-08-25 when the limit rose to 2000. 5 -> 2 on 2026-08-27,
+      # paired with the raise to 10000 in the same change and not separable
+      # from it: at 2000 observations grew ~50-60 MB/day and five days plus
+      # baselines held ~385 MB. Five times the collection volume against an
+      # unchanged 512 MB ceiling projects past 1 GB, and a full project fails
+      # every insert while the run still reports success — the failure mode
+      # that once hid a two-day outage inside green runs. Recovery is
+      # --squeeze, which TRUNCATEs rate_observation, and under U3 this source
+      # cannot backfill what that discards.
+      #
+      # Two days costs the product nothing it uses. The live model reads rates
+      # far fresher than either window, baselines are UPSERTED and never
+      # deleted so they survive a hotel going uncollected, and the grid's ±1
+      # day coverage tolerance already means a slot needs re-collecting about
+      # every three days regardless of what is retained.
+      #
+      # What it does cost is diagnosis: a week of raw observations was useful
+      # for answering "what did this hotel price last Tuesday", and that
+      # question is now unanswerable. The Neon upgrade is what buys it back.
+      RATE_OBSERVATION_RETAIN_DAYS: '2'
 
     steps:
       - uses: actions/checkout@v4
@@ -178,13 +192,13 @@ jobs:
       # It is a cap, not a target: runs with less due plan less, so once the
       # backlog drains the steady state costs far less than the peak.
       #
-      # WATCH THE CEILING. Neon caps this project at 512 MB and only DROP and
-      # TRUNCATE give space back (migration 0015). Observations grew ~50-60
-      # MB/day at limit 2000; the drain runs will write several times that,
-      # and more tracked stays means a permanently higher refresh volume.
-      # RATE_OBSERVATION_RETAIN_DAYS is the lever if it gets close - and
-      # "close" is visible in the Database maintenance report, not in a run
-      # that reports success while every insert fails.
+      # This raise is PAIRED with RATE_OBSERVATION_RETAIN_DAYS 5 -> 2 above and
+      # must not be read on its own: five times the collection volume against
+      # an unchanged 512 MB Neon ceiling projects past 1 GB, and a full project
+      # fails every insert while the run still reports success. The two moved
+      # together; moving this one back up without the other reopens exactly
+      # that hole. Watch the Database maintenance report over the first drain
+      # runs, because "close to the ceiling" is not visible in a green run.
       # Pure recomputation from stored data. Placed before Collect and guarded
       # on both sides so the two can never run in the same job: a rebuild is
       # cheap and a collection is not, and a flag that silently did both would
