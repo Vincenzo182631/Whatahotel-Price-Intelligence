@@ -238,6 +238,32 @@ if (GEO_GAP) {
   // is what addressCanConfirm() needs to let a Google ask proceed; a hotel
   // with neither address nor postal code has nothing to geocode against and
   // is a different, larger job.
+  // Half a position is not a position: every distance predicate in the system
+  // requires BOTH coordinates, so a row carrying one and not the other is
+  // already invisible to the ladder while still looking placed in a casual
+  // count. Measured before migration 0018's CHECK is trusted, because the
+  // constraint treats such a row as a violation and the honest question is how
+  // many there are before anything is done about them.
+  console.log('\n── half a position (one coordinate, not both) ──');
+  console.log(
+    await sql(`
+      SELECT count(*) || ' active hotel(s) carry exactly one coordinate'
+        FROM hotel
+       WHERE is_active
+         AND (latitude IS NULL) <> (longitude IS NULL)`),
+  );
+  console.log(
+    await sql(`
+      SELECT wah_hotel_id || ' | ' || rpad(left(name, 40), 40)
+          || ' | lat ' || COALESCE(latitude::text, 'NULL')
+          || ' | lon ' || COALESCE(longitude::text, 'NULL')
+        FROM hotel
+       WHERE is_active
+         AND (latitude IS NULL) <> (longitude IS NULL)
+       ORDER BY id
+       LIMIT 40`),
+  );
+
   console.log('\n── can the worthwhile gap be closed with what we already hold? ──');
   console.log(
     await sql(`
