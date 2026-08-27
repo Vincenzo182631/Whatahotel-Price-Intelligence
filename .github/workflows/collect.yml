@@ -24,13 +24,37 @@ on:
   # that did not exist would have buried real failures in noise, and noise is
   # how real failures get ignored.
   #
-  # The cadence is 6 hours because that is the scheduler's shortest tier
-  # interval: HOT stays (lead ≤ 30 days — the bookings customers are about to
-  # make) want a 6-hour refresh, WARM 24h, COLD 72h. Anything coarser silently
-  # caps every tier at the cron period. It does NOT quadruple API spend —
-  # `planCollection` returns only stays actually due, so WARM and COLD are
-  # skipped on the intermediate firings. The first run planned HOT=240
-  # WARM=450; subsequent runs are far smaller.
+  # The cadence was 6 hours — the scheduler's shortest tier interval, since HOT
+  # stays (lead ≤ 30 days, the bookings customers are about to make) want a
+  # 6-hour refresh, WARM 24h, COLD 72h, and anything coarser silently caps every
+  # tier at the cron period.
+  #
+  # Every 2 hours since 2026-08-27, and NOT because the tiers changed. GitHub's
+  # schedule event is best-effort: its own documentation says firings are
+  # delayed or dropped under load, and there is no setting that changes that.
+  # Measured here — three of the four expected runs on 2026-08-27 never
+  # happened, leaving a 14-hour gap:
+  #
+  #   08-25   01:11  06:43  12:44  18:37
+  #   08-26   01:14  06:47  12:50  19:46
+  #   08-27    ——    07:42   ——     ——
+  #
+  # At a 6-hour cadence one dropped firing means a HOT stay due at T is not
+  # collected until T+12h, past assessLiveConfidence's maxRateAgeHours of 12 —
+  # so a platform hiccup surfaces to a guest as confidence falling on a hotel
+  # whose comparison is perfectly sound. Two dropped firings is 18 hours.
+  #
+  # So the fix is tolerance, not reliability: the schedule cannot be made to
+  # fire, but a dropped firing can be made to cost a twelfth of a day instead
+  # of a quarter. The per-run limit drops from 10000 to 3500 in the same change
+  # to keep the DAILY budget flat — 12 x 3500 is 42,000 stays against the old
+  # 4 x 10000 = 40,000 — so this buys resilience and freshness at no extra API
+  # spend and no extra storage. The two numbers move together; changing one
+  # alone changes the budget.
+  #
+  # Frequency does not by itself increase spend: planCollection returns only
+  # stays actually due, so a run with nothing due plans nothing. What fills a
+  # run is the grid backlog, and that is bounded by the limit either way.
   #
   # Cron is ALWAYS UTC here; GitHub observes no local timezone or DST.
   #
@@ -39,7 +63,7 @@ on:
   # day of baseline this source cannot backfill (U3) — it answers "what is the
   # rate now", never "what was it".
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */2 * * *'
 
   workflow_dispatch:
     inputs:
@@ -50,7 +74,7 @@ on:
       limit:
         description: 'Max stays to collect in this run'
         required: false
-        default: '10000'
+        default: '3500'
       dry_run:
         description: 'Plan only — make no API calls and write nothing'
         type: boolean
@@ -180,39 +204,36 @@ jobs:
       # on 2026-08-25.
       #
       # 10000 on 2026-08-27, because 2000 was not a cap on spend any more, it
-      # was a cap on FUNCTION. mergeTasks serves grid top-up before refreshes,
+      # was a cap on FUNCTION. mergeTasks served grid top-up before refreshes,
       # so once the backlog passed the limit every run spent its whole budget
-      # on top-up and refreshed nothing: measured 2026-08-27, "planning 2000
-      # grid top-up(s) and 0 refresh(es)" against a 9,231 backlog with at
-      # least 2,000 stays due. The tier scheduler had stopped running, tracked
-      # prices aged past assessLiveConfidence's 12-hour cap, and guests saw
-      # confidence fall on hotels whose comparisons were fine.
+      # on top-up and refreshed nothing: "planning 2000 grid top-up(s) and 0
+      # refresh(es)" against a 9,231 backlog with at least 2,000 stays due. The
+      # tier scheduler had stopped running, tracked prices aged past
+      # assessLiveConfidence's 12-hour cap, and guests saw confidence fall on
+      # hotels whose comparisons were fine. (mergeTasks now reserves half of
+      # each run for refreshes, so that particular starvation cannot recur.)
       #
-      # 10000 clears the measured backlog (9,231) with room for refreshes.
-      # It is a cap, not a target: runs with less due plan less, so once the
-      # backlog drains the steady state costs far less than the peak.
+      # 3500 later the same day, and NOT a walk-back of that raise. The cadence
+      # went 6-hourly -> 2-hourly in the same change because GitHub drops
+      # scheduled firings, and this came down proportionally to hold the DAILY
+      # budget flat: 12 x 3500 = 42,000 stays a day against the old
+      # 4 x 10000 = 40,000. Same spend, same storage, three times the tolerance
+      # for a dropped firing, and a HOT stay waits at most ~2 hours for
+      # collection instead of up to 12.
       #
-      # This raise is PAIRED with RATE_OBSERVATION_RETAIN_DAYS 5 -> 2 above and
-      # must not be read on its own: five times the collection volume against
-      # an unchanged 512 MB Neon ceiling projects past 1 GB, and a full project
-      # fails every insert while the run still reports success. The two moved
-      # together; moving this one back up without the other reopens exactly
-      # that hole. Watch the Database maintenance report over the first drain
-      # runs, because "close to the ceiling" is not visible in a green run.
-      # Pure recomputation from stored data. Placed before Collect and guarded
-      # on both sides so the two can never run in the same job: a rebuild is
-      # cheap and a collection is not, and a flag that silently did both would
-      # spend the API budget of a full run to fix a table.
-      - name: Rebuild comparables
-        if: inputs.rebuild_only
-        run: |
-          npm run collect -- --rebuild-only 2>&1 | tee collect.log
-
+      # THE CADENCE AND THIS NUMBER MOVE TOGETHER. Raising this without
+      # shortening the cadence, or lengthening the cadence without lowering
+      # this, changes the daily budget — and the daily budget is what the
+      # 512 MB Neon ceiling constrains, not the per-run figure.
+      #
+      # Still paired with RATE_OBSERVATION_RETAIN_DAYS above for the same
+      # reason: a full project fails every insert while the run reports
+      # success, and the ceiling is not visible in a green run.
       - name: Collect
         if: inputs.catalog == '' && !inputs.rebuild_only
         run: |
           npm run collect -- \
-            --limit "${{ inputs.limit || 10000 }}" \
+            --limit "${{ inputs.limit || 3500 }}" \
             --concurrency 6 \
             ${{ inputs.dry_run && '--dry-run' || '' }} \
             2>&1 | tee collect.log
