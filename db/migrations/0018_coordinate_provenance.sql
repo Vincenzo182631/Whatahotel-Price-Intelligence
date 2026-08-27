@@ -69,6 +69,43 @@ UPDATE hotel
    AND longitude IS NOT NULL
    AND coordinate_source IS NULL;
 
+-- ── Four rows carrying half a position ────────────────────────────────────
+--
+-- The first attempt at this migration was refused by its own CHECK. Production
+-- holds four active hotels with a latitude and no longitude — The Westin Siray
+-- Bay Resort & Spa, Hotel Villa Carlotta, The Slaak Rotterdam and The Danna
+-- Langkawi — every one of them that way round, which is a parser signature
+-- rather than random corruption. The source sent no usable longitude and the
+-- catalogue stored the surviving half.
+--
+-- A lone coordinate is not a partial position, it is no position. Every
+-- distance predicate in the system requires both, so these rows have been
+-- invisible to the competitive ladder all along while still counting as placed
+-- in any casual look at the data. Normalising them to NULL removes nothing
+-- that anything could use, and it makes them eligible for the repair this same
+-- migration enables: an unplaced hotel can be placed from a VERIFIED Google
+-- match, and two of the four sit in destinations the coverage report lists as
+-- starved.
+--
+-- The surviving latitude is discarded, and that is worth stating plainly
+-- rather than burying: it is real data, it is simply not usable data, and
+-- keeping it would mean either weakening the constraint or leaving the hotel
+-- permanently half-placed.
+--
+-- The parser now refuses the pair at the source (parse.ts), so this class of
+-- row cannot regenerate on the next catalogue sync — which matters more than
+-- the repair itself, because a re-written lone latitude would be refused by
+-- the CHECK below and take the whole sync down with it.
+DO $$
+DECLARE n INTEGER;
+BEGIN
+    UPDATE hotel
+       SET latitude = NULL, longitude = NULL
+     WHERE (latitude IS NULL) <> (longitude IS NULL);
+    GET DIAGNOSTICS n = ROW_COUNT;
+    RAISE NOTICE 'normalised % row(s) carrying half a position', n;
+END $$;
+
 -- A position without a provenance, or a provenance without a position, means
 -- one of the two writers got out of step. Cheap to assert, and the assertion
 -- is what makes the guard in resolve.ts trustworthy.

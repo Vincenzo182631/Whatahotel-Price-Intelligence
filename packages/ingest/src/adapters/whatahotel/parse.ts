@@ -402,13 +402,38 @@ export function parseHotel(hotel: WahHotel): ParsedHotel | null {
   // from every comp radius. The `search` method sends the same hotel's
   // coordinates as two proper fields. Split the combined form; each half
   // still passes the bounded coord() validation like any other value.
+  //
+  // The literal string "NULL" counts as empty here for the same reason str()
+  // treats it that way: it is how this API spells an absent field. Testing
+  // only for undefined and '' left a combined loc-lat unsplit whenever
+  // loc-long came back as "NULL".
   let rawLat = hotel['loc-lat'];
   let rawLng = hotel['loc-long'];
-  if (rawLat && (rawLng === undefined || rawLng === '') && String(rawLat).includes(',')) {
+  const absent = (v: string | undefined): boolean => v === undefined || v === '' || v === 'NULL';
+  if (rawLat && absent(rawLng) && String(rawLat).includes(',')) {
     const [half1, half2] = String(rawLat).split(',');
     rawLat = half1?.trim();
     rawLng = half2?.trim();
   }
+
+  // A position is a PAIR. One coordinate without the other is not a partial
+  // position, it is no position: every distance predicate in the system needs
+  // both, so a lone latitude is invisible to the competitive ladder while
+  // still making the hotel look placed. Four hotels reached production in
+  // exactly that state — The Westin Siray Bay, Hotel Villa Carlotta, The Slaak
+  // Rotterdam and The Danna Langkawi — each with a latitude and a longitude
+  // the source did not supply.
+  //
+  // Rejecting the pair here rather than storing half of it is also what keeps
+  // the catalogue sync working: migration 0018 requires a position and its
+  // provenance to move together, so re-writing a lone latitude on the next
+  // sync would be refused by the CHECK and take the whole sync down with it.
+  //
+  // Same principle as rule 9: a thing that cannot be measured is excluded, not
+  // recorded at half strength.
+  const latitude = coord(rawLat, 90);
+  const longitude = coord(rawLng, 180);
+  const placed = latitude !== null && longitude !== null;
 
   return {
     wahHotelId: hotel.hotelID,
@@ -416,8 +441,8 @@ export function parseHotel(hotel: WahHotel): ParsedHotel | null {
     city: str(hotel.city),
     region: str(hotel.region),
     country: str(hotel.country),
-    latitude: coord(rawLat, 90),
-    longitude: coord(rawLng, 180),
+    latitude: placed ? latitude : null,
+    longitude: placed ? longitude : null,
     cityRank: num(hotel.rank),
     amadeusProperty: str(hotel['ama-property']),
     perks: parsePerks(hotel.perks),

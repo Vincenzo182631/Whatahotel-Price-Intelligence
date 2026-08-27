@@ -695,6 +695,64 @@ describe('toRecords over a captured response', () => {
   });
 });
 
+describe('a position is a pair', () => {
+  // Four hotels reached production carrying a latitude and no longitude — The
+  // Westin Siray Bay, Hotel Villa Carlotta, The Slaak Rotterdam and The Danna
+  // Langkawi, every one of them that way round. A lone coordinate is not a
+  // partial position: every distance predicate needs both, so such a row is
+  // invisible to the competitive ladder while still looking placed.
+  //
+  // Refusing the pair here is also what keeps the catalogue sync alive under
+  // migration 0018, whose CHECK would reject a re-written lone latitude and
+  // take the sync down with it.
+  it('drops a lone latitude rather than storing half a position', () => {
+    const parsed = parseHotel({
+      hotelID: '3708',
+      name: 'The Westin Siray Bay Resort & Spa',
+      'loc-lat': '7.872489',
+      'loc-long': 'NULL',
+    } as never);
+    expect(parsed?.latitude).toBeNull();
+    expect(parsed?.longitude).toBeNull();
+  });
+
+  it('drops a lone longitude too', () => {
+    const parsed = parseHotel({
+      hotelID: '4503',
+      name: 'Hotel Villa Carlotta',
+      'loc-lat': '',
+      'loc-long': '15.287',
+    } as never);
+    expect(parsed?.latitude).toBeNull();
+    expect(parsed?.longitude).toBeNull();
+  });
+
+  it('drops the survivor when the OTHER half is out of range', () => {
+    // The Serengeti case, half-applied: a real latitude beside a longitude
+    // that overflows NUMERIC(9,6). coord() nulls the bad half; without the
+    // pair rule the good half would be stored alone.
+    const parsed = parseHotel({
+      hotelID: '4237',
+      name: 'Melia Serengeti Lodge',
+      'loc-lat': '-2.3333',
+      'loc-long': '5464062',
+    } as never);
+    expect(parsed?.latitude).toBeNull();
+    expect(parsed?.longitude).toBeNull();
+  });
+
+  it('keeps a complete pair untouched', () => {
+    const parsed = parseHotel({
+      hotelID: '6792',
+      name: 'St. Regis Aruba Resort',
+      'loc-lat': '12.5649666',
+      'loc-long': '-70.0493864',
+    } as never);
+    expect(parsed?.latitude).toBeCloseTo(12.5649666, 6);
+    expect(parsed?.longitude).toBeCloseTo(-70.0493864, 6);
+  });
+});
+
 describe('coordinates jammed into one field', () => {
   // Measured 2026-08-26 on hotel 4734: the `hotel` method can emit
   // loc-lat as "lat, lng" with loc-long empty. Without the split, both
@@ -710,6 +768,21 @@ describe('coordinates jammed into one field', () => {
     expect(parsed?.longitude).toBeCloseTo(-70.03774231571535, 6);
   });
 
+  it('splits it when loc-long is the literal string "NULL"', () => {
+    // "NULL" is how this API spells an absent field — str() has always read it
+    // that way. The split guard tested only for undefined and '', so a
+    // combined loc-lat went unsplit whenever the empty half arrived spelled
+    // out, and the hotel kept a latitude with no longitude.
+    const parsed = parseHotel({
+      hotelID: '3708',
+      name: 'The Westin Siray Bay Resort & Spa',
+      'loc-lat': '7.872489, 98.428056',
+      'loc-long': 'NULL',
+    } as never);
+    expect(parsed?.latitude).toBeCloseTo(7.872489, 6);
+    expect(parsed?.longitude).toBeCloseTo(98.428056, 6);
+  });
+
   it('leaves the separate-fields form exactly as it was', () => {
     const parsed = parseHotel({
       hotelID: '6792',
@@ -721,7 +794,13 @@ describe('coordinates jammed into one field', () => {
     expect(parsed?.longitude).toBeCloseTo(-70.0493864, 6);
   });
 
-  it('still refuses a non-coordinate in either half', () => {
+  it('still refuses a non-coordinate in either half, and now drops the survivor', () => {
+    // This used to assert that the surviving half was kept — longitude 12.0
+    // stored beside a null latitude. The pair rule retires that: a lone
+    // coordinate is no position, because every distance predicate needs both,
+    // and storing one made four production hotels look placed while being
+    // invisible to the competitive ladder. Losing 12.0 costs nothing that
+    // anything could read.
     const parsed = parseHotel({
       hotelID: '4237',
       name: 'Melia Serengeti Lodge',
@@ -729,6 +808,6 @@ describe('coordinates jammed into one field', () => {
       'loc-long': '',
     } as never);
     expect(parsed?.latitude).toBeNull();
-    expect(parsed?.longitude).toBeCloseTo(12.0, 6);
+    expect(parsed?.longitude).toBeNull();
   });
 });
