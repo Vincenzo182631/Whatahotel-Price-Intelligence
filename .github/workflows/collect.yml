@@ -199,7 +199,17 @@ jobs:
             echo "::error::Database project size limit exceeded — every write is failing. Run the Database maintenance workflow (confirm: apply)."
             exit 1
           fi
-          if grep -q 'plan truncated' collect.log; then
+          # Two conditions, deliberately annotated differently. Spilling a
+          # little is routine and self-correcting — the next run picks it up.
+          # Demand at twice capacity is not: the surplus is never collected,
+          # the grid rolls forward underneath it, and the queue grows every run
+          # while the run still exits 0. One warning for both trained everyone
+          # to ignore the warning, which is how the backlog reached 10,206
+          # unnoticed.
+          if grep -q 'BACKLOG CANNOT DRAIN' collect.log; then
+            detail=$(grep -m1 'BACKLOG CANNOT DRAIN' collect.log | sed 's/^ *!! *//')
+            echo "::warning::$detail"
+          elif grep -q 'plan truncated' collect.log; then
             echo "::warning::Plan was truncated — raise --limit or collect more often."
           fi
           # Report the collector's own count, not a line count. The collector
