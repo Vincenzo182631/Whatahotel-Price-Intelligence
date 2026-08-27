@@ -24,6 +24,9 @@
 //   node scripts/db-maintain.mjs --coverage # which hotel attributes actually exist,
 //                                           # and how many neighbours a tighter
 //                                           # competitive radius would find
+//   node scripts/db-maintain.mjs --collection-coverage
+//                                           # how much of the catalogue has
+//                                           # ever actually been collected
 //   node scripts/db-maintain.mjs --comp-funnel
 //                                           # why a hotel has no curated peer
 //                                           # set: which of the builder's
@@ -490,6 +493,120 @@ if (COMP_FUNNEL) {
   console.log(
     '\n(Attribution is to the FIRST condition in this order. A hotel with no baseline of\n' +
       ' its own would also fail later tests; it is counted once, at the top.)',
+  );
+
+  process.exit(0);
+}
+
+// How much of the catalogue has ever actually been collected?
+//
+// The comp-set funnel put 96.3% of hotels without a peer set behind one
+// condition: no L3 baseline of their own. The rollup writes an L3 row on
+// HAVING count(*) >= 1, so "no L3 baseline" is very nearly "no usable rate
+// observation has ever been rolled up for this hotel". That makes peer-set
+// coverage a COLLECTION question, not a qualification one, and this measures
+// it directly instead of inferring it.
+//
+// One thing to get right before reading any of it: production retains five
+// days of rate_observation (RATE_OBSERVATION_RETAIN_DAYS in collect.yml, forced
+// by the 512 MB project ceiling — see migration 0015). So rate_observation
+// CANNOT answer "was this hotel ever collected"; it answers "was it collected
+// this week". The durable records are rate_baseline, which is a rollup and is
+// never dropped by retention, and collection_attempt, which is the ledger of
+// what was tried. Both are used below and each is labelled for what it is.
+//
+// Read-only.
+const COLLECTION_COVERAGE = process.argv.includes('--collection-coverage');
+if (COLLECTION_COVERAGE) {
+  console.log('\n── enrolment: what the scheduler is even willing to collect ──');
+  console.log(
+    await sql(`
+      WITH a AS (SELECT * FROM hotel WHERE is_active)
+      SELECT line FROM (
+        SELECT 1 AS ord, 'active hotels                     ' || count(*) AS line FROM a
+        UNION ALL SELECT 2, '  tier HOT                        ' || count(*) FROM a WHERE collection_tier = 'HOT'
+        UNION ALL SELECT 3, '  tier WARM                       ' || count(*) FROM a WHERE collection_tier = 'WARM'
+        UNION ALL SELECT 4, '  tier COLD                       ' || count(*) FROM a WHERE collection_tier = 'COLD'
+        UNION ALL SELECT 5, '  tier OFF (never scheduled)      ' || count(*) FROM a WHERE collection_tier = 'OFF'
+        UNION ALL SELECT 6, 'ENROLLED (tier <> OFF)            ' || count(*) || '  (' ||
+               round(100.0 * count(*) / NULLIF((SELECT count(*) FROM a), 0)) || '%)'
+          FROM a WHERE collection_tier <> 'OFF'
+      ) t ORDER BY ord`),
+  );
+
+  // The durable record. A baseline survives retention, so this is the closest
+  // thing to "has this hotel ever yielded a usable rate".
+  console.log('\n── has it ever produced a baseline? (survives the 5-day retention) ──');
+  console.log(
+    await sql(`
+      WITH a AS (SELECT * FROM hotel WHERE is_active)
+      SELECT line FROM (
+        SELECT 1 AS ord, 'active hotels                     ' || count(*) AS line FROM a
+        UNION ALL SELECT 2, 'with ANY rate_baseline row        ' || count(DISTINCT b.hotel_id)
+          FROM rate_baseline b JOIN a ON a.id = b.hotel_id
+        UNION ALL SELECT 3, '  with an L3 baseline             ' || count(DISTINCT b.hotel_id)
+          FROM rate_baseline b JOIN a ON a.id = b.hotel_id WHERE b.baseline_level = 'L3'
+        UNION ALL SELECT 4, 'with NO baseline of any kind      ' || count(*) || '  (' ||
+               round(100.0 * count(*) / NULLIF((SELECT count(*) FROM a), 0)) || '%)'
+          FROM a WHERE NOT EXISTS (SELECT 1 FROM rate_baseline b WHERE b.hotel_id = a.id)
+        UNION ALL SELECT 5, 'ENROLLED but no baseline          ' || count(*)
+          FROM a WHERE collection_tier <> 'OFF'
+            AND NOT EXISTS (SELECT 1 FROM rate_baseline b WHERE b.hotel_id = a.id)
+      ) t ORDER BY ord`),
+  );
+
+  // What was actually tried. consecutive_failures = 0 means the LAST attempt
+  // on that slot succeeded; the ledger keeps no "ever succeeded" flag, so a
+  // hotel whose slots are all currently failing may still have worked once.
+  // Said plainly rather than papered over.
+  console.log('\n── the attempt ledger: what was tried, and what came back ──');
+  console.log(
+    await sql(`
+      WITH a AS (SELECT * FROM hotel WHERE is_active)
+      SELECT line FROM (
+        SELECT 1 AS ord, 'active hotels in the ledger       ' || count(DISTINCT c.hotel_id) AS line
+          FROM collection_attempt c JOIN a ON a.id = c.hotel_id
+        UNION ALL SELECT 2, '  with a slot succeeding now      ' || count(DISTINCT c.hotel_id)
+          FROM collection_attempt c JOIN a ON a.id = c.hotel_id WHERE c.consecutive_failures = 0
+        UNION ALL SELECT 3, '  every slot currently failing    ' || count(*)
+          FROM (SELECT c.hotel_id FROM collection_attempt c JOIN a ON a.id = c.hotel_id
+                 GROUP BY c.hotel_id HAVING min(c.consecutive_failures) > 0) x
+        UNION ALL SELECT 4, 'NEVER attempted at all            ' || count(*)
+          FROM a WHERE NOT EXISTS (SELECT 1 FROM collection_attempt c WHERE c.hotel_id = a.id)
+        UNION ALL SELECT 5, '  of those, enrolled              ' || count(*)
+          FROM a WHERE collection_tier <> 'OFF'
+            AND NOT EXISTS (SELECT 1 FROM collection_attempt c WHERE c.hotel_id = a.id)
+      ) t ORDER BY ord`),
+  );
+
+  console.log('\n── last outcome across every tracked slot ──');
+  console.log(
+    await sql(`
+      SELECT rpad(COALESCE(c.last_outcome, '(none)'), 18) || lpad(count(*)::text, 7)
+          || ' slot(s), ' || lpad(count(DISTINCT c.hotel_id)::text, 5) || ' hotel(s)'
+        FROM collection_attempt c
+        JOIN hotel h ON h.id = c.hotel_id AND h.is_active
+       GROUP BY c.last_outcome
+       ORDER BY count(*) DESC`),
+  );
+
+  // The window that actually exists right now, so nobody reads a five-day
+  // table as a history.
+  console.log('\n── the retained observation window (five days, by design) ──');
+  console.log(
+    await sql(`
+      SELECT 'observations           ' || count(*)
+          || ' over ' || count(DISTINCT observed_date) || ' day(s), '
+          || COALESCE(min(observed_date)::text, 'none') || ' … '
+          || COALESCE(max(observed_date)::text, 'none')
+        FROM rate_observation
+      UNION ALL
+      SELECT 'active hotels observed ' || count(DISTINCT o.hotel_id)
+        FROM rate_observation o JOIN hotel h ON h.id = o.hotel_id AND h.is_active`),
+  );
+  console.log(
+    '\n(rate_observation is NOT a history: production drops partitions past five days.\n' +
+      ' "Ever collected" is answered by rate_baseline and collection_attempt, above.)',
   );
 
   process.exit(0);
