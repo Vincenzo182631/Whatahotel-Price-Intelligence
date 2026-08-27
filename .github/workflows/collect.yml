@@ -56,6 +56,15 @@ on:
         type: boolean
         required: false
         default: false
+      rebuild_only:
+        description: >-
+          Rebuild hotel_comparable from stored data and collect nothing. No
+          WhataHotel API calls. Use after a change to the comparable builder —
+          the stored peer sets are only as current as the last run, and a
+          distance bound added in code does nothing to rows already written.
+        type: boolean
+        required: false
+        default: false
 
 # One collection at a time. Two overlapping runs would double the API spend and
 # race on the same observation slots. Never cancel a run in progress: a
@@ -161,8 +170,17 @@ jobs:
       # a target — runs with less due plan less — so quiet runs spend
       # nothing extra. If truncation warnings return at 2000, that is the
       # signal to re-measure demand, not to blindly raise again.
+      # Pure recomputation from stored data. Placed before Collect and guarded
+      # on both sides so the two can never run in the same job: a rebuild is
+      # cheap and a collection is not, and a flag that silently did both would
+      # spend the API budget of a full run to fix a table.
+      - name: Rebuild comparables
+        if: inputs.rebuild_only
+        run: |
+          npm run collect -- --rebuild-only 2>&1 | tee collect.log
+
       - name: Collect
-        if: inputs.catalog == ''
+        if: inputs.catalog == '' && !inputs.rebuild_only
         run: |
           npm run collect -- \
             --limit "${{ inputs.limit || 2000 }}" \
