@@ -73,6 +73,17 @@ jobs:
           set -o pipefail
           npm run diagnose:roomtypes 2>&1 | tee -a compset.log
 
+      # The coordinate gap. The competitive radius can only see hotels that
+      # carry latitude and longitude, so this is the ceiling on how much of the
+      # catalogue the ladder can compare at all. Read-only, pure SQL.
+      - name: Measure the coordinate gap
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -o pipefail
+          node scripts/db-maintain.mjs --coverage 2>&1 | tee -a compset.log
+          node scripts/db-maintain.mjs --geo-gap 2>&1 | tee -a compset.log
+
       - name: Summarise
         if: always()
         run: |

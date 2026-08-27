@@ -36,6 +36,12 @@ export interface ResolutionTarget {
   readonly longitude: number | null;
   /** From the public hotel page. Lifts the matcher's no-coordinates cap. */
   readonly streetAddress: string | null;
+  /**
+   * Where the coordinates came from (migration 0018). GOOGLE means a previous
+   * match supplied them, so they cannot corroborate a Google candidate; the
+   * resolver treats them as absent when scoring a fresh match.
+   */
+  readonly coordinateSource: 'SOURCE' | 'GOOGLE' | null;
   readonly placeId: string | null;
 }
 
@@ -48,6 +54,14 @@ export interface ResolutionResult {
   readonly displayName?: string | null;
   readonly formattedAddress?: string | null;
   readonly mapsUri?: string | null;
+  /**
+   * The place's coordinates, as Google returned them.
+   *
+   * Written ONLY to a hotel that has none — see saveResolution. Google
+   * supplements the catalogue, it never overwrites it.
+   */
+  readonly latitude?: number | null;
+  readonly longitude?: number | null;
   readonly editorialSummary?: string | null;
   readonly reviewThemes?: readonly string[] | null;
 }
@@ -142,7 +156,7 @@ export async function findResolutionTargets(
 ): Promise<ResolutionTarget[]> {
   const { rows } = await db(q).query(
     `SELECT h.id, h.name, d.name AS city, h.latitude, h.longitude,
-            h.street_address, h.google_place_id
+            h.coordinate_source, h.street_address, h.google_place_id
        FROM hotel h
        LEFT JOIN destination d ON d.id = h.destination_id
       WHERE h.is_active
@@ -164,6 +178,7 @@ export async function findResolutionTargets(
     latitude: row.latitude === null ? null : Number(row.latitude),
     longitude: row.longitude === null ? null : Number(row.longitude),
     streetAddress: (row.street_address as string) ?? null,
+    coordinateSource: (row.coordinate_source as 'SOURCE' | 'GOOGLE') ?? null,
     placeId: (row.google_place_id as string) ?? null,
   }));
 }
@@ -175,6 +190,21 @@ export async function findResolutionTargets(
  * previous values behind. If a match stops agreeing — the hotel was renamed,
  * the threshold moved, Google merged two places — the safe state is no data,
  * not yesterday's data attributed to a mapping we no longer trust.
+ *
+ * ── The position is the exception, in both directions ─────────────────────
+ *
+ * A VERIFIED match arrives holding the place's own coordinates, and they are
+ * written ONLY to a hotel that has none, stamped coordinate_source = 'GOOGLE'
+ * so the resolver knows never to let them corroborate a Google candidate
+ * later. A hotel that already has coordinates keeps them: those are what
+ * whatahotel.com says about its own property, and overwriting them with a
+ * third party's reading would silently move a hotel nobody asked to move.
+ *
+ * And unlike the reputation columns, a non-VERIFIED outcome does NOT clear the
+ * position. A hotel's location does not become unknown because a name match
+ * stopped clearing a confidence threshold, and blanking it would drop the
+ * hotel out of every competitive radius at once. Coordinates are only ever
+ * added here, never removed.
  */
 export async function saveResolution(
   hotelId: number,
@@ -199,6 +229,23 @@ export async function saveResolution(
             google_maps_uri          = $9,
             google_editorial_summary = $10,
             google_review_themes     = $11,
+            -- Add-only, and only from a VERIFIED match. COALESCE keeps an
+            -- existing position untouched; the WHEN guards stop a doubtful
+            -- match writing one at all.
+            latitude                 = CASE WHEN $3 = 'VERIFIED'
+                                            THEN COALESCE(latitude, $12)
+                                            ELSE latitude END,
+            longitude                = CASE WHEN $3 = 'VERIFIED'
+                                            THEN COALESCE(longitude, $13)
+                                            ELSE longitude END,
+            -- Provenance follows the position it describes, so the CHECK
+            -- constraint in migration 0018 holds on every path through here.
+            coordinate_source        = CASE
+                WHEN coordinate_source IS NOT NULL THEN coordinate_source
+                WHEN $3 = 'VERIFIED' AND latitude IS NULL AND longitude IS NULL
+                     AND $12::numeric IS NOT NULL AND $13::numeric IS NOT NULL
+                    THEN 'GOOGLE'::hotel_coordinate_source_t
+                ELSE coordinate_source END,
             google_fetched_at        = now()
       WHERE id = $1`,
     [
@@ -213,6 +260,8 @@ export async function saveResolution(
       verified ? (result.mapsUri ?? null) : null,
       verified ? (result.editorialSummary ?? null) : null,
       verified ? (result.reviewThemes ?? null) : null,
+      verified ? (result.latitude ?? null) : null,
+      verified ? (result.longitude ?? null) : null,
     ],
   );
 }

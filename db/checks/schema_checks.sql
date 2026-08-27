@@ -434,4 +434,57 @@ BEGIN
     RAISE NOTICE 'CHECK 13  ok — a real rating stores unchanged';
 END $$;
 
+-- ── CHECK 14 — a position and its provenance move together ────────────────
+--
+-- Migration 0018 lets a VERIFIED Google match place a hotel we hold no
+-- coordinates for, and stamps coordinate_source so the resolver knows never to
+-- let those coordinates corroborate a later Google candidate. That guard is
+-- only trustworthy if the stamp cannot drift away from the position it
+-- describes — a hotel with coordinates and no provenance would be read as
+-- SOURCE and quietly become self-corroborating evidence.
+--
+-- Enforced in the schema rather than in the one writer, because the writer is
+-- not the only path: a backfill, a repair migration or a hand-run UPDATE all
+-- reach these columns, and the guarantee has to outlive whichever one forgets.
+DO $$
+DECLARE hid BIGINT;
+BEGIN
+    SELECT id INTO hid FROM hotel WHERE wah_hotel_id = 'CHECK-2962';
+
+    BEGIN
+        UPDATE hotel SET latitude = 25.7663, longitude = -80.1902,
+                         coordinate_source = NULL
+         WHERE id = hid;
+        RAISE EXCEPTION 'CHECK 14a FAILED: a position with no provenance was accepted';
+    EXCEPTION WHEN check_violation THEN
+        RAISE NOTICE 'CHECK 14a ok — coordinates without a provenance are refused';
+    END;
+
+    BEGIN
+        UPDATE hotel SET latitude = NULL, longitude = NULL,
+                         coordinate_source = 'GOOGLE'
+         WHERE id = hid;
+        RAISE EXCEPTION 'CHECK 14b FAILED: a provenance with no position was accepted';
+    EXCEPTION WHEN check_violation THEN
+        RAISE NOTICE 'CHECK 14b ok — a provenance without coordinates is refused';
+    END;
+
+    -- Half a position is not a position: the distance predicate needs both,
+    -- and one of the two arriving alone is how a hotel silently leaves the
+    -- competitive radius while still looking placed.
+    BEGIN
+        UPDATE hotel SET latitude = 25.7663, longitude = NULL,
+                         coordinate_source = 'GOOGLE'
+         WHERE id = hid;
+        RAISE EXCEPTION 'CHECK 14c FAILED: a latitude with no longitude was accepted';
+    EXCEPTION WHEN check_violation THEN
+        RAISE NOTICE 'CHECK 14c ok — half a position is refused';
+    END;
+
+    UPDATE hotel SET latitude = 25.7663, longitude = -80.1902,
+                     coordinate_source = 'GOOGLE'
+     WHERE id = hid;
+    RAISE NOTICE 'CHECK 14  ok — a Google-placed hotel stores with its provenance';
+END $$;
+
 ROLLBACK;

@@ -285,13 +285,28 @@ async function persistHotels(
 
       const { rows: hotelRows } = await runner.query(
         `INSERT INTO hotel (wah_hotel_id, name, destination_id, latitude, longitude,
+                            coordinate_source,
                             base_currency, collection_tier, city_rank)
-         VALUES ($1,$2,$3,$4,$5,'USD',$6,$7)
+         VALUES ($1,$2,$3,$4,$5,
+                 CASE WHEN $4::numeric IS NOT NULL AND $5::numeric IS NOT NULL
+                      THEN 'SOURCE'::hotel_coordinate_source_t END,
+                 'USD',$6,$7)
          ON CONFLICT (wah_hotel_id) DO UPDATE
            SET name = EXCLUDED.name,
                destination_id = COALESCE(EXCLUDED.destination_id, hotel.destination_id),
                latitude = COALESCE(EXCLUDED.latitude, hotel.latitude),
                longitude = COALESCE(EXCLUDED.longitude, hotel.longitude),
+               -- Provenance follows the position (migration 0018), and the
+               -- catalogue OUTRANKS Google: when the source of record finally
+               -- states where its own property is, that reading replaces one
+               -- inferred from a Places match, and the stamp has to say so or
+               -- the resolver would keep treating real coordinates as
+               -- self-corroborating. COALESCE above already prefers
+               -- EXCLUDED, so this only records which branch won.
+               coordinate_source = CASE
+                   WHEN EXCLUDED.latitude IS NOT NULL AND EXCLUDED.longitude IS NOT NULL
+                       THEN 'SOURCE'::hotel_coordinate_source_t
+                   ELSE hotel.coordinate_source END,
                -- Only cityrates carries a rank, so COALESCE: a later sweep or
                -- hotel lookup must not erase what cityrates already told us.
                city_rank = COALESCE(EXCLUDED.city_rank, hotel.city_rank),
