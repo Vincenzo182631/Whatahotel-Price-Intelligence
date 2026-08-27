@@ -65,6 +65,16 @@ const CATALOG_SWEEP = arg('catalog-sweep', false) !== false;
 const SWEEP_FROM = Number(arg('from', 1));
 const SWEEP_TO = arg('to', null);
 const BOOTSTRAP = arg('bootstrap', false) !== false;
+// Rebuild the peer sets from what is already stored, and call nothing.
+//
+// hotel_comparable is computed from hotel and rate_baseline, so a rebuild
+// costs database time and no WhataHotel API calls at all. It exists because
+// the table can go stale against the CODE rather than against the data: every
+// stored peer set was built before the builder took a distance bound, so all
+// of them are destination-wide until something recomputes them. Waiting for
+// the next collection would work, and it would also tie a pure recomputation
+// to an API spend it does not need.
+const REBUILD_ONLY = arg('rebuild-only', false) !== false;
 const MAX_TASKS = Number(arg('limit', DEFAULT_SCHEDULER_OPTIONS.maxTasks));
 const CONCURRENCY = Number(arg('concurrency', 4));
 
@@ -102,6 +112,27 @@ function mergeTasks(gridTasks, dueTasks, limit) {
 
 async function main() {
   const started = Date.now();
+
+  // Before anything that needs a key or a network. Nothing below this branch
+  // is reached, so a rebuild cannot accidentally spend an API call.
+  if (REBUILD_ONLY) {
+    console.log('• Rebuilding comparables from stored data — no API calls\n');
+
+    // Comparables only, deliberately. Baselines are refreshed by every
+    // collection six hours apart, so they are already current; recomputing
+    // them here would move Deal Scores as a side effect of a request to fix
+    // peer sets, and a rebuild should change exactly the thing it names.
+    const comparables = await rebuildComparables(DEFAULT_COMPARABLE_OPTIONS);
+    console.log(
+      `• Comparables: ${comparables.pairsWritten} pair(s) across ` +
+        `${comparables.hotelsProcessed} hotel(s); ` +
+        `${comparables.hotelsWithoutComparables} without a comp set ` +
+        `(bound: ${DEFAULT_COMPARABLE_OPTIONS.maxDistanceKm.toFixed(2)} km)`,
+    );
+
+    console.log(`\n✓ Done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+    return;
+  }
 
   // Full-inventory sweep ----------------------------------------------------
   //
