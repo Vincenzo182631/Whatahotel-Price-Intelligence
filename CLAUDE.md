@@ -42,9 +42,15 @@ npm run pages -- --dry-run        # show the queue, fetch nothing
 `confirm: apply` — it never needs the connection string outside a repository
 secret. See [`docs/runbooks/database.md`](./docs/runbooks/database.md).
 
-Collection runs from `.github/workflows/collect.yml` **every 6 hours**, live
-since 2026-08-18. Six hours is the scheduler's shortest tier interval; anything
-coarser silently caps every tier at the cron period. It does not quadruple API
+Collection runs from `.github/workflows/collect.yml` **every 2 hours**, live
+since 2026-08-18 (6-hourly until 2026-08-27). Six hours is the scheduler's
+shortest tier interval and anything coarser silently caps every tier at the
+cron period — but GitHub drops scheduled firings, and three of four expected
+runs vanished on 2026-08-27. At 6-hourly one drop pushes a HOT stay past
+`maxRateAgeHours` (12) and a guest sees confidence fall for a platform hiccup.
+The cadence and the per-run limit move TOGETHER — 2-hourly at 3,500 is the same
+daily budget as 6-hourly at 10,000 — so changing one alone silently changes
+what the 512 MB ceiling has to absorb. It does not quadruple API
 spend — `planCollection` returns only stays actually due. **Read
 [`docs/runbooks/collection.md`](./docs/runbooks/collection.md) before changing
 it**, and if it ever has to be switched off, comment the two `schedule:` lines
