@@ -359,7 +359,17 @@ async function main() {
   const adapter = createWhataHotelAdapter({
     concurrency: CONCURRENCY,
     continueOnError: true,
-    onError: (query, error) => failures.push({ query, message: error.message }),
+    onError: (query, error) =>
+      failures.push({
+        query,
+        message: error.message,
+        // A dead Amadeus mapping, told apart from a transient fault by the
+        // adapter (WahApiError.brokenMapping). Recorded distinctly so the
+        // ledger can show the difference; without it every 500 reads the same
+        // and a permanently broken hotel is indistinguishable from a bad
+        // minute upstream.
+        brokenMapping: error?.brokenMapping === true,
+      }),
     onNoAvailability: (query) => {
       soldOut += 1;
       soldOutKeys.add(stayKey(query));
@@ -402,6 +412,9 @@ async function main() {
   // rates is picked straight back up.
   const producedData = new Set(records.map((r) => ingestStayKey(r)));
   const failedKeys = new Set(failures.map((f) => stayKey(f.query)));
+  const brokenKeys = new Set(
+    failures.filter((f) => f.brokenMapping).map((f) => stayKey(f.query)),
+  );
   const recordAttempts = async (trackedStays) => {
     const attempts = tasks.map((task) => {
       const key = ingestStayKey(task);
@@ -412,9 +425,11 @@ async function main() {
         nights: task.nights,
         adults: task.adults,
         succeeded: tracked,
-        outcome: failedKeys.has(key)
-          ? 'ERROR'
-          : soldOutKeys.has(key)
+        outcome: brokenKeys.has(key)
+          ? 'BROKEN_MAPPING'
+          : failedKeys.has(key)
+            ? 'ERROR'
+            : soldOutKeys.has(key)
             ? 'NO_AVAILABILITY'
             : tracked
               ? 'OK'

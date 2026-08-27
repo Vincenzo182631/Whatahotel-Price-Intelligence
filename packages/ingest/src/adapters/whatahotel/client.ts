@@ -158,7 +158,11 @@ export class WahClient {
 
         // THE status check. HTTP 200 means nothing here.
         if (wahData.status.connection !== 1 || !SUCCESS_CODES.has(wahData.status.code)) {
-          const apiError = new WahApiError(wahData.status);
+          // wahData carries the amadeus block on a rates response; it is not
+          // on the generic envelope type, hence the narrow read rather than a
+          // widened generic. See WahApiError.brokenMapping for why it matters.
+          const amadeus = (wahData as { readonly amadeus?: { readonly amaID?: string } }).amadeus;
+          const apiError = new WahApiError(wahData.status, amadeus);
           if (apiError.retryable && attempt < this.options.maxRetries) {
             lastError = apiError;
             continue;

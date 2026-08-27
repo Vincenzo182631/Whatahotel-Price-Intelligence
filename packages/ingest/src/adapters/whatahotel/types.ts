@@ -126,15 +126,50 @@ export class WahApiError extends Error {
   /** The stay is simply sold out. Distinct from a fault; see the constant above. */
   readonly noAvailability: boolean;
 
-  constructor(status: WahStatus) {
+  /**
+   * Amadeus's own id for the property, as this response reported it.
+   *
+   * The literal string "NULL" is how the source says the property's Amadeus
+   * MAPPING is dead while the property code itself is fine — see
+   * `brokenMapping`. Kept verbatim, deliberately NOT normalised the way
+   * parse.ts's `str()` folds "NULL" into null, because here the four
+   * characters are the signal rather than an absence to be tidied away.
+   */
+  readonly amadeusId: string | null;
+
+  /**
+   * This hotel's rate lookups cannot succeed until someone fixes the mapping
+   * upstream. Not a fault of ours and not a transient one.
+   *
+   * Measured 2026-08-27: nine hotels were failing their ENTIRE grid — 3554,
+   * 1004, 1953, 3094, 3749, 6640, 6652, 7009 and 7118, between 46 and 162
+   * failing slots each against a grid of ~69 — while 55 others failed a
+   * handful of slots, which is ordinary sold-out and transient noise. Every
+   * one of those dead slots was being retried maxRetries times on every run,
+   * because a 500 is retryable and nothing distinguished the two cases.
+   *
+   * Keyed on the LITERAL "NULL" and never on absence. A transient 500 may
+   * carry no amadeus block at all, and reading a missing field as "broken"
+   * would make genuine faults permanently unretryable — the expensive
+   * direction to be wrong in. Absence stays ambiguous, exactly as rule 9
+   * treats an unmeasurable factor.
+   */
+  readonly brokenMapping: boolean;
+
+  constructor(status: WahStatus, amadeus?: { readonly amaID?: string } | null) {
     super(`WhataHotel API ${status.code} on ${status.method}: ${status.message}`);
     this.name = 'WahApiError';
     this.code = status.code;
     this.method = status.method;
     this.noAvailability = status.code === WAH_NO_AVAILABILITY_CODE;
+    this.amadeusId = amadeus?.amaID ?? null;
+    this.brokenMapping = status.code === '500' && this.amadeusId === 'NULL';
     // 500/503 are transient. 400/401 are permanent: bad input or bad
     // credentials, and a retry only wastes the call budget. 204 is not a
     // failure at all, so there is nothing to retry.
-    this.retryable = status.code === '500' || status.code === '503';
+    //
+    // A broken mapping is a 500 that will answer 500 forever. Retrying it is
+    // the call budget being spent on an outcome that cannot change.
+    this.retryable = (status.code === '500' || status.code === '503') && !this.brokenMapping;
   }
 }
