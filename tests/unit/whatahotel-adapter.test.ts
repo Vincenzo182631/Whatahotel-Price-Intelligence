@@ -317,6 +317,55 @@ describe('error taxonomy', () => {
     expect(err('error_500').noAvailability).toBe(false);
   });
 
+  // A dead Amadeus mapping answers 500 forever. Measured 2026-08-27: nine
+  // hotels were failing their ENTIRE grid (3554, 1004, 1953, 3094, 3749, 6640,
+  // 6652, 7009, 7118 — 46 to 162 failing slots each against a grid of ~69),
+  // and every one of those dead slots was being retried maxRetries times on
+  // every run because nothing separated it from a transient fault.
+  describe('a broken Amadeus mapping is a 500 that cannot recover', () => {
+    const status = (code: string) =>
+      ({ code, method: 'rates', message: 'x', connection: 1 }) as never;
+
+    it('is not retryable when amaID is the literal "NULL"', () => {
+      const e = new WahApiError(status('500'), { amaID: 'NULL' });
+      expect(e.brokenMapping).toBe(true);
+      expect(e.retryable).toBe(false);
+      expect(e.amadeusId).toBe('NULL');
+    });
+
+    it('stays retryable when the mapping is intact', () => {
+      const e = new WahApiError(status('500'), { amaID: 'MIAEBH' });
+      expect(e.brokenMapping).toBe(false);
+      expect(e.retryable).toBe(true);
+    });
+
+    // The expensive direction to be wrong in, and the reason this keys on the
+    // four characters rather than on falsiness: a transient 500 may carry no
+    // amadeus block at all, and reading absence as "broken" would retire a
+    // healthy hotel permanently over one bad minute upstream. Absence stays
+    // ambiguous — the same rule 9 principle as an unmeasurable factor.
+    it('does NOT infer a broken mapping from a missing amadeus block', () => {
+      expect(new WahApiError(status('500'), undefined).brokenMapping).toBe(false);
+      expect(new WahApiError(status('500'), undefined).retryable).toBe(true);
+      expect(new WahApiError(status('500'), null).retryable).toBe(true);
+      expect(new WahApiError(status('500'), {}).brokenMapping).toBe(false);
+      expect(new WahApiError(status('500'), {}).retryable).toBe(true);
+    });
+
+    it('does not fire on a code that is not 500', () => {
+      // 503 is transient whatever the mapping says, and 401 is already
+      // permanent for a different reason — neither should be relabelled.
+      expect(new WahApiError(status('503'), { amaID: 'NULL' }).brokenMapping).toBe(false);
+      expect(new WahApiError(status('503'), { amaID: 'NULL' }).retryable).toBe(true);
+      expect(new WahApiError(status('401'), { amaID: 'NULL' }).brokenMapping).toBe(false);
+      expect(new WahApiError(status('401'), { amaID: 'NULL' }).retryable).toBe(false);
+    });
+
+    it('leaves amadeusId null when nothing was reported', () => {
+      expect(new WahApiError(status('500')).amadeusId).toBeNull();
+    });
+  });
+
   // Found in the first production collection run, not in design.
   it('recognises 204 as sold out rather than as a failure', () => {
     const soldOut = err('soldout_204');
