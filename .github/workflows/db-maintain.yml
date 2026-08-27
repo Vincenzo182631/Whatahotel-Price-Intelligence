@@ -62,9 +62,18 @@ jobs:
           # Through env, never interpolated into the script text, and held to a
           # strict shape before use — workflow inputs are user-typed strings.
           MARKET_PROBE: ${{ inputs.market_probe }}
+          DROP_PARTITION: ${{ inputs.drop_partition }}
         run: |
           set -o pipefail
-          if [ "${{ inputs.report }}" = "broken" ]; then
+          if [ -n "$DROP_PARTITION" ]; then
+            # Shape-checked here as well as in the script: this value reaches a
+            # DDL statement, and one validation is one place to forget.
+            if ! echo "$DROP_PARTITION" | grep -Eq '^rate_observation_[0-9]{4}_[0-9]{2}_[0-9]{2}$'; then
+              echo '::error::drop_partition must look like rate_observation_2026_08_25'
+              exit 1
+            fi
+            node scripts/db-maintain.mjs --drop-partition "$DROP_PARTITION" 2>&1 | tee maintain.log
+          elif [ "${{ inputs.report }}" = "broken" ]; then
             node scripts/db-maintain.mjs --broken 2>&1 | tee maintain.log
           elif [ "${{ inputs.report }}" = "coverage" ]; then
             node scripts/db-maintain.mjs --coverage 2>&1 | tee maintain.log

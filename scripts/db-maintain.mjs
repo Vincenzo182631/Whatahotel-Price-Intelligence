@@ -24,6 +24,11 @@
 //   node scripts/db-maintain.mjs --coverage # which hotel attributes actually exist,
 //                                           # and how many neighbours a tighter
 //                                           # competitive radius would find
+//   node scripts/db-maintain.mjs --drop-partition rate_observation_2026_08_25
+//                                           # drop ONE observation partition
+//                                           # ahead of schedule. Never the two
+//                                           # most recent. DROP is the only
+//                                           # thing that returns space here.
 //   node scripts/db-maintain.mjs --grid-coverage
 //                                           # why the missing-grid backlog
 //                                           # grows: coverage is read from a
@@ -840,6 +845,89 @@ if (GRID_COVERAGE) {
       ' cannot see the ledger, so it re-queues every one of them, every run, forever.)',
   );
 
+  process.exit(0);
+}
+
+// Drop ONE observation partition ahead of the retention schedule.
+//
+// enforce_rate_observation_retention refuses retain_days < 2, deliberately:
+// the live model scores from recent rates and dropping yesterday would leave
+// it scoring from nothing. That floor is right, and it also means the ordinary
+// path cannot drop a partition early even when the project is close to its
+// ceiling and nothing else returns space. On 2026-08-27 the database sat at
+// 454 MB of 512 MB with the 2026-08-25 partition holding ~266 MB including its
+// indexes, and the scheduled drop was eleven hours away.
+//
+// So this exists, and it keeps the floor's INTENT rather than its arithmetic:
+// the two most recent partitions can never be dropped, whatever is asked for.
+// That is what actually protects the live model — a day-count threshold was
+// only ever a proxy for "do not take the data we are still scoring from".
+//
+// DROP is also the only operation that genuinely returns space here. Nulling
+// raw with UPDATE does the opposite: it writes a new row version and leaves
+// the old one dead, so slimming 215,988 rows on 2026-08-27 grew the database
+// by 52 MB rather than shrinking it, because the VACUUM that would have
+// reclaimed them never ran. Learned expensively; recorded so it is not
+// repeated.
+const DROP_IDX = process.argv.indexOf('--drop-partition');
+if (DROP_IDX !== -1) {
+  const name = process.argv[DROP_IDX + 1] ?? '';
+
+  // Shape first: this string reaches a DDL statement, so nothing that is not
+  // exactly a dated observation partition may pass.
+  if (!/^rate_observation_\d{4}_\d{2}_\d{2}$/.test(name)) {
+    console.error(
+      `Refusing "${name}": expected a partition named rate_observation_YYYY_MM_DD.`,
+    );
+    process.exit(1);
+  }
+
+  const partitions = (
+    await sql(`
+      SELECT c.relname
+        FROM pg_class c
+        JOIN pg_inherits i ON i.inhrelid = c.oid
+       WHERE i.inhparent = 'rate_observation'::regclass
+         AND pg_get_expr(c.relpartbound, c.oid) <> 'DEFAULT'
+       ORDER BY c.relname`)
+  )
+    .split('\n')
+    .filter(Boolean);
+
+  if (!partitions.includes(name)) {
+    console.error(`Refusing "${name}": not a partition of rate_observation.`);
+    console.error(`Partitions present: ${partitions.join(', ') || '(none)'}`);
+    process.exit(1);
+  }
+
+  // The floor's intent, enforced on the actual partition list rather than on a
+  // day count: the newest two stay, always. Sorted by name, which for
+  // YYYY_MM_DD sorts chronologically.
+  const protectedTail = partitions.slice(-2);
+  if (protectedTail.includes(name)) {
+    console.error(
+      `Refusing "${name}": it is one of the two most recent partitions ` +
+        `(${protectedTail.join(', ')}), which the live model scores from.`,
+    );
+    process.exit(1);
+  }
+
+  const sizeOf = async () =>
+    await sql("SELECT pg_size_pretty(pg_database_size(current_database()))");
+  const before = await sizeOf();
+  const partSize = await sql(
+    `SELECT pg_size_pretty(pg_total_relation_size('${name}'::regclass))`,
+  );
+  console.log(`\n── dropping ${name} (${partSize}, includes its indexes) ──`);
+  console.log(`database before: ${before}`);
+
+  await sql(`DROP TABLE ${name}`);
+
+  console.log(`database after:  ${await sizeOf()}`);
+  console.log(
+    `\nDropped. The observations in ${name} are gone and this source cannot\n` +
+      'backfill them (U3) — baselines and analyses computed from them persist.',
+  );
   process.exit(0);
 }
 
