@@ -6,7 +6,11 @@
  *
  * Presentation rules it enforces (docs/mvp/08 §5), because breaking any of them
  * makes the product misleading rather than merely ugly:
- *   1. Never show a Deal Score without its confidence.
+ *   1. RETIRED 2026-08-27 — "never show a Deal Score without its confidence".
+ *      The confidence tile is no longer rendered, by product decision. The
+ *      protections it stood for remain: a thin-evidence score still renders as
+ *      a BAND rather than a number, and the engine still softens the
+ *      recommendation. What is lost is the qualifier on a MEDIUM score.
  *   2. Never show 0 for an absent score — absence is null and renders as text.
  *   3. Never imply prediction.
  *   4. Never rely on colour alone; every band carries a text label.
@@ -434,12 +438,6 @@
     BELOW_AVERAGE: 'Above typical',
     POOR: 'Expensive',
   };
-  var CONFIDENCE_LABEL = {
-    HIGH: 'High confidence',
-    MODERATE: 'Moderate confidence',
-    LOW: 'Low confidence',
-    INSUFFICIENT: 'Insufficient data',
-  };
   var RECOMMENDATION_TONE = {
     BOOK_NOW: 'wahpi--good',
     CONSIDER: 'wahpi--neutral',
@@ -573,7 +571,11 @@
       );
       scoreBox.appendChild(band);
       scoreBox.appendChild(
-        el('div', 'wahpi__metric-note', 'Shown as a range because our confidence is low.'),
+        el(
+          'div',
+          'wahpi__metric-note',
+          'Shown as a range because this comparison rests on limited evidence.',
+        ),
       );
     } else {
       var value = el('div', 'wahpi__metric-value ' + SCORE_TONE[v.deal_score_band]);
@@ -591,22 +593,19 @@
     }
     grid.appendChild(scoreBox);
 
-    // Confidence — same visual weight as the score. Rule 1.
-    var confBox = el('div', 'wahpi__metric');
-    confBox.appendChild(el('div', 'wahpi__metric-label', 'Confidence'));
-    var confValue = el('div', 'wahpi__metric-value');
-    confValue.textContent = v.confidence;
-    confValue.appendChild(el('span', 'wahpi__metric-sub', ' / 100'));
-    confBox.appendChild(confValue);
-    confBox.appendChild(el('div', 'wahpi__metric-sub', CONFIDENCE_LABEL[v.confidence_band]));
-    confBox.appendChild(
-      el(
-        'div',
-        'wahpi__metric-note',
-        'How much price history we have for this exact room and dates.',
-      ),
-    );
-    grid.appendChild(confBox);
+    // The confidence tile was retired on 2026-08-27 at the product owner's
+    // direction. What it guarded against is NOT retired with it: the band-only
+    // rendering above still refuses a precise figure when the evidence is thin,
+    // and the engine still downgrades BOOK_NOW to BOOK_CONSIDER on the same
+    // condition. The API continues to return `confidence` and
+    // `confidence_band`, so the signal is still diagnosable — it is simply no
+    // longer shown to a guest.
+    //
+    // Stated rather than buried: a MEDIUM-confidence stay now renders a bare
+    // number with nothing qualifying it, where it previously read "Moderate
+    // confidence". That is a real reduction in what the guest is told, and it
+    // is the part of old rule 1 this change genuinely gives up. Extending the
+    // band-only treatment to MEDIUM would close it if that is ever wanted.
 
     var recBox = el('div', 'wahpi__recommendation ' + RECOMMENDATION_TONE[v.recommendation]);
     recBox.appendChild(el('div', 'wahpi__recommendation-label', v.recommendation_label));
