@@ -218,32 +218,30 @@ async function main() {
           .join(' ') || 'none'
       })`,
   );
-  // Capacity, stated as stock against flow.
+  // Capacity: which kind of work the limit is actually being spent on.
   //
-  // The truncation warning below has fired on every scheduled run for days and
-  // nobody read it, because "some stays spilled" and "this system can never
-  // catch up" produce the same line. They are different conditions and want
-  // different responses.
+  // mergeTasks concatenates [...gridTasks, ...dueTasks] and slices to the
+  // limit, so GRID TOP-UP IS SERVED FIRST and refreshes get whatever is left.
+  // When the backlog exceeds the limit, that is nothing: every planned stay is
+  // a grid top-up and the tier scheduler — HOT every 6h, WARM every 24h —
+  // does not run at all.
   //
-  // The distinction that matters is NOT a demand:capacity ratio — the plan
-  // total includes the standing backlog, so a ratio built from it mixes a
-  // stock with a flow and inflates with every run. What actually decides
-  // whether the queue can drain is the headroom left after this cycle's
-  // refreshes: due-refresh is served from the same limit, so if it alone
-  // reaches the cap there is nothing left for the grid and the backlog cannot
-  // shrink, however long it runs.
+  // The first version of this line had the causality backwards, reporting that
+  // refreshes consumed the limit. They cannot: they are last in the queue.
+  // Counting the planned tasks by reason says which is true instead of
+  // assuming, and the two failures want opposite fixes.
   //
-  // dueTasks is itself capped at MAX_TASKS by planCollection, so a due count
-  // equal to the limit is a FLOOR, not a measurement — true demand is higher
-  // and unknown. Said explicitly, because a saturated number that looks exact
-  // is worse than one that admits it is a bound.
+  // Why starved refreshes matter beyond the missed fetch: assessLiveConfidence
+  // caps at LOW when the subject rate is older than maxRateAgeHours (12), so
+  // stalled refreshes surface to guests as falling confidence on hotels whose
+  // comp sets are perfectly good.
+  const topUps = tasks.filter((t) => t.reason === 'NEW_STAY').length;
+  const refreshes = tasks.length - topUps;
   const dueSaturated = dueTasks.length >= MAX_TASKS;
-  const headroom = Math.max(0, MAX_TASKS - dueTasks.length);
   console.log(
-    `• Capacity: limit ${MAX_TASKS}/run — due ${dueTasks.length}` +
-      `${dueSaturated ? ' (at the cap, true demand is higher)' : ''}, ` +
-      `grid backlog ${gridTasks.length} stay(s); ` +
-      `headroom for backlog after refreshes: ${headroom} stay(s)`,
+    `• Capacity: limit ${MAX_TASKS}/run — planning ${topUps} grid top-up(s) and ` +
+      `${refreshes} refresh(es); backlog ${gridTasks.length}, ` +
+      `due ${dueTasks.length}${dueSaturated ? ' (at the cap, true demand is higher)' : ''}`,
   );
 
   if (total > tasks.length) {
@@ -255,14 +253,21 @@ async function main() {
     );
   }
 
-  // The condition worth waking someone for. Spilling a little is routine and
-  // self-correcting — the next run picks it up. A backlog with no headroom is
-  // not: the surplus is never collected, the grid rolls forward underneath it,
-  // and the queue grows every run while the run still exits 0.
-  if (gridTasks.length > 0 && headroom === 0) {
+  // Two distinct conditions, and grid-first ordering means the first causes
+  // the second. Spilling a little is routine and self-correcting; a backlog
+  // wider than the limit is not, and it silently switches the tier scheduler
+  // off while every run still exits 0.
+  if (gridTasks.length >= MAX_TASKS && refreshes === 0 && dueTasks.length > 0) {
+    console.warn(
+      `  !! REFRESHES STARVED: the grid backlog (${gridTasks.length}) fills the whole ` +
+        `${MAX_TASKS}-stay limit, so NO tracked stay was refreshed this run and at least ` +
+        `${dueTasks.length} were due. Tracked prices age out; confidence falls to LOW past ` +
+        `${12}h. Raise --limit, shorten the schedule, or reduce the grid or enrolled set.`,
+    );
+  } else if (gridTasks.length > tasks.length - refreshes) {
     console.warn(
       `  !! BACKLOG CANNOT DRAIN: ${gridTasks.length} stay(s) are missing from the grid and ` +
-        `due refreshes alone consume the whole ${MAX_TASKS}-stay limit. ` +
+        `only ${topUps} could be planned this run. ` +
         'Raise --limit, shorten the schedule, or reduce the grid or the enrolled set.',
     );
   }
