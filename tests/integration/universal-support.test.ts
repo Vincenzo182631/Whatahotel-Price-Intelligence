@@ -95,9 +95,13 @@ suite('integration · universal hotel support', () => {
     ];
     for (const [code, destinationId, lat, lon] of places) {
       const { rows } = await pool.query(
+        // coordinate_source is required alongside a position (migration 0018).
+        // These fixtures stand in for catalogue rows, so SOURCE is what they
+        // are: the provenance is not decoration, it is what stops the resolver
+        // treating a position as self-corroborating evidence later.
         `INSERT INTO hotel (wah_hotel_id,name,destination_id,luxury_tier,base_currency,
-                            latitude,longitude,collection_tier)
-         VALUES ($1,$1,$2,5,$5,$3,$4,'OFF') RETURNING id`,
+                            latitude,longitude,coordinate_source,collection_tier)
+         VALUES ($1,$1,$2,5,$5,$3,$4,'SOURCE','OFF') RETURNING id`,
         [code, destinationId, lat, lon, CURRENCY],
       );
       hotelIds.set(code, rows[0].id);
