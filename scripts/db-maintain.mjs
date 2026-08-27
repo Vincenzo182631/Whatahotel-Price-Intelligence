@@ -24,6 +24,10 @@
 //   node scripts/db-maintain.mjs --coverage # which hotel attributes actually exist,
 //                                           # and how many neighbours a tighter
 //                                           # competitive radius would find
+//   node scripts/db-maintain.mjs --comp-funnel
+//                                           # why a hotel has no curated peer
+//                                           # set: which of the builder's
+//                                           # conditions actually binds
 //   node scripts/db-maintain.mjs --geo-gap  # how many hotels carry no coordinates,
 //                                           # how much of that gap is worth closing,
 //                                           # and the upper bound on what closing it buys
@@ -390,6 +394,102 @@ if (GEO_GAP) {
   console.log(
     '\n(Destination is a PROXY for proximity. A hotel in the same destination may still be\n' +
       ' more than five miles away once placed, so treat every count here as a ceiling.)',
+  );
+
+  process.exit(0);
+}
+
+// Why does a hotel have no curated peer set?
+//
+// The rebuild on 2026-08-27 wrote 2,024 pairs and left 2,779 of 3,209 hotels
+// with no comp set at all. That number invites a wrong conclusion — that the
+// 5-mile bound starved the peer sets — and the builder applies five conditions,
+// only one of which is distance. Guessing which one binds is exactly the kind
+// of thing that gets a working rule blamed for someone else's gap.
+//
+// The funnel below mirrors rebuildComparables. Its ORDER is chosen for
+// interpretability rather than copied from the code: a hotel excluded by two
+// conditions is attributed to the first one here, so each line reads as "this
+// is the first thing that stopped it". The code applies price and distance
+// before the destination test (which lives inside similarityBetween, where a
+// different destination scores 0 and falls under minSimilarity) — that changes
+// nothing about who ends up with a comp set, only which bucket explains it.
+//
+// maxTierDistance and minSimilarity are deliberately absent: both are inert in
+// production. The tier filter needs luxury_tier on BOTH sides and that column
+// is 0/3,209. And with both tiers null, similarityBetween returns
+// 0.5*price + 0.15 + 0.20, so its floor is exactly the 0.35 threshold even at
+// zero price agreement. Neither can reject anything, so neither is measured.
+//
+// Read-only.
+const COMP_FUNNEL = process.argv.includes('--comp-funnel');
+if (COMP_FUNNEL) {
+  console.log('\n── why a hotel has no curated peer set (first blocking condition) ──');
+  console.log(
+    await sql(`
+      WITH a AS (
+        SELECT h.id, h.destination_id,
+               h.latitude::float8 AS lat, h.longitude::float8 AS lon,
+               (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY b.p50_minor)
+                  FROM rate_baseline b
+                 WHERE b.hotel_id = h.id AND b.baseline_level = 'L3') AS typical
+          FROM hotel h
+         WHERE h.is_active
+      ),
+      f AS (
+        SELECT s.id,
+               (s.typical IS NOT NULL) AS has_own,
+               count(o.id) FILTER (
+                 WHERE s.destination_id IS NOT NULL
+                   AND o.destination_id = s.destination_id
+               ) AS same_dest,
+               count(o.id) FILTER (
+                 WHERE s.destination_id IS NOT NULL
+                   AND o.destination_id = s.destination_id
+                   AND o.typical IS NOT NULL
+               ) AS dest_priced,
+               count(o.id) FILTER (
+                 WHERE s.destination_id IS NOT NULL
+                   AND o.destination_id = s.destination_id
+                   AND o.typical IS NOT NULL AND s.typical IS NOT NULL
+                   AND GREATEST(s.typical, o.typical) / NULLIF(LEAST(s.typical, o.typical), 0) <= 2.0
+               ) AS in_band,
+               count(o.id) FILTER (
+                 WHERE s.destination_id IS NOT NULL
+                   AND o.destination_id = s.destination_id
+                   AND o.typical IS NOT NULL AND s.typical IS NOT NULL
+                   AND GREATEST(s.typical, o.typical) / NULLIF(LEAST(s.typical, o.typical), 0) <= 2.0
+                   -- Unknown distance is kept, exactly as the builder keeps it.
+                   AND (
+                     s.lat IS NULL OR s.lon IS NULL OR o.lat IS NULL OR o.lon IS NULL
+                     OR power(111.32 * (o.lat - s.lat), 2)
+                      + power(111.32 * cos(radians(s.lat)) * (o.lon - s.lon), 2)
+                        <= power(8.047, 2)
+                   )
+               ) AS in_range
+          FROM a s
+          LEFT JOIN a o ON o.id <> s.id
+         GROUP BY s.id, s.typical, s.destination_id
+      )
+      SELECT line FROM (
+        SELECT 1 AS ord, 'active hotels                          ' || count(*) AS line FROM f
+        UNION ALL SELECT 2, 'no L3 baseline of its own              ' || count(*)
+          FROM f WHERE NOT has_own
+        UNION ALL SELECT 3, 'no other hotel in its destination      ' || count(*)
+          FROM f WHERE has_own AND same_dest = 0
+        UNION ALL SELECT 4, 'no destination peer with a baseline    ' || count(*)
+          FROM f WHERE has_own AND same_dest > 0 AND dest_priced = 0
+        UNION ALL SELECT 5, 'none inside the 2.0x price band        ' || count(*)
+          FROM f WHERE has_own AND dest_priced > 0 AND in_band = 0
+        UNION ALL SELECT 6, 'none within 5 mi (8.05 km)             ' || count(*)
+          FROM f WHERE has_own AND in_band > 0 AND in_range = 0
+        UNION ALL SELECT 7, 'HAS a peer set                         ' || count(*)
+          FROM f WHERE has_own AND in_range > 0
+      ) t ORDER BY ord`),
+  );
+  console.log(
+    '\n(Attribution is to the FIRST condition in this order. A hotel with no baseline of\n' +
+      ' its own would also fail later tests; it is counted once, at the top.)',
   );
 
   process.exit(0);
