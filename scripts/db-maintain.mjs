@@ -24,6 +24,9 @@
 //   node scripts/db-maintain.mjs --coverage # which hotel attributes actually exist,
 //                                           # and how many neighbours a tighter
 //                                           # competitive radius would find
+//   node scripts/db-maintain.mjs --enrolment-plan
+//                                           # what enrolling more hotels costs
+//                                           # per hotel, and where it pays
 //   node scripts/db-maintain.mjs --collection-coverage
 //                                           # how much of the catalogue has
 //                                           # ever actually been collected
@@ -607,6 +610,147 @@ if (COLLECTION_COVERAGE) {
   console.log(
     '\n(rate_observation is NOT a history: production drops partitions past five days.\n' +
       ' "Ever collected" is answered by rate_baseline and collection_attempt, above.)',
+  );
+
+  process.exit(0);
+}
+
+// What would enrolling more of the catalogue cost, and where would it pay?
+//
+// 2,964 active hotels sit at tier OFF — the ID-space sweep enrols what it finds
+// at OFF by design — and that, not any qualification rule, is why 83% of the
+// catalogue has no baseline. Moving hotels to WARM is the lever, and it is a
+// budget decision, so it needs a per-hotel price and a ranked list of where the
+// money buys the most.
+//
+// Cost is measured from the ledger rather than derived from the grid spec. The
+// spec says 23 distinct lead times over three stay lengths, but what a hotel
+// ACTUALLY costs depends on how many of its slots yield and how many fall into
+// the HOT band (lead <= 30 days, refreshed every 6 hours) versus WARM (every
+// 24). Counting real rows answers that; multiplying spec constants assumes it.
+//
+// Payoff is measured by DISTANCE, not by destination label — the same rule the
+// competitive ladder uses. An OFF hotel is worth turning on when hotels that
+// ALREADY have a baseline sit within the ladder's outer rung of it, because
+// then it gains a comp set on its first successful collection instead of
+// waiting for its neighbours to be enrolled too.
+//
+// Read-only.
+const ENROLMENT_PLAN = process.argv.includes('--enrolment-plan');
+if (ENROLMENT_PLAN) {
+  console.log('\n── what one enrolled hotel actually costs (measured from the ledger) ──');
+  console.log(
+    await sql(`
+      WITH per AS (
+        SELECT c.hotel_id,
+               count(*) AS slots,
+               count(*) FILTER (WHERE c.lead_days <= 30) AS hot_slots,
+               count(*) FILTER (WHERE c.lead_days > 30)  AS warm_slots
+          FROM collection_attempt c
+          JOIN hotel h ON h.id = c.hotel_id AND h.is_active AND h.collection_tier <> 'OFF'
+         GROUP BY c.hotel_id
+      )
+      SELECT line FROM (
+        SELECT 1 AS ord, 'enrolled hotels in the ledger     ' || count(*) AS line FROM per
+        UNION ALL SELECT 2, 'median slots per hotel            ' ||
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY slots) FROM per
+        UNION ALL SELECT 3, '  of those HOT (lead <= 30d)      ' ||
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY hot_slots) FROM per
+        UNION ALL SELECT 4, '  of those WARM (lead > 30d)      ' ||
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY warm_slots) FROM per
+        -- HOT refreshes every 6h (one per cycle); WARM every 24h (one in four
+        -- cycles). This is the steady-state price, not the cold-fill price:
+        -- a newly enrolled hotel pays its whole grid once, up front.
+        UNION ALL SELECT 5, 'calls per hotel per 6h cycle      ~' ||
+               round(percentile_disc(0.5) WITHIN GROUP (ORDER BY hot_slots)
+                   + percentile_disc(0.5) WITHIN GROUP (ORDER BY warm_slots) / 4.0)
+          FROM per
+        UNION ALL SELECT 6, 'calls per hotel per DAY           ~' ||
+               round(percentile_disc(0.5) WITHIN GROUP (ORDER BY hot_slots) * 4
+                   + percentile_disc(0.5) WITHIN GROUP (ORDER BY warm_slots))
+          FROM per
+        UNION ALL SELECT 7, 'cold fill, one-off per hotel      ~' ||
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY slots) FROM per
+      ) t ORDER BY ord`),
+  );
+
+  console.log('\n── where enrolling pays: OFF hotels by baselined neighbours within 5 mi ──');
+  console.log(
+    await sql(`
+      WITH based AS (
+        SELECT h.id, h.latitude::float8 AS lat, h.longitude::float8 AS lon
+          FROM hotel h
+         WHERE h.is_active
+           AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+           AND h.bookable_online IS DISTINCT FROM false
+           AND EXISTS (SELECT 1 FROM rate_baseline b
+                        WHERE b.hotel_id = h.id AND b.baseline_level = 'L3')
+      ),
+      off_h AS (
+        SELECT h.id, h.destination_id,
+               h.latitude::float8 AS lat, h.longitude::float8 AS lon
+          FROM hotel h
+         WHERE h.is_active AND h.collection_tier = 'OFF'
+           AND h.bookable_online IS DISTINCT FROM false
+           AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+      ),
+      n AS (
+        SELECT o.id, o.destination_id, count(b.id) AS near
+          FROM off_h o
+          LEFT JOIN based b
+            ON power(111.32 * (b.lat - o.lat), 2)
+             + power(111.32 * cos(radians(o.lat)) * (b.lon - o.lon), 2) <= power(8.047, 2)
+         GROUP BY o.id, o.destination_id
+      )
+      SELECT line FROM (
+        SELECT 1 AS ord, 'OFF, bookable, placed             ' || count(*) AS line FROM n
+        UNION ALL SELECT 2, '  >=3 baselined within 5 mi       ' || count(*) FROM n WHERE near >= 3
+        UNION ALL SELECT 3, '  1-2 baselined within 5 mi       ' || count(*) FROM n WHERE near BETWEEN 1 AND 2
+        UNION ALL SELECT 4, '  none within 5 mi                ' || count(*) FROM n WHERE near = 0
+      ) t ORDER BY ord`),
+  );
+
+  console.log('\n── the shortlist: OFF hotels that would gain a comp set immediately ──');
+  console.log(
+    await sql(`
+      WITH based AS (
+        SELECT h.id, h.latitude::float8 AS lat, h.longitude::float8 AS lon
+          FROM hotel h
+         WHERE h.is_active
+           AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+           AND h.bookable_online IS DISTINCT FROM false
+           AND EXISTS (SELECT 1 FROM rate_baseline b
+                        WHERE b.hotel_id = h.id AND b.baseline_level = 'L3')
+      ),
+      off_h AS (
+        SELECT h.id, h.destination_id,
+               h.latitude::float8 AS lat, h.longitude::float8 AS lon
+          FROM hotel h
+         WHERE h.is_active AND h.collection_tier = 'OFF'
+           AND h.bookable_online IS DISTINCT FROM false
+           AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+      ),
+      n AS (
+        SELECT o.id, o.destination_id, count(b.id) AS near
+          FROM off_h o
+          LEFT JOIN based b
+            ON power(111.32 * (b.lat - o.lat), 2)
+             + power(111.32 * cos(radians(o.lat)) * (b.lon - o.lon), 2) <= power(8.047, 2)
+         GROUP BY o.id, o.destination_id
+      )
+      SELECT rpad(COALESCE(left(d.name, 30), '?'), 30)
+          || ' | would-gain ' || lpad(count(*) FILTER (WHERE n.near >= 3)::text, 4)
+          || ' | OFF here ' || lpad(count(*)::text, 4)
+        FROM n LEFT JOIN destination d ON d.id = n.destination_id
+       GROUP BY d.name
+      HAVING count(*) FILTER (WHERE n.near >= 3) > 0
+       ORDER BY count(*) FILTER (WHERE n.near >= 3) DESC
+       LIMIT 25`),
+  );
+  console.log(
+    '\n("would-gain" means >=3 already-baselined hotels sit within five miles, so the hotel\n' +
+      ' gets a comp set on its FIRST successful collection. It is a lower bound on the\n' +
+      ' payoff: enrolling a cluster together also lets its members comp each other.)',
   );
 
   process.exit(0);
