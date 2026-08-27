@@ -24,6 +24,9 @@
 //   node scripts/db-maintain.mjs --coverage # which hotel attributes actually exist,
 //                                           # and how many neighbours a tighter
 //                                           # competitive radius would find
+//   node scripts/db-maintain.mjs --geo-gap  # how many hotels carry no coordinates,
+//                                           # how much of that gap is worth closing,
+//                                           # and the upper bound on what closing it buys
 //   node scripts/db-maintain.mjs --market 6792 2026-08-30 1 2
 //                                            # read-only market probe: why does
 //                                            # this hotel's comp pool look the
@@ -183,6 +186,184 @@ if (COVERAGE) {
                  count(*) FILTER (WHERE within_30km >= 3), count(*) FILTER (WHERE within_30km = 0),
                  count(*), 4 FROM per
         ) t ORDER BY ord`),
+  );
+
+  process.exit(0);
+}
+
+// How big is the coordinate gap, and what would closing it actually buy?
+//
+// The 2/3/5-mile ladder can only see hotels that carry coordinates. A hotel
+// without them is not far away, it is UNPLACEABLE, and the distance predicate
+// rejects it at every rung. Hotels 1198 and 951 render Hotel Value for exactly
+// this reason: their neighbours exist, but nothing knows where they are, so
+// the market probe reports zero qualifying candidates at 2, 3 and 5 miles
+// alike. That is the ladder being honest, not the radius being wrong.
+//
+// This sizes the geocoding job before anyone commits to it, and separates the
+// part worth doing from the part that is not: a hotel the public page flags as
+// unbookable online fails qualification even once it is placed, so geocoding
+// it buys nothing.
+//
+// The destination-level counts are a PROXY and are labelled as one everywhere
+// they appear. Without coordinates there is no way to know whether an unplaced
+// hotel would land inside five miles of anything; sharing a destination is the
+// strongest evidence available and it is strictly weaker than a measured
+// distance. Read them as an UPPER BOUND on the payoff, never as a forecast.
+//
+// Read-only.
+const GEO_GAP = process.argv.includes('--geo-gap');
+if (GEO_GAP) {
+  console.log('\n── the coordinate gap across active hotels ──');
+  console.log(
+    await sql(`
+      WITH a AS (SELECT * FROM hotel WHERE is_active),
+           u AS (SELECT * FROM a WHERE latitude IS NULL OR longitude IS NULL)
+      SELECT line FROM (
+        SELECT 1 AS ord, 'active hotels                     ' || count(*) AS line FROM a
+        UNION ALL SELECT 2, 'placed (has coordinates)          ' || count(*) || '  (' ||
+               round(100.0 * count(*) / NULLIF((SELECT count(*) FROM a), 0)) || '%)'
+          FROM a WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        UNION ALL SELECT 3, 'UNPLACED (no coordinates)         ' || count(*) || '  (' ||
+               round(100.0 * count(*) / NULLIF((SELECT count(*) FROM a), 0)) || '%)' FROM u
+        UNION ALL SELECT 4, '  unplaced AND bookable online    ' || count(*)
+          FROM u WHERE bookable_online IS DISTINCT FROM false
+        UNION ALL SELECT 5, '  unplaced but flagged unbookable ' || count(*)
+          FROM u WHERE bookable_online IS false
+      ) t ORDER BY ord`),
+  );
+
+  // Of the gap that is worth closing, how much of it can be closed with what
+  // is already held? A street address is independent geographic evidence and
+  // is what addressCanConfirm() needs to let a Google ask proceed; a hotel
+  // with neither address nor postal code has nothing to geocode against and
+  // is a different, larger job.
+  console.log('\n── can the worthwhile gap be closed with what we already hold? ──');
+  console.log(
+    await sql(`
+      WITH u AS (
+        SELECT * FROM hotel
+         WHERE is_active
+           AND (latitude IS NULL OR longitude IS NULL)
+           AND bookable_online IS DISTINCT FROM false
+      )
+      SELECT line FROM (
+        SELECT 1 AS ord, 'unplaced and bookable             ' || count(*) AS line FROM u
+        UNION ALL SELECT 2, '  with a street address           ' || count(*)
+          FROM u WHERE street_address IS NOT NULL
+        UNION ALL SELECT 3, '  with a postal code              ' || count(*)
+          FROM u WHERE postal_code IS NOT NULL
+        UNION ALL SELECT 4, '  with NEITHER                    ' || count(*)
+          FROM u WHERE street_address IS NULL AND postal_code IS NULL
+        UNION ALL SELECT 5, '  page never fetched              ' || count(*)
+          FROM u WHERE page_fetched_at IS NULL
+        UNION ALL SELECT 6, 'google status: never asked (NULL) ' || count(*)
+          FROM u WHERE google_match_status IS NULL
+        UNION ALL SELECT 7, 'google status: UNVERIFIED         ' || count(*)
+          FROM u WHERE google_match_status = 'UNVERIFIED'
+        UNION ALL SELECT 8, 'google status: NO_MATCH           ' || count(*)
+          FROM u WHERE google_match_status = 'NO_MATCH'
+        UNION ALL SELECT 9, 'google status: VERIFIED           ' || count(*)
+          FROM u WHERE google_match_status = 'VERIFIED'
+      ) t ORDER BY ord`),
+  );
+
+  // The payoff, stated as the upper bound it is. A STARVED hotel is one that
+  // is placed and bookable and still finds no qualifying neighbour inside the
+  // ladder's outer rung — the population that renders Hotel Value today. The
+  // question worth money is how many of them share a destination with hotels
+  // that are merely unplaced, because those are the ones geocoding could
+  // rescue. Sharing a destination does not put a hotel within five miles, so
+  // every count below is a ceiling.
+  console.log('\n── upper bound on the payoff (destination proxy, NOT a forecast) ──');
+  console.log(
+    await sql(`
+      WITH a AS (
+        SELECT id, destination_id, bookable_online,
+               latitude::float8 AS lat, longitude::float8 AS lon
+          FROM hotel WHERE is_active
+      ),
+      geo AS (SELECT * FROM a WHERE lat IS NOT NULL AND lon IS NOT NULL),
+      nbr AS (
+        SELECT s.id, s.destination_id,
+               count(h.id) AS within_5mi
+          FROM geo s
+          LEFT JOIN geo h
+            ON h.id <> s.id
+           AND h.bookable_online IS DISTINCT FROM false
+           AND power(111.32 * (h.lat - s.lat), 2)
+             + power(111.32 * cos(radians(s.lat)) * (h.lon - s.lon), 2) <= power(8.047, 2)
+         WHERE s.bookable_online IS DISTINCT FROM false
+         GROUP BY s.id, s.destination_id
+      ),
+      starved AS (SELECT * FROM nbr WHERE within_5mi = 0),
+      gap AS (
+        SELECT destination_id, count(*) AS unplaced
+          FROM a
+         WHERE (lat IS NULL OR lon IS NULL)
+           AND bookable_online IS DISTINCT FROM false
+         GROUP BY destination_id
+      )
+      SELECT line FROM (
+        SELECT 1 AS ord, 'placed+bookable hotels            ' || count(*) AS line FROM nbr
+        UNION ALL SELECT 2, 'STARVED (0 qualifying <=5 mi)     ' || count(*) FROM starved
+        UNION ALL SELECT 3, '  in a destination with >=1 unplaced ' || count(*)
+          FROM starved s JOIN gap g ON g.destination_id = s.destination_id
+        UNION ALL SELECT 4, '  in a destination with >=3 unplaced ' || count(*)
+          FROM starved s JOIN gap g ON g.destination_id = s.destination_id AND g.unplaced >= 3
+        UNION ALL SELECT 5, 'unplaced hotels that could rescue one ' || COALESCE(sum(g.unplaced), 0)
+          FROM gap g
+         WHERE EXISTS (SELECT 1 FROM starved s WHERE s.destination_id = g.destination_id)
+      ) t ORDER BY ord`),
+  );
+
+  // The work list, so the job can be started at the end that pays.
+  console.log('\n── destinations where geocoding could unstarve the most hotels ──');
+  console.log(
+    await sql(`
+      WITH a AS (
+        SELECT id, destination_id, bookable_online,
+               latitude::float8 AS lat, longitude::float8 AS lon
+          FROM hotel WHERE is_active
+      ),
+      geo AS (SELECT * FROM a WHERE lat IS NOT NULL AND lon IS NOT NULL),
+      nbr AS (
+        SELECT s.id, s.destination_id, count(h.id) AS within_5mi
+          FROM geo s
+          LEFT JOIN geo h
+            ON h.id <> s.id
+           AND h.bookable_online IS DISTINCT FROM false
+           AND power(111.32 * (h.lat - s.lat), 2)
+             + power(111.32 * cos(radians(s.lat)) * (h.lon - s.lon), 2) <= power(8.047, 2)
+         WHERE s.bookable_online IS DISTINCT FROM false
+         GROUP BY s.id, s.destination_id
+      ),
+      starved AS (
+        SELECT destination_id, count(*) AS n FROM nbr WHERE within_5mi = 0 GROUP BY destination_id
+      ),
+      gap AS (
+        SELECT destination_id,
+               count(*) AS unplaced,
+               count(*) FILTER (WHERE street_address IS NOT NULL) AS with_address
+          FROM hotel
+         WHERE is_active
+           AND (latitude IS NULL OR longitude IS NULL)
+           AND bookable_online IS DISTINCT FROM false
+         GROUP BY destination_id
+      )
+      SELECT rpad(COALESCE(left(d.name, 28), '?'), 28)
+          || ' | starved ' || lpad(s.n::text, 4)
+          || ' | unplaced ' || lpad(g.unplaced::text, 4)
+          || ' | of those with an address ' || lpad(g.with_address::text, 4)
+        FROM starved s
+        JOIN gap g ON g.destination_id = s.destination_id
+        LEFT JOIN destination d ON d.id = s.destination_id
+       ORDER BY LEAST(s.n, g.unplaced) DESC, s.n DESC
+       LIMIT 25`),
+  );
+  console.log(
+    '\n(Destination is a PROXY for proximity. A hotel in the same destination may still be\n' +
+      ' more than five miles away once placed, so treat every count here as a ceiling.)',
   );
 
   process.exit(0);
