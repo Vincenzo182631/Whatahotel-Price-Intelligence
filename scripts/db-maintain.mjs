@@ -24,6 +24,10 @@
 //   node scripts/db-maintain.mjs --coverage # which hotel attributes actually exist,
 //                                           # and how many neighbours a tighter
 //                                           # competitive radius would find
+//   node scripts/db-maintain.mjs --grid-coverage
+//                                           # why the missing-grid backlog
+//                                           # grows: coverage is read from a
+//                                           # five-day table
 //   node scripts/db-maintain.mjs --enrolment-plan
 //                                           # what enrolling more hotels costs
 //                                           # per hotel, and where it pays
@@ -751,6 +755,89 @@ if (ENROLMENT_PLAN) {
     '\n("would-gain" means >=3 already-baselined hotels sit within five miles, so the hotel\n' +
       ' gets a comp set on its FIRST successful collection. It is a lower bound on the\n' +
       ' payoff: enrolling a cluster together also lets its members comp each other.)',
+  );
+
+  process.exit(0);
+}
+
+// Why does the missing-grid backlog keep growing?
+//
+// Measured across four scheduled runs: 1,757 -> 1,170 -> 7,491 -> 10,206 "new"
+// stays, every run truncating at the 2,000 cap. Three candidate causes were
+// checked against the merge timeline and ruled out: the two-night grid change
+// (#94) merged AFTER the jump, the retention tightening (#74) landed a day
+// before it, and on-demand enrolment writes hotels at tier OFF so widget
+// traffic cannot grow the scheduled grid.
+//
+// What is left is structural, and this measures it. findMissingGridStays reads
+// coverage from rate_observation:
+//
+//     SELECT DISTINCT hotel_id, check_in, nights, adults
+//       FROM rate_observation WHERE check_in >= CURRENT_DATE
+//
+// rate_observation is retained for FIVE DAYS. Partitions are dropped by
+// observed_date, so a stay collected six days ago for a check-in sixty days out
+// vanishes from that set even though it was collected, and its grid slot
+// re-enters the queue as if it never had been. Coverage is therefore not a
+// record of what was collected; it is a record of what was collected THIS WEEK.
+//
+// The durable record already exists and is already keyed by grid slot:
+// collection_attempt, which migration 0010 rekeyed to hotel|lead|nights|adults
+// precisely because the slot is the thing that persists while the date moves.
+//
+// The query below compares the two, so the claim is a number rather than a
+// story: how many slots have a successful attempt on record but no surviving
+// observation to prove it. Those are the ones being re-collected forever.
+//
+// Read-only.
+const GRID_COVERAGE = process.argv.includes('--grid-coverage');
+if (GRID_COVERAGE) {
+  console.log('\n── the observation window that coverage is read from ──');
+  console.log(
+    await sql(`
+      SELECT to_char(observed_date, 'YYYY-MM-DD') || '  ' || lpad(count(*)::text, 8)
+          || ' observation(s), ' || lpad(count(DISTINCT hotel_id)::text, 5) || ' hotel(s)'
+        FROM rate_observation
+       GROUP BY observed_date
+       ORDER BY observed_date`),
+  );
+
+  console.log('\n── coverage: the ephemeral source vs the durable one ──');
+  console.log(
+    await sql(`
+      WITH enrolled AS (
+        SELECT id FROM hotel WHERE is_active AND collection_tier <> 'OFF'
+      ),
+      -- What findMissingGridStays actually counts as covered.
+      obs AS (
+        SELECT DISTINCT o.hotel_id, o.check_in, o.nights, o.adults
+          FROM rate_observation o
+          JOIN enrolled e ON e.id = o.hotel_id
+         WHERE o.check_in >= CURRENT_DATE
+      ),
+      -- The durable ledger, keyed by grid slot rather than by date.
+      slots AS (
+        SELECT c.hotel_id, c.lead_days, c.nights, c.adults,
+               c.last_outcome, c.last_attempt_at
+          FROM collection_attempt c
+          JOIN enrolled e ON e.id = c.hotel_id
+      )
+      SELECT line FROM (
+        SELECT 1 AS ord, 'enrolled hotels                       ' || count(*) AS line FROM enrolled
+        UNION ALL SELECT 2, 'grid slots in the ledger              ' || count(*) FROM slots
+        UNION ALL SELECT 3, '  last outcome OK                     ' || count(*)
+          FROM slots WHERE last_outcome = 'OK'
+        UNION ALL SELECT 4, '  OK, attempted within 5 days         ' || count(*)
+          FROM slots WHERE last_outcome = 'OK' AND last_attempt_at > now() - interval '5 days'
+        UNION ALL SELECT 5, '  OK, but OLDER than the window       ' || count(*)
+          FROM slots WHERE last_outcome = 'OK' AND last_attempt_at <= now() - interval '5 days'
+        UNION ALL SELECT 6, 'stays visible as covered right now    ' || count(*) FROM obs
+      ) t ORDER BY ord`),
+  );
+  console.log(
+    '\n(Line 5 is the leak: those slots WERE collected successfully, the ledger still says\n' +
+      ' so, and the observation proving it has been dropped by retention. findMissingGridStays\n' +
+      ' cannot see the ledger, so it re-queues every one of them, every run, forever.)',
   );
 
   process.exit(0);
