@@ -48,6 +48,16 @@ on:
         description: 'Max hotel pages to read in this run'
         required: false
         default: '400'
+      verified_unplaced:
+        description: >-
+          Backfill only: sweep the hotels whose VERIFIED match already knows
+          their position, from before that position was stored (migration
+          0018). One Place Details call each and no Text Search — the ordinary
+          queue puts never-looked hotels first and every VERIFIED hotel behind
+          them, so it cannot reach these few affordably.
+        type: boolean
+        required: false
+        default: false
       refresh_hours:
         description: >-
           Refresh VERIFIED hotels older than this many hours (default 168).
@@ -125,6 +135,7 @@ jobs:
           set -o pipefail
           npm run places -- \
             --limit "${{ inputs.limit || 200 }}" \
+            ${{ inputs.verified_unplaced && '--verified-unplaced' || '' }} \
             ${{ inputs.dry_run && '--dry-run' || '' }} \
             2>&1 | tee places.log
 

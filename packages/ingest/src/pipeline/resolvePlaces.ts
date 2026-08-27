@@ -15,6 +15,7 @@
 
 import {
   findResolutionTargets,
+  findUnplacedVerifiedTargets,
   saveResolution,
   type Queryable,
   type ResolutionTarget,
@@ -26,6 +27,17 @@ import { resolveHotel } from '../adapters/google/resolve.js';
 
 export interface PlaceSweepOptions {
   readonly limit?: number;
+  /**
+   * Sweep only the hotels a verified match already knows the position of.
+   *
+   * A backfill for the bug migration 0018 fixes, not a mode for ordinary
+   * running. It costs one Place Details call per hotel and no Text Search:
+   * each target holds a place_id, so resolveHotel refreshes rather than
+   * re-matching. The ordinary queue cannot reach these affordably — it puts
+   * never-looked hotels first and every VERIFIED hotel in the catalogue behind
+   * them.
+   */
+  readonly only?: 'VERIFIED_UNPLACED';
   readonly client?: PlacesClient | null;
   readonly q?: Queryable;
   readonly onHotel?: (info: {
@@ -76,11 +88,10 @@ export async function sweepPlaces(options: PlaceSweepOptions = {}): Promise<Plac
   if (!client) return { ...empty, skipped: 'NOT_CONFIGURED' };
 
   const settings = googleSettings();
-  const targets = await findResolutionTargets(
-    options.limit ?? 200,
-    settings.refreshHours,
-    options.q,
-  );
+  const targets =
+    options.only === 'VERIFIED_UNPLACED'
+      ? await findUnplacedVerifiedTargets(options.limit ?? 200, options.q)
+      : await findResolutionTargets(options.limit ?? 200, settings.refreshHours, options.q);
 
   let verified = 0;
   let unverified = 0;

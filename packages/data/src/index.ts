@@ -59,6 +59,7 @@ export type { AttemptOutcome, GridSpec, GridStay } from './repositories/collecti
 
 export {
   findResolutionTargets,
+  findUnplacedVerifiedTargets,
   findVerifiedReputations,
   findVerifiedReputationsByWahIds,
   saveResolution,

@@ -5,6 +5,10 @@
  *   npm run places                        # one sweep, default batch
  *   npm run places -- --limit 500
  *   npm run places -- --dry-run           # show the queue, call nothing
+ *   npm run places -- --verified-unplaced # backfill only: hotels whose
+ *                                         # verified match already knows where
+ *                                         # they are, from before that position
+ *                                         # was stored (migration 0018)
  *
  * Needs GOOGLE_PLACES_API_KEY. Without it the sweep reports NOT_CONFIGURED and
  * exits 0 — reputation is an enhancement, and a missing enhancement is not a
@@ -16,7 +20,11 @@
  * a change that made it do so would be a change to what the product claims.
  */
 
-import { findResolutionTargets, closePool } from '../packages/data/dist/index.js';
+import {
+  findResolutionTargets,
+  findUnplacedVerifiedTargets,
+  closePool,
+} from '../packages/data/dist/index.js';
 import {
   PlacesClient,
   addressCanConfirm,
@@ -35,13 +43,20 @@ const value = (name, fallback) => {
 const limit = Number(value('--limit', '200'));
 const settings = googleSettings();
 
+// A backfill, not a mode for ordinary running. Each target holds a place_id,
+// so the sweep refreshes rather than re-matching: one Place Details call each
+// and no Text Search at all.
+const onlyUnplaced = flag('--verified-unplaced');
+
 // The dry run comes FIRST, deliberately. Listing the queue is a database
 // read — it calls Google for nothing — and "how many hotels are waiting, and
 // which ones" is exactly the question worth answering BEFORE deciding whether
 // to add a paid key. Gating it behind the key made the dry run useless in the
 // one situation it was written for.
 if (flag('--dry-run')) {
-  const targets = await findResolutionTargets(limit, settings.refreshHours);
+  const targets = onlyUnplaced
+    ? await findUnplacedVerifiedTargets(limit)
+    : await findResolutionTargets(limit, settings.refreshHours);
   const fresh = targets.filter((t) => !t.placeId).length;
   // Hotels a real run would skip without calling Google. This is the number
   // that decides whether the key is worth spending on, so it is on the
@@ -105,6 +120,7 @@ const client = PlacesClient.fromEnv({
 const started = Date.now();
 const result = await sweepPlaces({
   limit,
+  only: onlyUnplaced ? 'VERIFIED_UNPLACED' : undefined,
   client,
   onHotel: ({ hotel, status, confidence, reasons }) => {
     const conf = confidence === null ? '' : ` ${confidence}`;

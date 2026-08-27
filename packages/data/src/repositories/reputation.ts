@@ -184,6 +184,55 @@ export async function findResolutionTargets(
 }
 
 /**
+ * The hotels a verified match already knows the position of, and we do not.
+ *
+ * These arose from the bug migration 0018 fixes: every VERIFIED match carried
+ * Google's own coordinates and the write path discarded them. They cannot be
+ * reached through findResolutionTargets in any affordable way — it orders
+ * never-looked hotels first and the refresh tail behind them is every VERIFIED
+ * hotel in the catalogue, so draining to these few means paying for thousands
+ * of Place Details calls to find seventeen.
+ *
+ * Asking for them directly costs one Details call each and no Text Search at
+ * all: they hold a place_id, so resolveHotel refreshes rather than re-matching.
+ * Served by hotel_verified_unplaced_idx.
+ *
+ * Deliberately NOT merged into findResolutionTargets. That queue answers "what
+ * is stale"; this one answers "what did we drop on the floor", and folding the
+ * second into the first would make an ordinary sweep quietly re-fetch a
+ * backfill population forever.
+ */
+export async function findUnplacedVerifiedTargets(
+  limit: number,
+  q?: Queryable,
+): Promise<ResolutionTarget[]> {
+  const { rows } = await db(q).query(
+    `SELECT h.id, h.name, d.name AS city, h.latitude, h.longitude,
+            h.coordinate_source, h.street_address, h.google_place_id
+       FROM hotel h
+       LEFT JOIN destination d ON d.id = h.destination_id
+      WHERE h.is_active
+        AND h.google_match_status = 'VERIFIED'
+        AND h.google_place_id IS NOT NULL
+        AND (h.latitude IS NULL OR h.longitude IS NULL)
+      ORDER BY h.id
+      LIMIT $1`,
+    [limit],
+  );
+
+  return rows.map((row) => ({
+    hotelId: row.id as number,
+    name: row.name as string,
+    city: (row.city as string) ?? null,
+    latitude: row.latitude === null ? null : Number(row.latitude),
+    longitude: row.longitude === null ? null : Number(row.longitude),
+    streetAddress: (row.street_address as string) ?? null,
+    coordinateSource: (row.coordinate_source as 'SOURCE' | 'GOOGLE') ?? null,
+    placeId: (row.google_place_id as string) ?? null,
+  }));
+}
+
+/**
  * Record the outcome of a resolution attempt.
  *
  * A non-VERIFIED outcome nulls the reputation columns rather than leaving the
