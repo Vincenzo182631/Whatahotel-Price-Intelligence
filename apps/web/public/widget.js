@@ -1237,10 +1237,12 @@
   /**
    * The headline: 8.7 / 10 — STRONG VALUE — BOOK NOW.
    *
-   * Rule 1 still holds, and matters more here than in the history model: the
-   * score is a single figure with no visible margin, so the confidence word
-   * sits beside it at the same visual weight rather than below the fold. A
-   * MEDIUM-confidence 8.7 and a HIGH-confidence 8.7 are different products.
+   * Rule 1 was retired on 2026-08-27 — no confidence word is shown here any
+   * more. Its substance is not: the observation that "a MEDIUM-confidence 8.7
+   * and a HIGH-confidence 8.7 are different products" is exactly why a LOW
+   * score now renders as a BAND rather than a figure. The word went; the
+   * refusal to claim unearned precision stayed, and moved into the score
+   * itself where it cannot be looked past.
    *
    * Rule 2 also holds: an unmeasurable stay renders "Not available", never 0.0.
    */
@@ -1291,7 +1293,33 @@
       wrap.appendChild(valueGrid);
       return wrap;
     }
-    {
+    if (v.confidence === 'LOW') {
+      // Decision D4, extended to the live model on 2026-08-28.
+      //
+      // The history model has refused a precise figure on thin evidence since
+      // it shipped; this renderer printed x/10 at every confidence level. That
+      // asymmetry did not matter while a Confidence tile sat beside the score
+      // saying LOW out loud. With the tile retired it did: the DEFAULT model
+      // was showing "6.8 / 10" backed by three stale comps and nothing on
+      // screen said so.
+      //
+      // A band is not a hedge, it is the honest resolution of the evidence.
+      // One decimal place claims a precision three live competitors cannot
+      // support, and the guest cannot tell the difference by looking.
+      var band = el(
+        'div',
+        'wahpi__metric-value wahpi__metric-value--band-only ' + tone,
+        v.band_label || 'Not available',
+      );
+      scoreBox.appendChild(band);
+      scoreBox.appendChild(
+        el(
+          'div',
+          'wahpi__metric-note',
+          'Shown as a band because this comparison rests on limited evidence.',
+        ),
+      );
+    } else {
       var value = el('div', 'wahpi__metric-value wahpi__live-score ' + tone);
       value.textContent = formatOutOfTen(v.out_of_ten);
       value.appendChild(el('span', 'wahpi__metric-sub', ' / 10'));
