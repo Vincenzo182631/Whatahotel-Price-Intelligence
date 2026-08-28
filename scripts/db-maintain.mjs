@@ -900,14 +900,33 @@ if (DROP_IDX !== -1) {
     process.exit(1);
   }
 
-  // The floor's intent, enforced on the actual partition list rather than on a
-  // day count: the newest two stay, always. Sorted by name, which for
-  // YYYY_MM_DD sorts chronologically.
-  const protectedTail = partitions.slice(-2);
-  if (protectedTail.includes(name)) {
+  // The floor's intent: never take the data the live model scores from.
+  //
+  // The first version protected "the two newest partitions by name" — and the
+  // 2026-08-28 drop showed that to be the wrong two. migrate pre-creates
+  // FUTURE partitions (the window ran to 09-11 that day), so the name-sorted
+  // tail was a pair of empty future tables, and the guard would happily have
+  // authorised dropping the partition being written at that very moment. It
+  // said yes for the right reasons that day; it would also have said yes for
+  // the wrong ones.
+  //
+  // So the guard now reads the DATE in the partition's own name. The live
+  // model reads observations at most maxRateAgeHours (12) old and retention
+  // holds two days, so yesterday's and today's partitions are the ones that
+  // can hold data a guest's answer rests on. "Ahead of schedule" means by one
+  // day — a partition retention itself would drop within roughly a day — and
+  // nothing fresher, whatever else exists in the table list.
+  const m = name.match(/^rate_observation_(\d{4})_(\d{2})_(\d{2})$/);
+  const partDate = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const todayUtc = new Date();
+  const today = Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate());
+  const ageDays = Math.round((today - partDate) / 86_400_000);
+  if (ageDays < 2) {
     console.error(
-      `Refusing "${name}": it is one of the two most recent partitions ` +
-        `(${protectedTail.join(', ')}), which the live model scores from.`,
+      `Refusing "${name}": its observations are ${ageDays} day(s) old. Partitions ` +
+        'younger than two days can hold rates the live model is scoring from ' +
+        '(maxRateAgeHours 12), and this tool only ever runs a scheduled drop ' +
+        'about a day early — it does not take fresh data, whatever the reason.',
     );
     process.exit(1);
   }
