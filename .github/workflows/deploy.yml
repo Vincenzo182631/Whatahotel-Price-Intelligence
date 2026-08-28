@@ -107,6 +107,19 @@ jobs:
             if [ -n "$OPENAI_KEY" ]; then
               npx vercel env rm OPENAI_API_KEY "$envname" --yes --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
               printf '%s' "$OPENAI_KEY" | npx vercel env add OPENAI_API_KEY "$envname" --token="$VERCEL_TOKEN"
+
+              # 12s, not the code default of 6s. Measured 2026-08-28 (live
+              # probe, 6 reasoner calls): four of six timed out at 6s, so the
+              # model wrote almost nothing in production and every hotel_value
+              # shipped as TEMPLATE — the OpenAI spend bought prose the guest
+              # never saw. The call is synchronous on warm requests, so this is
+              # a real latency ceiling; it is paid at most once per stay per
+              # hour (OPENAI_INTELLIGENCE_CACHE_MINUTES) and only when OpenAI
+              # is actually slow. Cold requests skip the model entirely and are
+              # unaffected. Not a secret — set here so it is versioned beside
+              # the reasoning instead of living unexplained in a dashboard.
+              npx vercel env rm OPENAI_TIMEOUT_MS "$envname" --yes --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
+              printf '%s' "12000" | npx vercel env add OPENAI_TIMEOUT_MS "$envname" --token="$VERCEL_TOKEN"
             fi
           done
 
