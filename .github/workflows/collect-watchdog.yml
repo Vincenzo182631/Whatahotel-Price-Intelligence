@@ -1,0 +1,82 @@
+# Dispatch a collection when the schedule has silently failed to.
+#
+# GitHub's schedule event is best-effort and drops firings under load — its own
+# documentation says so, and this repository has measured it twice: three of
+# four daily firings vanished on 2026-08-27 at a 6-hour cadence, and five of
+# six vanished in the first thirteen hours of the 2-hour cadence. A dropped
+# firing is invisible — nothing fails, nothing alerts — and every quiet hour
+# ages the tracked rates toward assessLiveConfidence's 12-hour cap, where a
+# guest sees confidence fall on a hotel whose comparison is perfectly sound.
+#
+# So: once an hour, look at when a collection last STARTED, by any trigger. If
+# it is longer ago than STALE_MINUTES, dispatch one. The watchdog itself runs
+# on the same unreliable scheduler — two independent cron entries at different
+# minutes are simply two draws against the drop rate, and the hourly cadence
+# means even a mostly-dropped watchdog eventually fires. This is mitigation,
+# not a guarantee; nothing on this platform can promise a firing.
+#
+# The dispatch uses the repository's own GITHUB_TOKEN. workflow_dispatch is one
+# of the two event types GITHUB_TOKEN is allowed to create runs with, so no
+# personal token and no new secret is involved.
+#
+# Deliberately DUMB. It checks one thing and does one thing. It does not read
+# the database, does not reason about backlogs, and does not decide limits —
+# the dispatched run plans for itself, and a watchdog with opinions is a second
+# scheduler to debug.
+name: Collection watchdog
+
+on:
+  schedule:
+    - cron: '47 * * * *'
+  workflow_dispatch: {}
+
+# Serialised with itself only. It must NOT share the collect-rates group: a
+# watchdog queued behind a long collection would fire its check after the very
+# run that proves collection healthy.
+concurrency:
+  group: collect-watchdog
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      # A hair over one full cadence period plus a run's duration. At a 2-hour
+      # cadence a healthy schedule always has a start within ~130 minutes;
+      # only a dropped firing leaves a gap this wide. If the collect cadence
+      # changes, change this with it.
+      STALE_MINUTES: '150'
+
+    steps:
+      - name: Dispatch if collection has gone quiet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Started, not concluded: a run in progress is a healthy scheduler,
+          # and concluded-only would double-dispatch under a long collection.
+          last=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/actions/workflows/collect.yml/runs?per_page=1" \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin)["workflow_runs"]; print(r[0]["run_started_at"] if r else "")')
+          if [ -z "$last" ]; then
+            echo "no collect runs found at all — dispatching"
+          else
+            age=$(python3 -c "from datetime import datetime,timezone; print(int((datetime.now(timezone.utc)-datetime.fromisoformat('$last'.replace('Z','+00:00'))).total_seconds()//60))")
+            echo "last collection started ${age} minute(s) ago (${last})"
+            if [ "$age" -le "$STALE_MINUTES" ]; then
+              echo "within ${STALE_MINUTES} minutes — healthy, nothing to do"
+              exit 0
+            fi
+            echo "older than ${STALE_MINUTES} minutes — the schedule dropped; dispatching"
+          fi
+          curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/actions/workflows/collect.yml/dispatches" \
+            -d '{"ref":"main"}'
+          echo "dispatched a collection on main"

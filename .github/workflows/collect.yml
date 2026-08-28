@@ -62,8 +62,14 @@ on:
   # than deleting them, and say why here. Every day the schedule is off is a
   # day of baseline this source cannot backfill (U3) — it answers "what is the
   # rate now", never "what was it".
+  # :23, not :00. Minute zero is the most congested minute GitHub has, and
+  # congested minutes are where firings get dropped: measured 2026-08-28, the
+  # '0 */2' schedule delivered ONE of six due firings in its first thirteen
+  # hours. GitHub's own docs recommend an arbitrary minute for exactly this
+  # reason. The watchdog workflow (collect-watchdog.yml) is the backstop for
+  # the drops that still happen.
   schedule:
-    - cron: '0 */2 * * *'
+    - cron: '23 */2 * * *'
 
   workflow_dispatch:
     inputs:
