@@ -307,3 +307,59 @@ describe('Hotel Value mode — no score is never narrated as missing data', () =
     expect(WIDGET).toMatch(/premium\.premium_pct === null \|\| premium\.premium_pct === undefined/);
   });
 });
+
+describe('confidence is not shown to a guest, on any model', () => {
+  // Three surfaces carried a confidence GRADE, in three different shapes with
+  // no shared helper: CONFIDENCE_LABEL (history verdict), LIVE_CONFIDENCE_NOTE
+  // (live verdict) and a literal 'Confidence: ' string (premium assessment).
+  // The first removal cleared one and reported the job done, because a search
+  // for the constant just deleted cannot find the ones it never knew about —
+  // and the one left standing was on the model mount() actually defaults to.
+  //
+  // Pinned by name so a reintroduction fails here rather than on a guest's
+  // screen. Text assertions, matching this file's approach: the widget is a
+  // framework-free IIFE and standing up a DOM would test the scoring path over
+  // again to catch what is really a copy regression.
+  it('has no confidence tile, label map or grade string left', () => {
+    // The guest-visible strings, and the DECLARATIONS of the two maps that fed
+    // them. Deliberately not a bare name match: the comment at the live
+    // renderer names both constants while explaining how they came to be
+    // missed, and that explanation is worth more than the brevity of the
+    // assertion. What must not come back is a declaration or a rendered label.
+    expect(WIDGET).not.toContain("'Confidence'");
+    expect(WIDGET).not.toContain("'Confidence: '");
+    expect(WIDGET).not.toContain('CONFIDENCE_LABEL = {');
+    expect(WIDGET).not.toContain('LIVE_CONFIDENCE_NOTE = {');
+    expect(WIDGET).not.toContain('CONFIDENCE_LABEL[');
+    expect(WIDGET).not.toContain('LIVE_CONFIDENCE_NOTE[');
+  });
+
+  it('keeps the provenance the grade was attached to', () => {
+    // "Based on 4 comparable hotel(s)" describes what the assessment rests on
+    // and a reader can weigh it. "Confidence: LOW" was a verdict on that
+    // evidence, and the verdict is what was retired — not the evidence.
+    expect(WIDGET).toContain("'Based on ' +");
+    expect(WIDGET).toContain('comparable hotel(s)');
+  });
+});
+
+describe('a thin-evidence score renders as a band, on BOTH models', () => {
+  // What the confidence word used to do, moved into the score itself where it
+  // cannot be looked past. One decimal place claims a precision three live
+  // competitors cannot support, and a guest cannot tell by looking.
+  it('the history model refuses a precise figure at LOW', () => {
+    expect(WIDGET).toContain("v.confidence_band === 'LOW'");
+  });
+
+  it('the live model refuses one too — it did not, and it is the default mount', () => {
+    expect(WIDGET).toContain("v.confidence === 'LOW'");
+  });
+
+  it('both use the same band-only treatment and say why', () => {
+    const bandOnly = WIDGET.match(/wahpi__metric-value--band-only/g) ?? [];
+    // Two score paths plus the absent-score tile.
+    expect(bandOnly.length).toBeGreaterThanOrEqual(3);
+    const because = WIDGET.match(/rests on limited evidence/g) ?? [];
+    expect(because.length).toBe(2);
+  });
+});
