@@ -1035,12 +1035,6 @@
     NOT_ENOUGH_DATA: 'wahpi--neutral',
   };
 
-  var LIVE_CONFIDENCE_NOTE = {
-    HIGH: 'Based on a full comp set and nearby dates, all live-checked.',
-    MEDIUM: 'Based on a partial comp set. Treat the figure as indicative.',
-    LOW: 'Thin evidence — too few live competitor rates to be certain.',
-  };
-
   var SIGNAL_UNAVAILABLE = {
     NO_SUBJECT_RATE: 'No live rate for this room.',
     INSUFFICIENT_COMPARABLES: 'Too few competitors with a live rate for these dates.',
@@ -1306,11 +1300,21 @@
     }
     grid.appendChild(scoreBox);
 
-    var confBox = el('div', 'wahpi__metric');
-    confBox.appendChild(el('div', 'wahpi__metric-label', 'Confidence'));
-    confBox.appendChild(el('div', 'wahpi__metric-value wahpi__live-confidence', v.confidence));
-    confBox.appendChild(el('div', 'wahpi__metric-note', LIVE_CONFIDENCE_NOTE[v.confidence] || ''));
-    grid.appendChild(confBox);
+    // The live model's confidence tile was retired on 2026-08-27, after the
+    // history model's (#104). It was missed the first time because the two
+    // renderers use different constants — CONFIDENCE_LABEL there,
+    // LIVE_CONFIDENCE_NOTE here — so a search that found and cleared one left
+    // the other untouched, on the model mount() actually defaults to.
+    //
+    // What survives, and what does not, differs from the history model and the
+    // difference is worth stating. The engine still downgrades BOOK_NOW to
+    // BOOK_CONSIDER on thin evidence, so v.verdict_label below still softens.
+    // But this renderer has no band-only rule: it prints a precise x/10 at
+    // every confidence level, where the history model refuses the number and
+    // shows a band. So on this model the score now carries NO qualifier at
+    // all. Adding the band-only treatment here would restore that, and is a
+    // deliberate non-change rather than an oversight — it would hide the
+    // figure from most guests while confidence sits at LOW.
 
     // No sub-line: the old one restated the explanation that renders just
     // below. The space now belongs to WHY YOU MIGHT CHOOSE THIS HOTEL.
@@ -1406,13 +1410,21 @@
         box.appendChild(el('div', 'wahpi__premium-subhead', "WHAT YOU'RE PAYING MORE FOR"));
         box.appendChild(el('div', 'wahpi__premium-text', assessment.paying_more_for));
       }
+      // The third place a confidence GRADE reached a guest, and the last to be
+      // found — after the history tile (#104) and the live tile. Three
+      // surfaces, three different shapes, no shared helper between them; each
+      // search that cleared one left the others standing.
+      //
+      // The grade goes, the PROVENANCE stays. "Based on 4 comparable hotels
+      // and verified guest ratings" is a statement about what the assessment
+      // rests on, which a reader can weigh for themselves. "Confidence: LOW"
+      // is a verdict on that evidence, and it is the verdict that was retired,
+      // not the evidence.
       box.appendChild(
         el(
           'div',
           'wahpi__premium-confidence',
-          'Confidence: ' +
-            assessment.confidence +
-            ' · based on ' +
+          'Based on ' +
             (data.signals && data.signals.comp_set ? data.signals.comp_set.comps_used : 0) +
             ' comparable hotel(s)' +
             (data.reputation ? ' and verified guest ratings' : ', no verified guest rating'),
