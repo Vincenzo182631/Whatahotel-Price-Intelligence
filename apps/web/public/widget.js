@@ -1293,33 +1293,27 @@
       wrap.appendChild(valueGrid);
       return wrap;
     }
-    if (v.confidence === 'LOW') {
-      // Decision D4, extended to the live model on 2026-08-28.
-      //
-      // The history model has refused a precise figure on thin evidence since
-      // it shipped; this renderer printed x/10 at every confidence level. That
-      // asymmetry did not matter while a Confidence tile sat beside the score
-      // saying LOW out loud. With the tile retired it did: the DEFAULT model
-      // was showing "6.8 / 10" backed by three stale comps and nothing on
-      // screen said so.
-      //
-      // A band is not a hedge, it is the honest resolution of the evidence.
-      // One decimal place claims a precision three live competitors cannot
-      // support, and the guest cannot tell the difference by looking.
-      var band = el(
-        'div',
-        'wahpi__metric-value wahpi__metric-value--band-only ' + tone,
-        v.band_label || 'Not available',
-      );
-      scoreBox.appendChild(band);
-      scoreBox.appendChild(
-        el(
-          'div',
-          'wahpi__metric-note',
-          'Shown as a band because this comparison rests on limited evidence.',
-        ),
-      );
-    } else {
+    // Band-only was extended to this renderer on 2026-08-28 and reverted the
+    // same day. Recorded rather than deleted, because the reasoning was sound
+    // and only the PREMISE was wrong — the next person to notice the asymmetry
+    // should not have to rediscover why it is still here.
+    //
+    // The idea: at LOW confidence show the band and not the figure, since one
+    // decimal place claims a precision three live competitors cannot support.
+    // The history model has done that since it shipped (decision D4).
+    //
+    // Why it came out: band-only is right when LOW means THIS COMPARISON is
+    // thin. Measured on the 32-hotel cohort the same day, LOW was near
+    // universal for an unrelated reason — collection had been starved of
+    // refreshes, so subject rates aged past maxRateAgeHours (12) and capped
+    // confidence regardless of comp quality. Five of the six scoring hotels
+    // were LOW, so the rule suppressed almost every number in the product
+    // rather than the few that had earned suppression.
+    //
+    // Worth trying again ONLY once confidence tracks comparison quality again,
+    // and better keyed on the evidence itself — comps_used, say — than on a
+    // label that a stale rate can depress on its own.
+    {
       var value = el('div', 'wahpi__metric-value wahpi__live-score ' + tone);
       value.textContent = formatOutOfTen(v.out_of_ten);
       value.appendChild(el('span', 'wahpi__metric-sub', ' / 10'));
