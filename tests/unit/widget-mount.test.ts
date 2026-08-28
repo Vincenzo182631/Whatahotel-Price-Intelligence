@@ -343,23 +343,34 @@ describe('confidence is not shown to a guest, on any model', () => {
   });
 });
 
-describe('a thin-evidence score renders as a band, on BOTH models', () => {
-  // What the confidence word used to do, moved into the score itself where it
-  // cannot be looked past. One decimal place claims a precision three live
-  // competitors cannot support, and a guest cannot tell by looking.
-  it('the history model refuses a precise figure at LOW', () => {
+describe('band-only stays on the history model, and only there', () => {
+  // Extended to the live renderer on 2026-08-28 and reverted the same day.
+  // The reasoning was sound and the PREMISE was wrong: band-only is right when
+  // LOW means this comparison is thin, and on that day LOW was near universal
+  // for an unrelated reason — starved refreshes had aged subject rates past
+  // maxRateAgeHours (12), capping confidence regardless of comp quality. Five
+  // of the six scoring hotels in the cohort were LOW, so the rule suppressed
+  // almost every number in the product rather than the few that earned it.
+  //
+  // Pinned in BOTH directions so neither half drifts: the history model must
+  // keep refusing a precise figure, and the live model must keep showing one
+  // until confidence tracks comparison quality again.
+  it('the history model still refuses a precise figure at LOW', () => {
     expect(WIDGET).toContain("v.confidence_band === 'LOW'");
+    expect(WIDGET).toContain('rests on limited evidence');
   });
 
-  it('the live model refuses one too — it did not, and it is the default mount', () => {
-    expect(WIDGET).toContain("v.confidence === 'LOW'");
+  it('the live model shows the figure — reverted, and the reason is recorded', () => {
+    expect(WIDGET).not.toContain("v.confidence === 'LOW'");
+    expect(WIDGET).not.toContain('Shown as a band because');
+    // The revert must not silently become a deletion of the idea: a later
+    // reader who notices the asymmetry should find why it is still there.
+    expect(WIDGET).toContain('reverted the');
+    expect(WIDGET).toContain('comps_used');
   });
 
-  it('both use the same band-only treatment and say why', () => {
-    const bandOnly = WIDGET.match(/wahpi__metric-value--band-only/g) ?? [];
-    // Two score paths plus the absent-score tile.
-    expect(bandOnly.length).toBeGreaterThanOrEqual(3);
-    const because = WIDGET.match(/rests on limited evidence/g) ?? [];
-    expect(because.length).toBe(2);
+  it('the live renderer prints out_of_ten unconditionally again', () => {
+    expect(WIDGET).toContain('formatOutOfTen(v.out_of_ten)');
+    expect(WIDGET).toContain('wahpi__live-score');
   });
 });
