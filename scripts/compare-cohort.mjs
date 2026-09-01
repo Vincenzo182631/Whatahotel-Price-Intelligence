@@ -18,10 +18,7 @@
  * city-only cohort would flatter it.
  */
 
-const COHORT = [
-  1198, 2008, 3094, 3554, 1953, 3749, 6640, 6652, 1053, 6100, 7115, 3682, 6464, 6077, 7105, 7117,
-  6323, 6539, 2706, 951, 6792, 4000, 1550, 4117, 2622, 2876, 1004, 1069, 1097, 1109, 1135, 1168,
-];
+import { COHORT } from './cohort-fixture.mjs';
 const CHECK_IN = process.env.COHORT_CHECK_IN ?? '2026-09-15';
 const CHECK_OUT = process.env.COHORT_CHECK_OUT ?? '2026-09-17';
 const ADULTS = process.env.COHORT_ADULTS ?? '2';
