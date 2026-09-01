@@ -37,7 +37,8 @@
     "diagnose:keys": "node --env-file-if-exists=.env scripts/compset-keys.mjs",
     "diagnose:roomtypes": "node --env-file-if-exists=.env scripts/roomtype-audit.mjs",
     "cleanup:roomtypes": "node --env-file-if-exists=.env scripts/cleanup-roomtypes.mjs",
-    "calibrate": "node --env-file-if-exists=.env scripts/calibrate.mjs"
+    "calibrate": "node --env-file-if-exists=.env scripts/calibrate.mjs",
+    "ops": "node scripts/ops.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
