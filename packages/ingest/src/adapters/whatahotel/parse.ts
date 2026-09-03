@@ -143,8 +143,22 @@ export function offerSlugFor(planText: string | null | undefined): string | null
  *    as refundable — the absence of the word is not evidence of the terms, and
  *    a wrongly-refundable rate would be compared against genuinely flexible
  *    ones and look like a bargain because it is a worse product.
+ *
+ *    Since 2026-09-02 the source also sends `cancelDate` — a dated
+ *    free-cancellation deadline. A well-formed date is the source STATING the
+ *    rate is refundable, which is the positive signal the prose never gave
+ *    us. An empty or absent value stays UNKNOWN: the source has not defined
+ *    what empty means, and reading it as non-refundable would be the same
+ *    silence-as-evidence mistake in the other direction. If the prose says
+ *    non-refundable AND a cancelDate is present, the contradiction resolves
+ *    to NON_REFUNDABLE — the conservative bucket: wrongly flattering a rate
+ *    misprices it, wrongly stricter bucketing only narrows its comparisons.
  */
-export function parseRateTerms(roomDesc: string, roomName?: string | null): ParsedRatePlan {
+export function parseRateTerms(
+  roomDesc: string,
+  roomName?: string | null,
+  cancelDate?: string | null,
+): ParsedRatePlan {
   const { planText, roomText } = parseRoomDesc(roomDesc, roomName);
   const plan = (planText ?? '').toLowerCase();
 
@@ -152,12 +166,13 @@ export function parseRateTerms(roomDesc: string, roomName?: string | null): Pars
   const nonRefundable = /non-?\s*refundable/.test(plan);
   const prepayInFull = /prepay(?:\s+in\s+full)?/.test(plan);
   const depositRequired = /deposit required/.test(plan);
+  const hasCancelDeadline = /^\d{4}-\d{2}-\d{2}$/.test((cancelDate ?? '').trim());
 
   return {
     planText,
     roomText,
     mealPlan: 'ROOM_ONLY',
-    refundPolicy: nonRefundable ? 'NON_REFUNDABLE' : 'UNKNOWN',
+    refundPolicy: nonRefundable ? 'NON_REFUNDABLE' : hasCancelDeadline ? 'REFUNDABLE' : 'UNKNOWN',
     audience: isPartnerRate ? 'CONSORTIA' : 'UNKNOWN',
     isPrepaid: prepayInFull || depositRequired ? true : null,
   };
@@ -270,7 +285,7 @@ export function parseRoom(room: WahRoom, nights: number): ParsedRoom | null {
   if (nights <= 0) return null;
 
   const currency = daily.currency ?? total.currency ?? room.currency ?? 'USD';
-  const terms = parseRateTerms(room.roomDesc ?? '', room.roomName);
+  const terms = parseRateTerms(room.roomDesc ?? '', room.roomName, room.cancelDate);
 
   return {
     sourceRoomCode: room.bookCode,

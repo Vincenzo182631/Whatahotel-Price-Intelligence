@@ -187,6 +187,61 @@ describe('rate terms', () => {
     );
     expect(terms.mealPlan).toBe('ROOM_ONLY');
   });
+
+  // cancelDate arrived 2026-09-02: a dated free-cancellation deadline on
+  // rates/namerates. It is the source STATING refundability — the positive
+  // signal the prose never carried — but its empty value is undefined by the
+  // source, so empty must stay UNKNOWN, not become NON_REFUNDABLE.
+  describe('cancelDate → refundPolicy', () => {
+    const desc = '-WhataHotel! Travel Network-Deluxe Room';
+
+    it('reads a dated deadline as stated refundability', () => {
+      expect(parseRateTerms(desc, null, '2026-09-04').refundPolicy).toBe('REFUNDABLE');
+    });
+
+    it('keeps empty and absent values UNKNOWN — silence is not evidence in either direction', () => {
+      expect(parseRateTerms(desc, null, '').refundPolicy).toBe('UNKNOWN');
+      expect(parseRateTerms(desc, null, null).refundPolicy).toBe('UNKNOWN');
+      expect(parseRateTerms(desc).refundPolicy).toBe('UNKNOWN');
+    });
+
+    it('ignores a malformed value rather than guessing', () => {
+      expect(parseRateTerms(desc, null, 'soon').refundPolicy).toBe('UNKNOWN');
+      expect(parseRateTerms(desc, null, '09/04/2026').refundPolicy).toBe('UNKNOWN');
+    });
+
+    it('resolves a prose/date contradiction to the stricter bucket', () => {
+      // Wrongly flattering a rate misprices it; a stricter bucket only
+      // narrows which rates it is compared against.
+      const contradictory = parseRateTerms(
+        '-Prepay Non-refundable Non-changeable-Deluxe Room',
+        'Deluxe Room',
+        '2026-09-04',
+      );
+      expect(contradictory.refundPolicy).toBe('NON_REFUNDABLE');
+    });
+
+    it('flows through parseRoom from the payload field', () => {
+      const room = parseRoom(
+        {
+          currency: 'USD',
+          rateTotal: '642.97',
+          rateDaily: '499.00',
+          bookCode: 'ODLC00',
+          rateCode: '0S8',
+          roomName: 'Resort View Guest Room, 1 King',
+          roomDesc: '-  Exclusive Rate (*)-Resort View Guest Room, 1 King',
+          roomType: 'Standard',
+          bedType: 'King',
+          bedNum: '1',
+          bookingURL: 'https://example.invalid/booking',
+          cancelDate: '2026-09-04',
+        },
+        1,
+      );
+      expect(room?.terms.refundPolicy).toBe('REFUNDABLE');
+    });
+  });
 });
 
 describe('comparability class', () => {

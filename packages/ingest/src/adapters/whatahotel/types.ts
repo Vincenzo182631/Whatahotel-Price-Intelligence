@@ -44,6 +44,14 @@ export interface WahRoom {
   readonly bedType: string;
   readonly bedNum: string;
   readonly bookingURL: string;
+  /**
+   * Free-cancellation deadline, `yyyy-mm-dd` — added by the source
+   * 2026-09-02 on `rates` and `namerates`. May be empty; the source has NOT
+   * yet defined what empty means (some rates genuinely allow no
+   * cancellation, but empty is not confirmed to mean that), so absence and
+   * emptiness both stay UNKNOWN in the parsed terms.
+   */
+  readonly cancelDate?: string;
   readonly images?: ReadonlyArray<{ imgDesc: string; imgSource: string; imgFile: string }>;
 }
 

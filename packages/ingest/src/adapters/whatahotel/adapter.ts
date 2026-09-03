@@ -11,7 +11,14 @@
  *   U2  arbitrary future dates ...... YES — verified 7 months out
  *   U3  HISTORICAL rates ............ **NO** — live quotes only, no history
  *   U4  per-room rates .............. YES — one record per bookCode
- *   U5  cancellation terms .......... **NO** — see comparabilityClassFor
+ *   U5  cancellation terms .......... PARTIAL since 2026-09-02 — `cancelDate`
+ *                                     (free-cancellation deadline) added to
+ *                                     rates/namerates at our request. A dated
+ *                                     value maps to REFUNDABLE; empty stays
+ *                                     UNKNOWN until the source defines it.
+ *                                     Penalty amounts may follow. The class
+ *                                     key stays the rate-plan code — see
+ *                                     comparabilityClassFor.
  *   U6  occupancy ................... PARTIAL — total `guests`, not adults/children
  *   U7  total + nightly, tax basis .. YES — rateDaily NET/night, rateTotal GROSS/stay
  *                                     Both are kept: rateTotal is the stay
@@ -210,9 +217,11 @@ export function toRecords(query: RateQuery, data: WahRatesResponse): RawRateReco
       refundPolicy: parsed.terms.refundPolicy,
       isPrepaid: parsed.terms.isPrepaid,
       audience: parsed.terms.audience,
-      // The payload has no cancellation terms, so the semantic class would be
-      // UNRESOLVED and every rate excluded from every baseline. Keyed on the
-      // source's own rate-plan code instead. See parse.ts.
+      // cancelDate (2026-09-02) states refundability for SOME rates, but the
+      // semantic class would still resolve UNRESOLVED wherever it is empty,
+      // excluding those rates from every baseline. Keyed on the source's own
+      // rate-plan code instead — refundability still sharpens the tolerant
+      // comp match. See parse.ts.
       comparabilityClassOverride: parsed.comparabilityClass,
 
       // Not exposed by this API (U11). Left null rather than defaulted, so the
