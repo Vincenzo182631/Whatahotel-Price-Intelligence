@@ -170,14 +170,16 @@ engine.
     retention must drop whole partitions — and a partition must be a day, not
     a month, for that to fit inside 512 MB.
     `enforce_rate_observation_retention()` runs from migrate **only when
-    `RATE_OBSERVATION_RETAIN_DAYS` is set** — the collect workflow sets `7`;
-    a developer database never sets it, so seeded history survives. The cost:
-    observations older than the window are gone — baselines, analyses and the
-    catalogue persist, but same-stay series and calibration replay are capped
-    at the window. **After a Neon plan upgrade, delete that env line from
-    `collect.yml` and history accrues again.** If the project ever fills
-    anyway, the next collect run's retention drop self-heals it — `DROP`
-    needs no free space.
+    `RATE_OBSERVATION_RETAIN_DAYS` is set** — a developer database never sets
+    it, so seeded history survives. The collect workflow set it (`7` → `5` →
+    `2` as the free tier tightened) until **2026-09-10, when the project
+    moved to Neon's paid Launch plan and the line was deleted per this rule:
+    history now accrues**, capped by storage cost rather than a hard limit.
+    Set the variable again to reinstate a window — the drop machinery keys
+    off it alone — but not below ~90 days without checking calibration
+    (point-in-time replay is what the history is for). If a size limit is
+    ever hit again, the next collect run's retention drop self-heals it —
+    `DROP` needs no free space.
 16. **A stay that yields nothing must back off.** It has no observation, so the
     grid sees it as missing and would re-request it every run forever;
     `collection_attempt` exists solely to stop that. It is not a fact table —
