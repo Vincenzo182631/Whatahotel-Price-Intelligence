@@ -121,32 +121,20 @@ jobs:
       # run is unaffected — guest ratings are context beside the price, never
       # a term in any score.
       GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
-      # The free-tier space budget (migration 0015): the migrate step below
-      # drops observation partitions older than this many days, because Neon's
-      # 512 MB project cap only shrinks on DROP/TRUNCATE. Baselines and
-      # analyses persist; only raw observations age out. After a Neon plan
-      # upgrade, delete this line and history accrues without limit.
+      # RETENTION RETIRED 2026-09-10: the Neon project moved to the paid
+      # Launch plan (branch size limit 16 TB, storage billed per GB-month, not
+      # blocked), so RATE_OBSERVATION_RETAIN_DAYS is deliberately UNSET and
+      # history accrues — exactly the "after a Neon plan upgrade, delete this
+      # line" step this comment block always promised. What the free-tier
+      # window cost, and why it existed at all, is preserved in this file's
+      # history (7d -> 5d -> 2d, sixteen emergency partition drops, five full
+      # ingestion stops between 2026-08-31 and 2026-09-10).
       #
-      # 7 -> 5 on 2026-08-25 when the limit rose to 2000. 5 -> 2 on 2026-08-27,
-      # paired with the raise to 10000 in the same change and not separable
-      # from it: at 2000 observations grew ~50-60 MB/day and five days plus
-      # baselines held ~385 MB. Five times the collection volume against an
-      # unchanged 512 MB ceiling projects past 1 GB, and a full project fails
-      # every insert while the run still reports success — the failure mode
-      # that once hid a two-day outage inside green runs. Recovery is
-      # --squeeze, which TRUNCATEs rate_observation, and under U3 this source
-      # cannot backfill what that discards.
-      #
-      # Two days costs the product nothing it uses. The live model reads rates
-      # far fresher than either window, baselines are UPSERTED and never
-      # deleted so they survive a hotel going uncollected, and the grid's ±1
-      # day coverage tolerance already means a slot needs re-collecting about
-      # every three days regardless of what is retained.
-      #
-      # What it does cost is diagnosis: a week of raw observations was useful
-      # for answering "what did this hotel price last Tuesday", and that
-      # question is now unanswerable. The Neon upgrade is what buys it back.
-      RATE_OBSERVATION_RETAIN_DAYS: '2'
+      # If storage spend ever warrants a cap, set the variable again with the
+      # new window — the drop machinery in migrate is still there and keys off
+      # the variable alone. Do not cap below ~90 days without checking
+      # calibration first: point-in-time replay (doc 11) is the reason history
+      # is worth paying for.
 
     steps:
       - uses: actions/checkout@v4
@@ -229,12 +217,10 @@ jobs:
       #
       # THE CADENCE AND THIS NUMBER MOVE TOGETHER. Raising this without
       # shortening the cadence, or lengthening the cadence without lowering
-      # this, changes the daily budget — and the daily budget is what the
-      # 512 MB Neon ceiling constrains, not the per-run figure.
-      #
-      # Still paired with RATE_OBSERVATION_RETAIN_DAYS above for the same
-      # reason: a full project fails every insert while the run reports
-      # success, and the ceiling is not visible in a green run.
+      # this, changes the daily budget. Since the 2026-09-10 Neon upgrade the
+      # budget is a storage COST (billed per GB-month) rather than a hard
+      # 512 MB ceiling — a full project no longer fails inserts, but the
+      # daily volume still sets what each month of history costs to keep.
       - name: Collect
         if: inputs.catalog == '' && !inputs.rebuild_only
         run: |

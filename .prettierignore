@@ -9,3 +9,9 @@ db/seeds/002_scoring_config.sql
 # emits trailing commas); prettier silently repaired it, which turned three
 # regression tests into assertions about nothing.
 tests/fixtures/whatahotel/
+
+# Vendored agent skills, installed by `npx neon skills` and pinned by
+# skills-lock.json. Third-party documentation, not house source — formatting
+# it would make every reinstall a diff against our own formatter.
+.claude/skills/
+skills-lock.json
