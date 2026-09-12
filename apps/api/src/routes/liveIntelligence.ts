@@ -130,6 +130,69 @@ function premiumSummary(level: string): string {
   return premiumJustificationSummary(level);
 }
 
+/**
+ * The request's own deadline, under the platform's 60-second kill.
+ *
+ * A platform kill is the worst possible answer: no response body, no log of
+ * which phase overran, and the widget renders NOTHING — when the honest
+ * degraded answer (the stored score, hotel-value mode, or the 409) was
+ * available the whole time. Measured 2026-09-12: every on-demand probe died
+ * as FUNCTION_INVOCATION_TIMEOUT even after the per-call upstream budget
+ * landed, so per-call budgets are not enough — the REQUEST needs one.
+ *
+ * Each optional phase races the remaining budget. A phase that loses the
+ * race is skipped (its fallback answer stands), the phase name is logged,
+ * and every later optional phase is skipped too, so the response always
+ * ships with whatever was gathered inside the budget. The racing promise is
+ * left to settle in the background with its rejection swallowed — the work
+ * it was doing (an ingest, an attempt record) may still complete; it is only
+ * no longer waited on.
+ */
+const REQUEST_DEADLINE_MS = 45_000;
+const TIMED_OUT = Symbol('phase timed out');
+
+class RequestDeadline {
+  private readonly startedAt = Date.now();
+  timedOutPhase: string | null = null;
+
+  private remainingMs(): number {
+    return REQUEST_DEADLINE_MS - (Date.now() - this.startedAt);
+  }
+
+  async run<T>(phase: string, work: () => Promise<T>, fallback: T): Promise<T> {
+    if (this.timedOutPhase !== null || this.remainingMs() <= 0) {
+      this.timedOutPhase ??= phase;
+      return fallback;
+    }
+    let timer: NodeJS.Timeout | undefined;
+    const pending = work();
+    const outcome = await Promise.race([
+      pending,
+      new Promise<typeof TIMED_OUT>((resolve) => {
+        timer = setTimeout(() => resolve(TIMED_OUT), this.remainingMs());
+      }),
+    ]).finally(() => clearTimeout(timer));
+    if (outcome === TIMED_OUT) {
+      this.timedOutPhase = phase;
+      console.error(`live-intelligence deadline: phase "${phase}" still running, skipped`);
+      pending.catch(() => {});
+      return fallback;
+    }
+    return outcome;
+  }
+}
+
+/** The on-demand result a phase reports when the deadline skipped it. */
+const ON_DEMAND_DEADLINE: OnDemandResult = {
+  performed: false,
+  skipped: 'DEADLINE',
+  staysQueried: 0,
+  ratesFetched: 0,
+  inserted: 0,
+  rejected: 0,
+  subjectTracked: false,
+};
+
 export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   const { url } = ctx;
 
@@ -184,6 +247,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
 
   const { config } = await loadActiveConfig();
   const now = new Date();
+  const deadline = new RequestDeadline();
 
   const request = {
     wahHotelId,
@@ -197,7 +261,21 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     roomCode,
     now,
   };
-  let loaded = await loadLiveIntelligence(request, config);
+  // The loader is DB-only, but it is raced too: if IT is where the request's
+  // time goes, the deadline log is how we find out — a platform kill says
+  // nothing. Its fallback is a thrown honest error, since nothing can be
+  // answered without the initial load.
+  const loadedOrTimeout = await deadline.run<Awaited<
+    ReturnType<typeof loadLiveIntelligence>
+  > | null>('initial-load', () => loadLiveIntelligence(request, config), null);
+  if (loadedOrTimeout === null) {
+    throw new ApiError('NO_CURRENT_RATE', 'No available rate for these dates.', {
+      hotel_id: wahHotelId,
+      check_in: checkIn,
+      on_demand: { performed: false, error: 'request deadline exceeded during initial load' },
+    });
+  }
+  let loaded = loadedOrTimeout;
   let onDemand: OnDemandResult | null = null;
   let onDemandError: string | null = null;
 
@@ -210,7 +288,11 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   if (isLiveLoadFailure(loaded) && loaded.kind === 'HOTEL_NOT_FOUND') {
     // GUEST_UPSTREAM: a guest is waiting and the function dies at 60s — a
     // hanging source must degrade to the honest answer, not eat the request.
-    const result = await enrollHotel(wahHotelId, { ...DEFAULT_ENROLL_OPTIONS, ...GUEST_UPSTREAM });
+    const result = await deadline.run(
+      'enroll-hotel',
+      () => enrollHotel(wahHotelId, { ...DEFAULT_ENROLL_OPTIONS, ...GUEST_UPSTREAM }),
+      { outcome: 'FAILED' as const, hotelsWritten: 0, citySynced: null },
+    );
     enrolled = result.outcome;
     if (result.outcome === 'ENROLLED') {
       loaded = await loadLiveIntelligence(request, config);
@@ -232,19 +314,29 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       // in context. One indexed query when the destination is already deep
       // enough; one API call when it is not.
       try {
-        await ensureDestinationDepth(wahHotelId, { ...DEFAULT_ENROLL_OPTIONS, ...GUEST_UPSTREAM });
+        await deadline.run(
+          'destination-depth',
+          () =>
+            ensureDestinationDepth(wahHotelId, { ...DEFAULT_ENROLL_OPTIONS, ...GUEST_UPSTREAM }),
+          null,
+        );
       } catch (err) {
         console.error('destination depth check failed:', (err as Error).message);
       }
       try {
-        onDemand = await collectStayOnDemand({
-          hotelId: hotel.id,
-          wahHotelId,
-          checkIn,
-          nights,
-          adults,
-          children,
-        });
+        onDemand = await deadline.run(
+          'collect-on-demand',
+          () =>
+            collectStayOnDemand({
+              hotelId: hotel.id,
+              wahHotelId,
+              checkIn,
+              nights,
+              adults,
+              children,
+            }),
+          ON_DEMAND_DEADLINE,
+        );
       } catch (err) {
         // Never let a collection fault break the read path. err.message only,
         // sanitized: driver errors can carry connection strings, and anything
@@ -337,14 +429,22 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       loaded.compTermsMatch === 'PRICE_ONLY')
   ) {
     try {
-      compTopUp = await topUpComparablesOnDemand({
-        hotelId: loaded.hotel.id,
-        wahHotelId,
-        checkIn,
-        nights,
-        adults,
-        children,
-      });
+      // `loaded` is mutable, so the failure-narrowing above does not survive
+      // into the closure; capture the id it already proved present.
+      const subjectHotelId = loaded.hotel.id;
+      compTopUp = await deadline.run(
+        'comp-top-up',
+        () =>
+          topUpComparablesOnDemand({
+            hotelId: subjectHotelId,
+            wahHotelId,
+            checkIn,
+            nights,
+            adults,
+            children,
+          }),
+        ON_DEMAND_DEADLINE,
+      );
       if ((compTopUp?.inserted ?? 0) > 0) {
         const reloaded = await loadLiveIntelligence(request, config);
         if (!isLiveLoadFailure(reloaded)) loaded = reloaded;

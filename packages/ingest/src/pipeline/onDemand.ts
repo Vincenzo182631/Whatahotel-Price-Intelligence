@@ -118,7 +118,9 @@ export type OnDemandSkipReason =
   | 'LEAD_OUT_OF_RANGE'
   | 'RECENTLY_FRUITLESS'
   /** Nothing to top up: this hotel has no comparables to ask about. */
-  | 'NO_COMPARABLES';
+  | 'NO_COMPARABLES'
+  /** The API route's request deadline tripped before this phase could run. */
+  | 'DEADLINE';
 
 export interface OnDemandResult {
   readonly performed: boolean;
