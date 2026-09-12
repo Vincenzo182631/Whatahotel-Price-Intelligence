@@ -83,14 +83,19 @@ export interface OnDemandOptions {
  * probe on an on-demand stay hit exactly the 60s ceiling with the database
  * completely idle.
  *
- * The budget: 8s × 2 attempts + 0.5s backoff ≈ 16.5s per phase worst case,
- * ≈ 50s across all three phases — under the ceiling with room for ingest and
- * scoring. A healthy call answers in ~2.4s, so 8s is over 3× headroom, and
- * the single retry still absorbs a transient blip.
+ * The budget: 8s flat per phase, NO retries — ≈ 24s across all three phases,
+ * comfortably under the ceiling with room for ingest and scoring. A healthy
+ * call answers in ~2.4s, so 8s is over 3× headroom. No retry, deliberately:
+ * a retry only pays when the first attempt failed FAST, and the failure mode
+ * this budget exists for is every call hanging to the timeout — there a
+ * retry doubles every phase (measured 2026-09-12: at one retry the
+ * worst-case stack still grazed the 60s kill and the 504s persisted). A
+ * transiently-failed guest fetch is not lost data; the scheduled collector
+ * retries the same stay with the patient settings.
  */
 export const GUEST_UPSTREAM = {
   timeoutMs: 8_000,
-  maxRetries: 1,
+  maxRetries: 0,
 } as const;
 
 export const DEFAULT_ON_DEMAND_OPTIONS: OnDemandOptions = {
