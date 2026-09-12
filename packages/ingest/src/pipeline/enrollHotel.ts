@@ -43,7 +43,26 @@ export interface EnrollOptions {
   readonly negativeTtlMs: number;
   /** How long a successful enrollment suppresses another city sync. */
   readonly positiveTtlMs: number;
+  /**
+   * Upstream client overrides. Guest-facing callers pass GUEST_UPSTREAM so a
+   * hanging source cannot eat the serverless request's 60s; batch callers
+   * leave it unset and keep the client defaults. Unset means unset — the
+   * client's own defaults apply, not zeros.
+   */
+  readonly timeoutMs?: number;
+  readonly maxRetries?: number;
 }
+
+/**
+ * fromEnv args from the enroll options, OMITTING unset keys: the client merges
+ * `{ ...DEFAULTS, ...overrides }`, so an explicit `timeoutMs: undefined` would
+ * clobber the 30s default with undefined and the abort timer would fire at 0ms.
+ */
+const clientOverrides = (options: EnrollOptions) => ({
+  concurrency: 2,
+  ...(options.timeoutMs !== undefined && { timeoutMs: options.timeoutMs }),
+  ...(options.maxRetries !== undefined && { maxRetries: options.maxRetries }),
+});
 
 export const DEFAULT_ENROLL_OPTIONS: EnrollOptions = {
   // The comp set needs a handful of same-destination hotels to mean anything;
@@ -119,7 +138,7 @@ export async function ensureDestinationDepth(
   if (!city || siblings >= options.thinDestinationBelow) return none('ALREADY_PRESENT');
 
   try {
-    const result = await syncCity(WahClient.fromEnv({ concurrency: 2 }), city, q);
+    const result = await syncCity(WahClient.fromEnv(clientOverrides(options)), city, q);
     remember(cacheKey, 'ENROLLED', options.positiveTtlMs);
     return { outcome: 'ENROLLED', hotelsWritten: result.hotelsWritten, citySynced: city };
   } catch (err) {
@@ -177,7 +196,7 @@ export async function discoverCityComparables(
 
   try {
     const result = await syncHotelsFromCity(
-      WahClient.fromEnv({ concurrency: 2 }),
+      WahClient.fromEnv(clientOverrides(options)),
       city,
       checkIn,
       checkOut,
@@ -242,7 +261,7 @@ export async function enrollHotel(
   const cached = seen.get(wahHotelId);
   if (cached && cached.until > Date.now()) return none('SUPPRESSED');
 
-  const client = WahClient.fromEnv({ concurrency: 2 });
+  const client = WahClient.fromEnv(clientOverrides(options));
 
   try {
     const added = await syncHotelById(client, wahHotelId, q);

@@ -21,6 +21,9 @@
  *     exactly as the scheduled collector records them, so the two paths share
  *     one backoff ledger and the compression signal sees on-demand sold-outs.
  *   - A hard cap on comparables fetched per request.
+ *   - A guest-facing upstream budget (GUEST_UPSTREAM). The serverless request
+ *     dies at 60s, and a request can stack several upstream phases; see the
+ *     constant for the arithmetic.
  *
  * Everything fetched is ingested through the same pipeline as scheduled
  *  collection — same validation, same rejects, same dedup — so an on-demand
@@ -37,7 +40,7 @@ import {
 } from '@wahpi/data';
 
 import type { RateQuery, RawRateRecord } from '../adapters/RateSourceAdapter.js';
-import { discoverCityComparables } from './enrollHotel.js';
+import { DEFAULT_ENROLL_OPTIONS, discoverCityComparables } from './enrollHotel.js';
 import {
   WHATAHOTEL_INGEST_TUNING,
   WHATAHOTEL_SOURCE_CODE,
@@ -63,6 +66,32 @@ export interface OnDemandOptions {
   readonly retryHoldMinutes: number;
   readonly now?: Date;
 }
+
+/**
+ * Upstream client settings for anything a GUEST is waiting on.
+ *
+ * The collector keeps the client defaults (30s timeout, 3 retries) — right for
+ * a batch job with minutes to spend. A guest request is different: Vercel
+ * kills the function at 60 seconds flat, and one request can stack up to
+ * three sequential upstream phases (destination-depth sync, city-comparable
+ * discovery, then the rates wave). At the defaults a single HANGING call is
+ * 30s × 4 attempts ≈ 2 minutes, so during an upstream outage every on-demand
+ * page view died as a 504 — which the widget renders as NOTHING, when the
+ * honest degraded answer (hotel-value mode, or the stored-data score) was
+ * sitting right there behind the timeout. Measured 2026-09-12: the source
+ * stopped fast-failing and began hanging to the client timeout, and every
+ * probe on an on-demand stay hit exactly the 60s ceiling with the database
+ * completely idle.
+ *
+ * The budget: 8s × 2 attempts + 0.5s backoff ≈ 16.5s per phase worst case,
+ * ≈ 50s across all three phases — under the ceiling with room for ingest and
+ * scoring. A healthy call answers in ~2.4s, so 8s is over 3× headroom, and
+ * the single retry still absorbs a transient blip.
+ */
+export const GUEST_UPSTREAM = {
+  timeoutMs: 8_000,
+  maxRetries: 1,
+} as const;
 
 export const DEFAULT_ON_DEMAND_OPTIONS: OnDemandOptions = {
   // The source is verified ~7 months out (U2). 300 keeps a safety margin, and
@@ -267,7 +296,10 @@ async function discoverCityComparablesQuietly(stay: OnDemandStay): Promise<void>
     .toISOString()
     .slice(0, 10);
   try {
-    await discoverCityComparables(stay.wahHotelId, stay.checkIn, checkOut, stay.adults);
+    await discoverCityComparables(stay.wahHotelId, stay.checkIn, checkOut, stay.adults, {
+      ...DEFAULT_ENROLL_OPTIONS,
+      ...GUEST_UPSTREAM,
+    });
   } catch (err) {
     console.error('city comparable discovery failed:', (err as Error).message);
   }
@@ -295,6 +327,7 @@ async function fetchIngestRecord(
     // against thousands of stays and politeness there is cheap; here every
     // second is someone watching a spinner.
     concurrency: 9,
+    ...GUEST_UPSTREAM,
     continueOnError: true,
     onError: (query) => failures.add(queryKey(query)),
     onNoAvailability: (query) => soldOut.add(queryKey(query)),

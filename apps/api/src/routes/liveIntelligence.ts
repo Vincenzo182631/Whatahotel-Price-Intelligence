@@ -43,6 +43,8 @@ import {
   promoteHotelForCollection,
 } from '@wahpi/data';
 import {
+  DEFAULT_ENROLL_OPTIONS,
+  GUEST_UPSTREAM,
   OpenAiReasoner,
   collectStayOnDemand,
   enrollHotel,
@@ -206,7 +208,9 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   // recognise the id still ends in the honest 404 below.
   let enrolled: string | null = null;
   if (isLiveLoadFailure(loaded) && loaded.kind === 'HOTEL_NOT_FOUND') {
-    const result = await enrollHotel(wahHotelId);
+    // GUEST_UPSTREAM: a guest is waiting and the function dies at 60s — a
+    // hanging source must degrade to the honest answer, not eat the request.
+    const result = await enrollHotel(wahHotelId, { ...DEFAULT_ENROLL_OPTIONS, ...GUEST_UPSTREAM });
     enrolled = result.outcome;
     if (result.outcome === 'ENROLLED') {
       loaded = await loadLiveIntelligence(request, config);
@@ -228,7 +232,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       // in context. One indexed query when the destination is already deep
       // enough; one API call when it is not.
       try {
-        await ensureDestinationDepth(wahHotelId);
+        await ensureDestinationDepth(wahHotelId, { ...DEFAULT_ENROLL_OPTIONS, ...GUEST_UPSTREAM });
       } catch (err) {
         console.error('destination depth check failed:', (err as Error).message);
       }

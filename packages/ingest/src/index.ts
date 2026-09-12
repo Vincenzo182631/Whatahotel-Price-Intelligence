@@ -38,6 +38,7 @@ export type { EnrollOptions, EnrollOutcome, EnrollResult } from './pipeline/enro
 
 export {
   DEFAULT_ON_DEMAND_OPTIONS,
+  GUEST_UPSTREAM,
   collectStayOnDemand,
   leadDaysOf,
   planOnDemandQueries,

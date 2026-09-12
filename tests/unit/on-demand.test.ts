@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_ON_DEMAND_OPTIONS,
+  GUEST_UPSTREAM,
   leadDaysOf,
   planOnDemandQueries,
 } from '../../packages/ingest/src/pipeline/onDemand.js';
@@ -80,5 +81,27 @@ describe('the lead-time guard', () => {
     // no-rate checks stay deterministic and free.
     expect(DEFAULT_ON_DEMAND_OPTIONS.maxLeadDays).toBeLessThanOrEqual(330);
     expect(leadDaysOf('2031-06-01', now)).toBeGreaterThan(DEFAULT_ON_DEMAND_OPTIONS.maxLeadDays);
+  });
+});
+
+describe('the guest upstream budget', () => {
+  it('keeps the worst-case request under the 60s serverless ceiling', () => {
+    // A guest request can stack three sequential upstream phases (destination
+    // depth, city discovery, the rates wave). Each phase's worst case is every
+    // attempt hanging to the timeout, plus the retry backoffs (0.5s * 2^(n-1)).
+    // Measured 2026-09-12: the source began hanging instead of fast-failing,
+    // and at the collector's 30s/3-retries settings every on-demand page view
+    // died at Vercel's 60s kill as a 504 — rendered by the widget as NOTHING,
+    // when the honest degraded answer existed. This pins the arithmetic so a
+    // future bump of either knob cannot silently reintroduce that.
+    const { timeoutMs, maxRetries } = GUEST_UPSTREAM;
+    let backoffs = 0;
+    for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+      backoffs += 500 * 2 ** (attempt - 1);
+    }
+    const phaseWorstMs = timeoutMs * (maxRetries + 1) + backoffs;
+    const requestWorstMs = phaseWorstMs * 3;
+    // 55s, not 60: ingest, scoring and the response still need their seconds.
+    expect(requestWorstMs).toBeLessThan(55_000);
   });
 });
