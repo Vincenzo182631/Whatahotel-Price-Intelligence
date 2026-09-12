@@ -110,7 +110,12 @@ function compSetCte(
         ORDER BY c.rank
         LIMIT ${limitParam}
      ),
-     comps AS (
+     comps AS MATERIALIZED (
+       -- MATERIALIZED is load-bearing, not an optimization note. A CTE
+       -- referenced once is inlined, and inlined into a nested loop this one
+       -- re-ran its destination-shortlist sort PER OUTER ROW — part of the
+       -- 2026-09-12 outage (see findCompetitorRates). The set is at most
+       -- \`limit\` rows; computing it exactly once is the only sane plan.
        SELECT hotel_id, rank FROM curated
        UNION ALL
        (SELECT h.id, 9999
@@ -243,34 +248,52 @@ export async function findCompetitorRates(
 ): Promise<CompetitorRate[]> {
   const { rows } = await db(q).query(
     `WITH ${compSetCte('$8', '$12', '$15', '$16')},
+     -- The terms and room filters are resolved to ID SETS first, MATERIALIZED,
+     -- and the observation scan probes them by membership. They used to be row
+     -- joins with \`$n IS NULL OR col = $n\` filters, and that shape took the
+     -- API down on 2026-09-12: the planner cannot estimate the OR-NULL pattern
+     -- through a bound parameter, assumed one matching rate_plan row, and
+     -- nested the ENTIRE comp-set branch inside a loop over what was actually
+     -- 610 plans × 704 room types — the day after the cancelDate mapping
+     -- (#117) grew REFUNDABLE from a handful of plans to ~1,000, this query
+     -- went from milliseconds to minutes and every on-demand request died at
+     -- the platform's 60s kill. A materialized id set is planner-proof: the
+     -- worst plan it admits is a hash probe per observation row.
+     matching_plans AS MATERIALIZED (
+       -- NULL params = the price-only rung: no terms filter at all. The
+       -- ::text casts: the columns are enums and do not compare to a
+       -- nullable text parameter.
+       SELECT id FROM rate_plan
+        WHERE ($7::text IS NULL OR meal_plan::text = $7)
+          AND ($10::text IS NULL OR refund_policy::text = $10)
+          AND ($11::text IS NULL OR audience::text = $11)
+     ),
+     matching_rooms AS MATERIALIZED (
+       -- Only active types: a retired (poisoned) room must not price a
+       -- competitor comparison any more than it may be offered to a guest.
+       SELECT id FROM room_type
+        WHERE is_active
+          AND ($13::text IS NULL OR room_class::text = $13)
+          AND ($14::text IS NULL OR view_type::text = $14)
+     ),
      latest AS (
        SELECT DISTINCT ON (o.hotel_id, o.room_type_id)
               o.hotel_id, o.nightly_amount_minor, o.observed_at, o.is_available
          FROM rate_observation o
          JOIN comps ON comps.hotel_id = o.hotel_id
-         JOIN rate_plan rp ON rp.id = o.rate_plan_id
-         -- LEFT JOIN: fixtures carry observations with no room type, and a
-         -- missing type is not a deactivated one. Only a type known to be
-         -- inactive is excluded — a retired (poisoned) room must not price a
-         -- competitor comparison any more than it may be offered to a guest.
-         LEFT JOIN room_type rt ON rt.id = o.room_type_id
-        WHERE (rt.id IS NULL OR rt.is_active)
-          AND o.check_in = $2::date AND o.nights = $3 AND o.adults = $4
+        WHERE o.check_in = $2::date AND o.nights = $3 AND o.adults = $4
           AND o.children = $5 AND o.currency = $6
-          -- NULL params = the price-only rung: no terms filter at all. The
-          -- ::text casts mirror the room_class pattern below — the columns
-          -- are enums and do not compare to a nullable text parameter.
-          AND ($7::text IS NULL OR rp.meal_plan::text = $7)
-          AND ($10::text IS NULL OR rp.refund_policy::text = $10)
-          AND ($11::text IS NULL OR rp.audience::text = $11)
-          -- A room whose class we do not know never matches a class we DO
-          -- know: rt.room_class is NULL on the LEFT JOIN, so the comparison
-          -- yields NULL and the row drops. Same rule as the terms match —
-          -- symmetric ignorance is fair, ignorance against knowledge is not.
-          -- ::text on the COLUMN, not the parameter: room_class and view_type
-          -- are enums, and an enum does not compare to a bound text parameter.
-          AND ($13::text IS NULL OR rt.room_class::text = $13)
-          AND ($14::text IS NULL OR rt.view_type::text = $14)
+          AND o.rate_plan_id IN (SELECT id FROM matching_plans)
+          -- Fixtures carry observations with no room type, and a missing type
+          -- is not a deactivated one: a typeless observation survives exactly
+          -- when NO room rung is being asked for. A room whose class we do
+          -- not know never matches a class we DO know — same rule as the
+          -- terms match: symmetric ignorance is fair, ignorance against
+          -- knowledge is not.
+          AND (
+            (o.room_type_id IS NULL AND $13::text IS NULL AND $14::text IS NULL)
+            OR o.room_type_id IN (SELECT id FROM matching_rooms)
+          )
           AND o.observed_at >= now() - ($9 || ' hours')::interval
         -- Cheapest within the freshest capture, not merely the newest row:
         -- a competitor room with two rate plans otherwise priced itself at
