@@ -101,7 +101,9 @@ describe('the guest upstream budget', () => {
     }
     const phaseWorstMs = timeoutMs * (maxRetries + 1) + backoffs;
     const requestWorstMs = phaseWorstMs * 3;
-    // 55s, not 60: ingest, scoring and the response still need their seconds.
-    expect(requestWorstMs).toBeLessThan(55_000);
+    // 30s, not 60: ingest, scoring and the response need their seconds, and a
+    // budget that merely fits the ceiling has no slack for a phase this
+    // arithmetic missed — at one retry (~50s worst) the 504s persisted.
+    expect(requestWorstMs).toBeLessThanOrEqual(30_000);
   });
 });

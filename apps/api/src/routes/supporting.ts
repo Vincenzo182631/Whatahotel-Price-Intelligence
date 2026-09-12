@@ -97,6 +97,11 @@ export const healthHandler: Handler = async (_req, res) => {
       sources,
     },
     config_version: config.version,
+    // Which build is actually answering. Vercel injects the commit SHA at
+    // build time; local runs have no deployment and say so. Exists because a
+    // production incident (2026-09-12) burned real time on "did the fix
+    // deploy?" with no way to answer it from outside.
+    deployment: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local',
   });
 };
 
