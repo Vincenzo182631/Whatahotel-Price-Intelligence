@@ -276,14 +276,30 @@ export async function findCompetitorRates(
           AND ($13::text IS NULL OR room_class::text = $13)
           AND ($14::text IS NULL OR view_type::text = $14)
      ),
-     latest AS (
-       SELECT DISTINCT ON (o.hotel_id, o.room_type_id)
-              o.hotel_id, o.nightly_amount_minor, o.observed_at, o.is_available
+     -- The observation lookup is its OWN materialized fence, keyed only on
+     -- the stay and the comp set, so the planner has no choice but to run it
+     -- FIRST — a dozen comp hotels probed through the partition indexes,
+     -- yielding a few hundred rows. The id-set filters then apply to those
+     -- hundreds. Without this fence the planner drove the join from
+     -- matching_plans (the ::text casts on the enum columns blind every
+     -- statistic, so it estimates 1 row where hundreds match) and probed all
+     -- partitions once PER PLAN ID — ~700 loops × ~12ms = the ~8s per ladder
+     -- rung that kept guest requests pressed against the platform kill even
+     -- after the 2026-09-12 restructure.
+     comp_observations AS MATERIALIZED (
+       SELECT o.hotel_id, o.room_type_id, o.rate_plan_id, o.observation_slot,
+              o.nightly_amount_minor, o.observed_at, o.is_available
          FROM rate_observation o
          JOIN comps ON comps.hotel_id = o.hotel_id
         WHERE o.check_in = $2::date AND o.nights = $3 AND o.adults = $4
           AND o.children = $5 AND o.currency = $6
-          AND o.rate_plan_id IN (SELECT id FROM matching_plans)
+          AND o.observed_at >= now() - ($9 || ' hours')::interval
+     ),
+     latest AS (
+       SELECT DISTINCT ON (o.hotel_id, o.room_type_id)
+              o.hotel_id, o.nightly_amount_minor, o.observed_at, o.is_available
+         FROM comp_observations o
+        WHERE o.rate_plan_id IN (SELECT id FROM matching_plans)
           -- Fixtures carry observations with no room type, and a missing type
           -- is not a deactivated one: a typeless observation survives exactly
           -- when NO room rung is being asked for. A room whose class we do
@@ -294,7 +310,6 @@ export async function findCompetitorRates(
             (o.room_type_id IS NULL AND $13::text IS NULL AND $14::text IS NULL)
             OR o.room_type_id IN (SELECT id FROM matching_rooms)
           )
-          AND o.observed_at >= now() - ($9 || ' hours')::interval
         -- Cheapest within the freshest capture, not merely the newest row:
         -- a competitor room with two rate plans otherwise priced itself at
         -- whichever was captured last, inflating the comp set and making
