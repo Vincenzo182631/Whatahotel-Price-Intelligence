@@ -375,6 +375,26 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     500 for the same stay, indistinguishable from an upstream fault. NULL means
     the page did not say — never "bookable".
 
+25. **Preferred-partner standing favors, never punishes, and never touches a
+    number.** Owner business rule (2026-09-14). A hotel holding stored
+    preferred-partner perks (`hotel_benefit` rows — the source's `perks`
+    array) gets a fixed RANKING bonus when alternatives are chosen
+    (`PREFERRED_PARTNER_RANK_BONUS`, valueAlternative.ts) and a
+    `preferred_partner` badge in the response. Three limits, same shape as
+    rule 23: it never moves a number (no Deal Score, CSI or stored analysis —
+    a partner premium inside the score would poison calibration, and the 6.0
+    floor already guarantees no catalogued hotel reads as a bad deal); it
+    never moves eligibility (a partner not genuinely cheaper, or not
+    genuinely better-rated for the upsell, is not conjured into a
+    recommendation — and absence of the flag is UNKNOWN, scored exactly as
+    before, never penalized); and it never edits a fact (price statements
+    stay true for partners and non-partners alike — "not saying anything
+    negative" is delivered by the no-disparagement rules that already cover
+    every catalogued hotel, not by suppressing facts). The bonus is a
+    tie-breaker, not a trump: 0.08 on a 0..1 blend decides between comparable
+    candidates and cannot outrank a materially bigger saving or a materially
+    stronger verified reputation; tests pin both directions.
+
 ## Adding or changing a factor
 
 1. Update `docs/mvp/02-deal-score.md` with the rationale first.

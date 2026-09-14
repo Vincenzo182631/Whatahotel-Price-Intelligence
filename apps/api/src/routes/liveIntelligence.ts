@@ -555,6 +555,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       rating: rep?.rating ?? null,
       reviewCount: rep?.userRatingCount ?? null,
       themes: rep?.reviewThemes ?? [],
+      isPreferredPartner: c.isPreferredPartner,
     };
   });
   const superiorHotel = chooseSuperiorAlternative(
@@ -586,6 +587,9 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       isAvailable: c.isAvailable,
       rating: competitorReputations.get(c.wahHotelId)?.rating ?? null,
       reviewCount: competitorReputations.get(c.wahHotelId)?.userRatingCount ?? null,
+      // The preferred-partner rule (valueAlternative.ts): a fixed RANKING
+      // bonus among eligible candidates, never eligibility, never a number.
+      isPreferredPartner: c.isPreferredPartner,
     })),
     // Tilts the RANKING among eligible candidates only — a preference can
     // never conjure an alternative the eligibility rule would not allow.
@@ -885,6 +889,10 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
           save_nightly: money(alternative.saveNightlyMinor, currency),
           rating: alternative.rating,
           review_count: alternative.reviewCount,
+          // Preferred-partner standing: the hotel's rate carries the
+          // agency's partner perks. Favors ranking and earns a badge —
+          // never a number, never eligibility (valueAlternative.ts).
+          preferred_partner: alternative.isPreferredPartner,
           // With a stated preference, the personalization's reason names why
           // this candidate suits THAT preference; otherwise the assessment's.
           reason:
@@ -921,6 +929,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
             rating: superiorHotel.rating,
             review_count: superiorHotel.reviewCount,
             themes: superiorHotel.themes,
+            preferred_partner: superiorHotel.isPreferredPartner,
           },
           room: null,
           reason: [
