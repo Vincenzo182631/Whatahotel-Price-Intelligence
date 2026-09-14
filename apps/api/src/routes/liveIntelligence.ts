@@ -126,8 +126,8 @@ function liveReasoner(): OpenAiReasoner | null {
  * are load-bearing: this is a judgement from the evidence we hold, not a claim
  * about what the hotel is worth.
  */
-function premiumSummary(level: string): string {
-  return premiumJustificationSummary(level);
+function premiumSummary(level: string, categoryMismatch = false): string {
+  return premiumJustificationSummary(level, categoryMismatch);
 }
 
 /**
@@ -799,7 +799,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       summary:
         premium.premiumPct === null && premium.level === 'LIMITED_DATA'
           ? 'No market premium was measured for this stay.'
-          : premiumSummary(premium.level),
+          : premiumSummary(premium.level, bundle.market.comp_set.category_mismatch),
       /**
        * The reasoned verdict: is the premium supported by the evidence?
        *
@@ -1096,6 +1096,10 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         // they do sell. Published so a premium room is never made to look
         // overpriced against entry-level rooms without the reader knowing.
         room_match: loaded.compRoomMatch,
+        // True when a stated non-entry category (suite, villa…) fell to the
+        // ANY rung: the comparison spans room categories and every rendering
+        // frames it that way rather than as a like-for-like premium.
+        category_mismatch: bundle.market.comp_set.category_mismatch,
         // MATCHED = competitors sell on the same rate terms. PRICE_ONLY = the
         // final fallback rung compared price alone (config v6); confidence is
         // LOW by construction and the caveat rides in verdict.reasons.

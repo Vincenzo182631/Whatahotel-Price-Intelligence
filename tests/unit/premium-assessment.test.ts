@@ -343,7 +343,7 @@ describe('justifying the premium when the money cannot', () => {
     const aboveAll = bundleFor({ compNightlies: [60_000, 62_000, 64_000] });
     expect(aboveAll.premium.dearer_than_all_comparables).toBe(true);
     expect(deterministicAssessment(aboveAll)?.paying_more_for).toContain(
-      'above every comparable hotel checked',
+      'above every rate checked at comparable hotels',
     );
 
     // Dearer than the median, cheaper than the dearest — the claim is false

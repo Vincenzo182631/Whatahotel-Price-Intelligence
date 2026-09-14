@@ -167,6 +167,17 @@ export interface LiveExplanationBundle {
       readonly available: boolean;
       readonly basis: string | null;
       readonly room_match: string | null;
+      /**
+       * True when the subject is a stated non-entry category (suite, villa,
+       * penthouse…) and the comparison fell to the ANY rung — the
+       * comparables are whatever room each hotel had, usually its cheapest.
+       * Every rendering must then carry the mismatch as the FRAME, not a
+       * footnote: measured 2026-09-14, a $2,385 suite rendered as "75% above
+       * comparable hotels" against a competitor's $1,366 cheapest room, with
+       * the category caveat below the fold. Rule 20: ANY must never be
+       * presented as equivalence.
+       */
+      readonly category_mismatch: boolean;
       readonly index: number | null;
       readonly band: string | null;
       readonly pct_below_median: number | null;
@@ -506,6 +517,11 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
         available: compSet.signal.available,
         basis: input.compBasis ?? null,
         room_match: input.compRoomMatch ?? null,
+        category_mismatch:
+          (input.compRoomMatch ?? null) === 'ANY' &&
+          input.roomClass != null &&
+          input.roomClass !== 'ROOM' &&
+          input.roomClass !== 'UNKNOWN',
         index: compSet.csi === null ? null : round1(compSet.csi),
         band: compSet.band,
         pct_below_median: compSet.pctBelowMedian === null ? null : round1(compSet.pctBelowMedian),

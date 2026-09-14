@@ -433,3 +433,47 @@ ranked the same way, and may now cite `google_review_themes` and
 `premium.dearer_than_all_comparables` is true only when the rate is dearer
 than every usable comparable, not merely their median. The stronger sentence
 is only allowed when the stronger fact holds.
+
+## Config v9 — two like-for-like beat three unlike (`minCompsRoomMatched`)
+
+**The failure this fixes** (measured 2026-09-14, Four Seasons Maui at Wailea,
+Apr 5–8, Garden View Executive Suite at $2,385/night): the room-equivalence
+ladder held **two** real suite comparables — Grand Wailea at $2,449 and
+Fairmont Kea Lani at $1,459 — but every rung required `minComps` (3), so both
+were discarded and the comparison fell to ANY. There the suite was measured
+against whatever each comp had cheapest, including a $1,366 entry room, and
+the widget rendered **"75% above comparable luxury hotels"** — a premium that
+does not exist suite-against-suite. The owner's own manual check (a
+comparable suite at ~$2,500) contradicted the widget on its face, which is
+the exact failure mode that destroys trust in the product.
+
+**The change.** The room-matched rungs (`CLASS_AND_VIEW`, `CLASS`) may carry
+the index at `live.csi.minCompsRoomMatched` (2). Selection order is now:
+
+1. a room-matched rung at the full `minComps`, strongest rung first;
+2. a room-matched rung at the reduced floor — **confidence caps at LOW**
+   automatically (`confidence.mediumMinComps` is unchanged at 3);
+3. ANY at the full `minComps`; then the price-only rung, unchanged.
+
+A reduced carry is an ANSWER: the radius ladder stops climbing on it, the
+curated-set widening does not overwrite it, and the price-only rung does not
+fire past it — each of those would re-discard the like-for-like evidence the
+selection just chose. The reduced floor never applies when the subject's
+class is UNKNOWN: two rooms alike only in being unclassifiable are not a
+category match (same principle as rule 5's OPAQUE cap).
+
+**Why 2 is defensible where 3 is the rule elsewhere.** `minComps: 3` guards
+against a median that is "one or two hotels wearing a statistic's clothing" —
+for UNLIKE rooms, where the spread is wide and one odd hotel swings the
+answer. Two rates for the SAME category are a narrower, honest question
+("what does this category cost next door?"), and the LOW confidence cap keeps
+the answer from ever reading as more than it is. Scores that had three
+room-matched comps are byte-identical to v8's.
+
+**Presentation rule that ships with it** (rule 20 made concrete): when a
+stated non-entry category (suite, villa, penthouse…) still falls to ANY, the
+bundle carries `category_mismatch: true` and every rendering — the market
+sentence, the premium summary, the availability context — leads with the
+category mismatch as the FRAME rather than a footnote, and never phrases the
+gap as "above comparable hotels". The API publishes the flag as
+`signals.comp_set.category_mismatch`.

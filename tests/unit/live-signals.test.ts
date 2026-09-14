@@ -603,3 +603,65 @@ describe('the score display floor', () => {
     expect(floored.reasons).toEqual(raw.reasons);
   });
 });
+
+// ── Config v9 · the room-matched reduced floor ─────────────────────────────
+
+describe('the room-matched comp floor (config v9)', () => {
+  // The Four Seasons Maui case, 2026-09-14: two real suite comparables were
+  // discarded because every rung required three, and the suite was measured
+  // against a competitor's cheapest room instead — a 75% premium that did
+  // not exist suite-against-suite.
+  const twoComps = [comp('Grand Wailea', 2449), comp('Fairmont Kea Lani', 1459)];
+
+  it('lets a room-matched rung carry the index with two comparables', () => {
+    const result = computeCompSetIndex(2385_00, twoComps, DEFAULT_CONFIG, NOW, {
+      strength: 'RESOLVED',
+      unknown: [],
+      roomMatch: 'CLASS',
+    });
+    expect(result.signal.available).toBe(true);
+    expect(result.compsUsed).toBe(2);
+    expect(result.csi).not.toBeNull();
+  });
+
+  it('still refuses two comparables on the ANY rung', () => {
+    const result = computeCompSetIndex(2385_00, twoComps, DEFAULT_CONFIG, NOW, {
+      strength: 'RESOLVED',
+      unknown: [],
+      roomMatch: 'ANY',
+    });
+    expect(result.signal.available).toBe(false);
+    expect(result.signal.unavailableReason).toBe('INSUFFICIENT_COMPARABLES');
+  });
+
+  it('still refuses two comparables when the rung is unstated (fixture default)', () => {
+    const result = computeCompSetIndex(2385_00, twoComps, DEFAULT_CONFIG, NOW);
+    expect(result.signal.available).toBe(false);
+  });
+
+  it('never lets the reduced floor exceed the full minimum', () => {
+    expect(DEFAULT_CONFIG.live.csi.minCompsRoomMatched).toBeLessThanOrEqual(
+      DEFAULT_CONFIG.live.csi.minComps,
+    );
+  });
+
+  it('caps confidence at LOW on a reduced-floor carry', () => {
+    // mediumMinComps is the confidence gate; the reduced floor must sit
+    // below it so a two-comp answer can never read as confident.
+    expect(DEFAULT_CONFIG.live.csi.minCompsRoomMatched).toBeLessThan(
+      DEFAULT_CONFIG.live.confidence.mediumMinComps,
+    );
+  });
+
+  it('a single comparable never carries any rung', () => {
+    const one = [comp('Grand Wailea', 2449)];
+    for (const roomMatch of ['CLASS_AND_VIEW', 'CLASS', 'ANY'] as const) {
+      const result = computeCompSetIndex(2385_00, one, DEFAULT_CONFIG, NOW, {
+        strength: 'RESOLVED',
+        unknown: [],
+        roomMatch,
+      });
+      expect(result.signal.available).toBe(false);
+    }
+  });
+});

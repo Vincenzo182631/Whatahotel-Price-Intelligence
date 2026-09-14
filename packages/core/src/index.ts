@@ -70,6 +70,7 @@ export { bandForScore, composeDealScore } from './scoring/dealScore.js';
 export {
   computeCalendarDelta,
   computeCompSetIndex,
+  minCompsFor,
   computePremiumJustification,
   computeCompression,
 } from './scoring/liveSignals.js';
@@ -78,6 +79,7 @@ export type {
   CalendarResult,
   CompSetResult,
   CompTermsBasis,
+  CompRoomMatch,
   CompetitorRate,
   PremiumConfidence,
   PremiumJustificationResult,

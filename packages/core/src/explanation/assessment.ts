@@ -198,6 +198,11 @@ export function availabilityContextSentence(bundle: LiveExplanationBundle): stri
   if (a.availability_influenced) {
     return 'Lower-priced room categories at this property are currently unavailable, so the available rate represents a higher room category. That availability difference is influencing this comparison.';
   }
+  if (bundle.market.comp_set.category_mismatch) {
+    // Definitive, not "may be": the mismatch is a fact of this comparison,
+    // and hedging it invites the premium figure to be read at face value.
+    return 'This comparison spans different room categories: no comparable rates for the selected category were available at nearby hotels, so their rates here are for the rooms they do offer — often lower categories. The price difference partly reflects that.';
+  }
   if (bundle.market.comp_set.room_match === 'ANY') {
     return 'Room-category availability may be influencing this comparison: the comparable rates are for whatever categories those hotels currently offer, which may differ from the selected category.';
   }
@@ -205,7 +210,24 @@ export function availabilityContextSentence(bundle: LiveExplanationBundle): stri
 }
 
 /** Plain language for each deterministic level, shared with the API summary. */
-export function premiumJustificationSummary(level: string): string {
+export function premiumJustificationSummary(level: string, categoryMismatch = false): string {
+  // When the comparison spans room categories, "comparable hotels" is a
+  // claim of equivalence the evidence does not support (rule 20) — every
+  // level's sentence names what was actually compared instead.
+  if (categoryMismatch) {
+    switch (level) {
+      case 'HIGH':
+        return 'This room costs more than the rates available at nearby hotels — which are for different, often lower, room categories — and most of that difference is covered by what the rate includes.';
+      case 'MODERATE':
+        return 'This room costs more than the rates available at nearby hotels — which are for different, often lower, room categories — and some of that difference is covered by what the rate includes.';
+      case 'LOW':
+        return 'This room is priced above the rates available at nearby hotels, but those rates are for different, often lower, room categories, so the gap partly reflects the category rather than a like-for-like premium.';
+      case 'NOT_PREMIUM':
+        return 'This room is not priced above the rates available at nearby hotels, even though those rates are often for lower room categories.';
+      default:
+        return 'This room is priced above the rates available at nearby hotels, but those rates are for different, often lower, room categories, and the rates do not state what each includes.';
+    }
+  }
   switch (level) {
     case 'HIGH':
       return 'Premium pricing appears justified. This room costs more than comparable hotels, and most of that difference is covered by what the rate includes.';
@@ -367,10 +389,14 @@ export function deterministicAssessment(bundle: LiveExplanationBundle): PremiumA
   const support = dearer ? premiumSupport(bundle) : { sentence: '', factors: [], evidence: [] };
   // "Above every one of them" is a stronger claim than "above their median",
   // and it is the one a guest is actually looking at. Made only when true.
+  const mismatch = bundle.market.comp_set.category_mismatch;
+  const median = mismatch
+    ? "the median of nearby hotels' available rooms — often lower categories"
+    : 'the comparable median';
   const lead = dearer
     ? bundle.premium.dearer_than_all_comparables === true
-      ? `You're paying about ${diff} more per night than the comparable median, and this rate sits above every comparable hotel checked.`
-      : `You're paying about ${diff} more per night than the comparable median.`
+      ? `You're paying about ${diff} more per night than ${median}, and this rate sits above every rate checked${mismatch ? ' (categories differ)' : ' at comparable hotels'}.`
+      : `You're paying about ${diff} more per night than ${median}.`
     : '';
   return {
     level,
@@ -379,7 +405,7 @@ export function deterministicAssessment(bundle: LiveExplanationBundle): PremiumA
       bundle.premium.premium_pct,
       bundle.availability.availability_influenced,
     ),
-    reasoning: premiumJustificationSummary(bundle.premium.level),
+    reasoning: premiumJustificationSummary(bundle.premium.level, mismatch),
     paying_more_for: !dearer
       ? ''
       : support.sentence
