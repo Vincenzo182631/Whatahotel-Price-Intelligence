@@ -114,6 +114,8 @@ export interface AlternativeCandidate {
   readonly isAvailable: boolean;
   readonly rating?: number | null;
   readonly reviewCount?: number | null;
+  /** Holds stored preferred-partner perks — see PREFERRED_PARTNER_RANK_BONUS. */
+  readonly isPreferredPartner?: boolean;
 }
 
 export interface ValueAlternative {
@@ -123,7 +125,40 @@ export interface ValueAlternative {
   readonly saveNightlyMinor: Minor;
   readonly rating: number | null;
   readonly reviewCount: number | null;
+  /** Published so a partner recommendation can be badged, positively. */
+  readonly isPreferredPartner: boolean;
 }
+
+/**
+ * The preferred-partner rule (owner business rule, 2026-09-14).
+ *
+ * WhataHotel holds preferred-partner standing at some properties — the
+ * hotels whose stored perks (breakfast, credit, upgrades…) come from that
+ * relationship, which is also what makes them the better booking for the
+ * guest through THIS agency. When two alternatives are otherwise close, the
+ * partner property is the better recommendation, so partner standing adds a
+ * fixed bonus to the RANKING blend.
+ *
+ * Three limits, same shape as rule 23 and the Phase 6 preference rule:
+ *
+ * - It never moves a NUMBER. No Deal Score, no CSI, no stored analysis is
+ *   touched — a partner premium invented into the score would poison the
+ *   only data calibration can ever use, and the 6.0 display floor already
+ *   guarantees no catalogued hotel reads as a bad deal.
+ * - It never moves ELIGIBILITY. A partner that is not genuinely cheaper (or,
+ *   for the upsell, not genuinely better-rated) is not conjured into a
+ *   recommendation; absence of the flag is unknown, scored exactly as
+ *   before, never penalized.
+ * - It never edits a FACT. Price statements stay true for partners and
+ *   non-partners alike; what the standing buys is order and a badge, and
+ *   the no-disparagement rules already cover every catalogued hotel.
+ *
+ * 0.08 on a 0..1 blend is a strong tie-breaker, not a trump: it decides
+ * between comparable candidates and cannot outrank a materially bigger
+ * saving or a materially stronger verified reputation — a test pins both
+ * directions.
+ */
+export const PREFERRED_PARTNER_RANK_BONUS = 0.08;
 
 /**
  * How the saving/reputation blend tilts for a stated preference (Phase 6).
@@ -175,7 +210,11 @@ export function chooseAlternative(
       const volume = Math.min(1, Math.log10(Math.max(1, c.reviewCount ?? 1)) / 3.5);
       reputation = (c.rating / 5) * (0.5 + 0.5 * volume);
     }
-    return savingShare * weights.saving + reputation * weights.reputation;
+    return (
+      savingShare * weights.saving +
+      reputation * weights.reputation +
+      (c.isPreferredPartner ? PREFERRED_PARTNER_RANK_BONUS : 0)
+    );
   };
 
   let best = eligible[0] as AlternativeCandidate;
@@ -188,6 +227,7 @@ export function chooseAlternative(
     saveNightlyMinor: subjectNightlyMinor - best.nightlyMinor,
     rating: best.rating ?? null,
     reviewCount: best.reviewCount ?? null,
+    isPreferredPartner: best.isPreferredPartner ?? false,
   };
 }
 
@@ -202,6 +242,8 @@ export interface SuperiorCandidate {
   readonly reviewCount: number | null;
   /** Review themes measured by the sweep, when held. Evidence for the pitch. */
   readonly themes?: readonly string[];
+  /** Holds stored preferred-partner perks — see PREFERRED_PARTNER_RANK_BONUS. */
+  readonly isPreferredPartner?: boolean;
 }
 
 export interface SuperiorAlternative {
@@ -213,6 +255,8 @@ export interface SuperiorAlternative {
   readonly rating: number;
   readonly reviewCount: number | null;
   readonly themes: readonly string[];
+  /** Published so a partner recommendation can be badged, positively. */
+  readonly isPreferredPartner: boolean;
 }
 
 /** One room upgrade at the SAME property — the non-competing recommendation. */
@@ -279,7 +323,12 @@ export function chooseSuperiorAlternative(
 
   const strength = (c: SuperiorCandidate): number => {
     const volume = Math.min(1, Math.log10(Math.max(1, c.reviewCount ?? 1)) / 3.5);
-    return ((c.rating ?? 0) / 5) * (0.5 + 0.5 * volume);
+    return (
+      ((c.rating ?? 0) / 5) * (0.5 + 0.5 * volume) +
+      // Same tie-breaker, same limits as chooseAlternative: order and a
+      // badge, never eligibility (the rating bar and price floor stand).
+      (c.isPreferredPartner ? PREFERRED_PARTNER_RANK_BONUS : 0)
+    );
   };
   let best = eligible[0] as SuperiorCandidate;
   for (const c of eligible) if (strength(c) > strength(best)) best = c;
@@ -292,6 +341,7 @@ export function chooseSuperiorAlternative(
     rating: best.rating as number,
     reviewCount: best.reviewCount ?? null,
     themes: best.themes ?? [],
+    isPreferredPartner: best.isPreferredPartner ?? false,
   };
 }
 

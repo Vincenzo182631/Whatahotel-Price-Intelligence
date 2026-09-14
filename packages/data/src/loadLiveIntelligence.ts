@@ -171,6 +171,12 @@ export interface LoadedLiveIntelligence {
     readonly name: string;
     readonly nightlyMinor: number;
     readonly isAvailable: boolean;
+    /**
+     * The hotel holds stored preferred-partner perks (hotel_benefit rows —
+     * the source's `perks` array). False means none are stored, which is
+     * "unknown", never "not a partner" — the flag may only ever FAVOR.
+     */
+    readonly isPreferredPartner: boolean;
   }[];
   /** Where the selected rate sits in currently available inventory. */
   readonly availability: {
@@ -835,6 +841,7 @@ export async function loadLiveIntelligence(
       name: c.name,
       nightlyMinor: c.nightlyMinor,
       isAvailable: c.isAvailable,
+      isPreferredPartner: typeof c.benefitValuePerNightMinor === 'number',
     })),
     availableRooms: available.map((r) => ({
       roomTypeId: r.roomTypeId,

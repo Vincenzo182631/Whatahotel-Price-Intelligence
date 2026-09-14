@@ -271,3 +271,75 @@ describe('chooseRoomUpgrade — the non-competing recommendation', () => {
     expect(chooseRoomUpgrade('SUITE', 140_000, rooms)).toBeNull();
   });
 });
+
+describe('the preferred-partner rule (rule 25) — favors, never punishes, never a number', () => {
+  const subject = 100_000;
+  const twin = (id: string, partner: boolean) => ({
+    wahHotelId: id,
+    name: id,
+    nightlyMinor: 80_000,
+    isAvailable: true,
+    rating: 4.5,
+    reviewCount: 1_000,
+    isPreferredPartner: partner,
+  });
+
+  it('breaks a near-tie in the partner hotel favor', () => {
+    const picked = chooseAlternative(subject, [twin('plain', false), twin('partner', true)]);
+    expect(picked?.wahHotelId).toBe('partner');
+    expect(picked?.isPreferredPartner).toBe(true);
+  });
+
+  it('is a tie-breaker, not a trump: a materially bigger saving still wins', () => {
+    const picked = chooseAlternative(subject, [
+      { ...twin('deep-saver', false), nightlyMinor: 55_000 },
+      twin('partner', true),
+    ]);
+    expect(picked?.wahHotelId).toBe('deep-saver');
+    expect(picked?.isPreferredPartner).toBe(false);
+  });
+
+  it('never moves eligibility: a partner that is not genuinely cheaper stays out', () => {
+    const picked = chooseAlternative(subject, [
+      { ...twin('partner', true), nightlyMinor: 95_000 }, // under the 10% bar
+    ]);
+    expect(picked).toBeNull();
+  });
+
+  it('absence of the flag is unknown, scored exactly as before', () => {
+    const bare = [
+      { wahHotelId: 'a', name: 'a', nightlyMinor: 80_000, isAvailable: true },
+      { wahHotelId: 'b', name: 'b', nightlyMinor: 75_000, isAvailable: true },
+    ];
+    const withFlags = bare.map((c) => ({ ...c, isPreferredPartner: false }));
+    expect(chooseAlternative(subject, bare)?.wahHotelId).toBe(
+      chooseAlternative(subject, withFlags)?.wahHotelId,
+    );
+  });
+
+  it('applies the same way to the superior alternative, inside its bars', () => {
+    const superior = (id: string, partner: boolean) => ({
+      wahHotelId: id,
+      name: id,
+      nightlyMinor: 120_000,
+      isAvailable: true,
+      rating: 4.8,
+      reviewCount: 2_000,
+      isPreferredPartner: partner,
+    });
+    const picked = chooseSuperiorAlternative(
+      { hotelName: 'The Plain Hotel', nightlyMinor: subject, rating: 4.2 },
+      [superior('plain', false), superior('partner', true)],
+    );
+    expect(picked?.wahHotelId).toBe('partner');
+    expect(picked?.isPreferredPartner).toBe(true);
+
+    // The rating bar is eligibility and the bonus must not scale it: a
+    // partner below the bar is not conjured into an upsell.
+    const belowBar = chooseSuperiorAlternative(
+      { hotelName: 'The Plain Hotel', nightlyMinor: subject, rating: 4.2 },
+      [{ ...superior('partner', true), rating: 4.25 }],
+    );
+    expect(belowBar).toBeNull();
+  });
+});
