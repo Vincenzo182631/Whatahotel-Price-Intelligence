@@ -78,6 +78,22 @@ export interface ScoringConfig {
       /** Fewer valid competitors than this and the signal is not produced. */
       readonly minComps: number;
       /**
+       * The floor for the ROOM-MATCHED rungs (CLASS_AND_VIEW and CLASS) only.
+       *
+       * Two comparables of the SAME room category are stronger evidence than
+       * three of whatever each hotel happened to have cheapest. Measured
+       * 2026-09-14 (Four Seasons Maui, Apr 5-8): the suite rung held two real
+       * suite comps ($2,449 and $1,459) and was discarded for three
+       * any-room comps, so a $2,385 suite read as "75% above comparable
+       * hotels" against a competitor's $1,366 cheapest room — a premium that
+       * did not exist suite-against-suite. Confidence still caps at LOW
+       * below `confidence.mediumMinComps`, so a two-comp answer can never
+       * read as a confident one. ANY and PRICE_ONLY keep the full
+       * `minComps`: below three of UNLIKE things, a median is one or two
+       * hotels wearing a statistic's clothing.
+       */
+      readonly minCompsRoomMatched: number;
+      /**
        * When the whole terms-matched ladder yields fewer than `minComps`,
        * allow one final rung that drops the rate-terms filter entirely and
        * compares price alone. Capped at LOW confidence and disclosed wherever
@@ -296,6 +312,14 @@ export interface ScoringConfig {
 }
 
 export const DEFAULT_CONFIG: ScoringConfig = {
+  // v9 — adds `live.csi.minCompsRoomMatched` (2): the CLASS_AND_VIEW and
+  // CLASS rungs may carry the index with two comparables, at LOW confidence,
+  // instead of falling through to ANY. Measured 2026-09-14 (Four Seasons
+  // Maui, Apr 5-8): two real suite comps were discarded for three any-room
+  // comps and a $2,385 suite rendered as "75% above comparable hotels"
+  // against a $1,366 cheapest room. Two like-for-like beat three unlike.
+  // Scores that had three room-matched comps are byte-identical to v8's.
+  //
   // v8 — replaces v7's flat 30 km reach with `live.csi.radiusMiles`, a
   // 2 → 3 → 5 mile ladder that climbs ONLY when the tighter ring cannot field
   // minComps. Location is part of what a rate buys, so a prime-district hotel
@@ -325,7 +349,7 @@ export const DEFAULT_CONFIG: ScoringConfig = {
   //
   // The v2 factor weights are retained unchanged, and every analysis records the
   // version that produced it, so older scores stay reproducible.
-  version: 8,
+  version: 9,
 
   score: {
     weight: {
@@ -353,6 +377,9 @@ export const DEFAULT_CONFIG: ScoringConfig = {
       // clothing. Confidence would also be LOW, but not producing the signal
       // is stronger than producing it apologetically.
       minComps: 3,
+      // See the interface note: two like-for-like beat three unlike. Applies
+      // to the CLASS_AND_VIEW and CLASS rungs only, at LOW confidence.
+      minCompsRoomMatched: 2,
       // Measured 2026-08-25 over 32 production hotels: 15 returned a null
       // score, and the dominant cause was a subject rate whose terms no
       // competitor shares (package, reward and members-only plans), so every

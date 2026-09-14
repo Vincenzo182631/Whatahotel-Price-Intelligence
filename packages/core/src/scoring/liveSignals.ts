@@ -102,6 +102,22 @@ export interface CompetitorRate {
  */
 export type CompTermsBasis = 'MATCHED' | 'PRICE_ONLY';
 
+/**
+ * How closely the competitors' ROOMS match the one being scored.
+ *
+ * `CLASS_AND_VIEW` is a genuine like-for-like: an ocean-view suite measured
+ * against other ocean-view suites. `CLASS` drops the view. `ANY` is the old
+ * behaviour — whatever room each competitor sells on matching terms, usually
+ * their cheapest — which is the only thing available in a market where nobody
+ * else sells that category, and must be disclosed rather than presented as
+ * equivalence. Never fabricate an equivalent room: report the rung.
+ *
+ * Lives in core because the ENGINE's comp-minimum is tiered on it: a
+ * room-matched rung may carry the index at `minCompsRoomMatched`, ANY only at
+ * the full `minComps`. The loader re-exports this type.
+ */
+export type CompRoomMatch = 'CLASS_AND_VIEW' | 'CLASS' | 'ANY';
+
 export interface CompSetResult {
   readonly signal: LiveSignal;
   /**
@@ -137,6 +153,22 @@ export interface CompSetResult {
 }
 
 /**
+ * The comp minimum for a given room-equivalence rung.
+ *
+ * Room-matched rungs may carry at the reduced floor; ANY (and an unstated
+ * rung) requires the full minimum. See minCompsRoomMatched in config for the
+ * measurement behind this.
+ */
+export function minCompsFor(
+  roomMatch: CompRoomMatch | undefined,
+  cfg: ScoringConfig['live']['csi'],
+): number {
+  return roomMatch === 'CLASS_AND_VIEW' || roomMatch === 'CLASS'
+    ? Math.min(cfg.minCompsRoomMatched, cfg.minComps)
+    : cfg.minComps;
+}
+
+/**
  * How this hotel's live rate compares with its comp set for the same stay.
  *
  * Every competitor must be live-validated: a rate that is missing, zero, older
@@ -158,6 +190,14 @@ export function computeCompSetIndex(
     unknown: readonly string[];
     /** Defaults to MATCHED — the price-only rung must be asked for. */
     termsBasis?: CompTermsBasis;
+    /**
+     * Which room-equivalence rung supplied the competitors. Room-matched
+     * rungs (CLASS_AND_VIEW, CLASS) carry the index at the reduced
+     * `minCompsRoomMatched` floor: two comparables of the SAME category are
+     * stronger evidence than three of unlike ones. Absent means ANY — the
+     * full minimum — so existing callers and fixtures keep their meaning.
+     */
+    roomMatch?: CompRoomMatch;
     /**
      * Defaults to false — the primary ring. A caller that climbed the radius
      * ladder must say so; confidence caps below HIGH on an expanded set,
@@ -218,7 +258,7 @@ export function computeCompSetIndex(
   });
   const excluded = competitors.length - usable.length;
 
-  if (usable.length < cfg.minComps) {
+  if (usable.length < minCompsFor(match.roomMatch, cfg)) {
     return {
       signal: unavailable('S1_COMP_SET', name, weight, 'INSUFFICIENT_COMPARABLES'),
       ...empty,

@@ -23,6 +23,7 @@ import {
   type LiveExplanationBundle,
 } from '../../packages/core/src/explanation/liveBundle.js';
 import { renderLiveExplanation } from '../../packages/core/src/explanation/liveTemplate.js';
+import { premiumJustificationSummary } from '../../packages/core/src/explanation/assessment.js';
 import { validateNarrative } from '../../packages/core/src/explanation/validate.js';
 import { containsPredictiveLanguage } from '../../packages/core/src/explanation/predictive.js';
 import { numeralsIn } from '../../packages/core/src/explanation/bundle.js';
@@ -57,6 +58,8 @@ interface Tweak {
   readonly reputation?: LiveBundleInput['reputation'];
   readonly comparableRatings?: readonly number[];
   readonly termsBasis?: 'MATCHED' | 'PRICE_ONLY';
+  readonly roomClass?: string;
+  readonly compRoomMatch?: 'CLASS_AND_VIEW' | 'CLASS' | 'ANY';
 }
 
 function bundleFor(tweak: Tweak = {}): LiveExplanationBundle {
@@ -99,7 +102,7 @@ function bundleFor(tweak: Tweak = {}): LiveExplanationBundle {
     configVersion: DEFAULT_CONFIG.version,
     hotelName: 'Loews Miami Beach',
     roomTypeName: 'Corner King',
-    roomClass: 'ROOM',
+    roomClass: tweak.roomClass ?? 'ROOM',
     checkIn: '2026-09-10',
     checkOut: '2026-09-13',
     nights: 3,
@@ -115,7 +118,7 @@ function bundleFor(tweak: Tweak = {}): LiveExplanationBundle {
     compression,
     premium,
     compBasis: 'CURATED',
-    compRoomMatch: 'CLASS_AND_VIEW',
+    compRoomMatch: tweak.compRoomMatch ?? 'CLASS_AND_VIEW',
     reputation: tweak.reputation ?? null,
     comparableRatings: tweak.comparableRatings ?? [],
   });
@@ -342,5 +345,43 @@ describe('V3 — data-limitation language rejects a draft whole', () => {
     const ok = 'The rates do not state what each includes, so the comparison rests on price alone.';
     const check = validateNarrative(ok, bundle.constraints);
     expect(check.violations).toEqual([]);
+  });
+});
+
+describe('a suite compared on the ANY rung is framed as a category mismatch (rule 20)', () => {
+  // The Four Seasons Maui case, 2026-09-14: a $2,385 suite fell to the ANY
+  // rung and rendered as "75% above comparable luxury hotels" against a
+  // competitor's $1,366 cheapest room, with the category caveat below the
+  // fold. The mismatch must be the FRAME, never a footnote.
+  const mismatch = () =>
+    bundleFor({
+      roomClass: 'SUITE',
+      compRoomMatch: 'ANY',
+      subjectNightly: 238_500,
+      comps: [136_600, 145_900, 122_900],
+    });
+
+  it('sets the bundle fact', () => {
+    expect(mismatch().market.comp_set.category_mismatch).toBe(true);
+    // A ROOM on the ANY rung is not a category mismatch — entry against
+    // entry is the ordinary comparison.
+    expect(bundleFor({ compRoomMatch: 'ANY' }).market.comp_set.category_mismatch).toBe(false);
+    // A matched rung never mismatches, whatever the class.
+    expect(bundleFor({ roomClass: 'SUITE' }).market.comp_set.category_mismatch).toBe(false);
+  });
+
+  it('leads the market sentence with the mismatch and drops the equivalence phrasing', () => {
+    const text = renderLiveExplanation(mismatch()).text;
+    expect(text).toContain('No comparable rates in this room category');
+    expect(text).not.toContain('comparable rooms');
+    expect(text).not.toContain('above comparable hotels');
+  });
+
+  it('never lets the premium summary claim "comparable hotels" under a mismatch', () => {
+    for (const level of ['HIGH', 'MODERATE', 'LOW', 'NOT_PREMIUM', 'LIMITED_DATA']) {
+      expect(premiumJustificationSummary(level, true)).not.toContain('comparable hotels');
+    }
+    // Without the mismatch the established wording stands.
+    expect(premiumJustificationSummary('LOW', false)).toContain('comparable hotels');
   });
 });

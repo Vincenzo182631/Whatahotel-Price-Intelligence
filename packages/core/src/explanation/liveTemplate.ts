@@ -72,7 +72,6 @@ function marketSentence(bundle: LiveExplanationBundle): string | null {
         ? null
         : money(bundle, comps.median_competitor_nightly_minor);
     const side = comps.pct_below_median >= 0 ? 'below' : 'above';
-    const basis = comps.room_match === 'ANY' ? 'rooms' : 'comparable rooms';
     const at = median ? ` ${median} median` : ' median';
     // The price-only rung compared rates whose terms were not held equal;
     // the sentence must carry that limit itself, because it is the sentence
@@ -81,6 +80,15 @@ function marketSentence(bundle: LiveExplanationBundle): string | null {
       comps.terms_basis === 'PRICE_ONLY'
         ? ', compared on price alone — rate terms and inclusions differ'
         : '';
+    // A suite (or villa, penthouse…) measured against whatever rooms the
+    // nearby hotels had — usually their cheapest — is NOT a comparison of
+    // equivalents, and the sentence a guest will quote must lead with that
+    // rather than bury it: "75% above comparable hotels" with a category
+    // footnote reads as a 75% premium. Rule 20: ANY is never equivalence.
+    if (comps.category_mismatch) {
+      return `No comparable rates in this room category were available at nearby hotels, so this compares against the rooms they do offer — often lower categories: ${pct(comps.pct_below_median)} ${side} their${at} at ${count(comps.comps_used, 'hotel')} on the same dates${qualifier}.`;
+    }
+    const basis = comps.room_match === 'ANY' ? 'rooms' : 'comparable rooms';
     return `That is ${pct(comps.pct_below_median)} ${side} the${at} for ${basis} at ${count(comps.comps_used, 'nearby hotel')} on the same dates${qualifier}.`;
   }
 

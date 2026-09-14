@@ -18,8 +18,10 @@ import {
   computePremiumJustification,
   computeCompression,
   compMatchStrength,
+  minCompsFor,
   unknownDimensions,
   type CalendarResult,
+  type CompRoomMatch,
   type CompSetResult,
   type CompTermsBasis,
   type PremiumJustificationResult,
@@ -102,14 +104,10 @@ export type CompBasis = 'CURATED' | 'DESTINATION';
 /**
  * How closely the competitors' ROOMS match the one being scored.
  *
- * `CLASS_AND_VIEW` is a genuine like-for-like: an ocean-view suite measured
- * against other ocean-view suites. `CLASS` drops the view. `ANY` is the old
- * behaviour — whatever room each competitor sells on matching terms, usually
- * their cheapest — which is the only thing available in a market where nobody
- * else sells that category, and must be disclosed rather than presented as
- * equivalence. Never fabricate an equivalent room: report the rung.
+ * Moved to core (scoring/liveSignals.ts) because the engine's comp minimum is
+ * tiered on it; re-exported here so existing importers keep working.
  */
-export type CompRoomMatch = 'CLASS_AND_VIEW' | 'CLASS' | 'ANY';
+export type { CompRoomMatch } from '@wahpi/core';
 
 /** One room a guest could pick for this stay, with what it costs. */
 export interface RoomOption {
@@ -468,6 +466,8 @@ export async function loadLiveIntelligence(
     readonly compressionInput: Awaited<ReturnType<typeof findMarketCompression>>;
     readonly compRoomMatch: CompRoomMatch;
     readonly compBasis: CompBasis;
+    /** The selected rung met its own floor — reduced for room-matched rungs. */
+    readonly carried: boolean;
   }
 
   const selectAtRadius = async (radiusKm: number): Promise<RadiusAttempt> => {
@@ -519,22 +519,58 @@ export async function loadLiveIntelligence(
     ]);
 
     // Walk down the room-equivalence ladder only as far as necessary.
+    //
+    // Selection order (config v9): a room-matched rung at the FULL minimum
+    // first, strongest rung first; then a room-matched rung at the REDUCED
+    // minimum (`minCompsRoomMatched`, confidence caps LOW via
+    // mediumMinComps); only then ANY at the full minimum. Two comparables of
+    // the same category beat three of whatever each hotel had cheapest —
+    // measured 2026-09-14 (Four Seasons Maui): two real suite comps were
+    // discarded for three any-room comps and a $2,385 suite rendered as
+    // "75% above comparable hotels" against a $1,366 cheapest room. The
+    // reduced floor never applies to an UNKNOWN class: two rooms alike only
+    // in being unclassifiable are not a category match.
+    const fullMin = live.csi.minComps;
+    const reducedMin = chosen.roomClass !== 'UNKNOWN' ? minCompsFor('CLASS', live.csi) : fullMin;
+    const byClassAndView = curatedCompetitors;
+    const byClass =
+      byClassAndView.length >= fullMin ? null : await competitorsFor(chosen.roomClass, null);
+    const anyRoom =
+      byClassAndView.length >= fullMin || (byClass?.length ?? 0) >= fullMin
+        ? null
+        : await competitorsFor(null, null);
+
     let roomMatch: CompRoomMatch = 'CLASS_AND_VIEW';
-    let roomMatched = curatedCompetitors;
-    if (roomMatched.length < live.csi.minComps) {
-      const byClass = await competitorsFor(chosen.roomClass, null);
-      if (byClass.length > roomMatched.length) {
+    let roomMatched = byClassAndView;
+    if (byClassAndView.length >= fullMin) {
+      // strongest rung, full evidence — done
+    } else if (byClass !== null && byClass.length >= fullMin) {
+      roomMatched = byClass;
+      roomMatch = 'CLASS';
+    } else if (byClassAndView.length >= reducedMin) {
+      // reduced carry on the strongest rung
+    } else if (byClass !== null && byClass.length >= reducedMin) {
+      roomMatched = byClass;
+      roomMatch = 'CLASS';
+    } else if (anyRoom !== null && anyRoom.length > roomMatched.length) {
+      // Nothing room-matched can carry; fall to ANY exactly as before,
+      // keeping the longer list even when it is still below the minimum.
+      if (byClass !== null && byClass.length > roomMatched.length) {
         roomMatched = byClass;
         roomMatch = 'CLASS';
       }
-    }
-    if (roomMatched.length < live.csi.minComps) {
-      const anyRoom = await competitorsFor(null, null);
       if (anyRoom.length > roomMatched.length) {
         roomMatched = anyRoom;
         roomMatch = 'ANY';
       }
+    } else if (byClass !== null && byClass.length > roomMatched.length) {
+      roomMatched = byClass;
+      roomMatch = 'CLASS';
     }
+
+    /** Whether the selected rung can carry the index at its own floor. */
+    const carries = (list: readonly unknown[], rung: CompRoomMatch): boolean =>
+      list.length >= (rung === 'ANY' ? fullMin : reducedMin);
 
     /**
      * A curated comp set that yields too few USABLE rates falls back, exactly
@@ -555,7 +591,10 @@ export async function loadLiveIntelligence(
     let compressionInput = curatedCompression;
     let compBasis: CompBasis = hadCurated ? 'CURATED' : 'DESTINATION';
 
-    if (hadCurated && competitors.length < live.csi.minComps) {
+    // A rung that carries — including a reduced-floor room-matched carry —
+    // is an answer, and the widened ANY set must not overwrite it: that
+    // would re-discard the like-for-like evidence the selection just chose.
+    if (hadCurated && !carries(competitors, roomMatch)) {
       const [widened, widenedCompression] = await Promise.all([
         findCompetitorRates(
           hotel.id,
@@ -599,20 +638,30 @@ export async function loadLiveIntelligence(
       }
     }
 
-    return { competitors, compressionInput, compRoomMatch: roomMatch, compBasis };
+    return {
+      competitors,
+      compressionInput,
+      compRoomMatch: roomMatch,
+      compBasis,
+      carried: carries(competitors, roomMatch),
+    };
   };
 
   let attempt = await selectAtRadius(firstRung * MILES_TO_KM);
   let radiusMilesUsed = firstRung;
   let radiusExpanded = false;
   for (let rung = 1; rung < rungs.length; rung += 1) {
-    if (attempt.competitors.length >= live.csi.minComps) break;
+    // "Carried" rather than a raw count: a reduced-floor room-matched carry
+    // is an answer, and climbing past it to gather MORE (necessarily weaker)
+    // comparables is exactly what the ladder must never do.
+    if (attempt.carried) break;
     const widerMiles = rungs[rung] ?? firstRung;
     const wider = await selectAtRadius(widerMiles * MILES_TO_KM);
-    // Climb only if the wider ring actually found more. A rung that adds
+    // Climb only if the wider ring actually improved the evidence: it
+    // carried where this one could not, or found more. A rung that adds
     // nothing should not be reported as an expansion — that would claim a
     // weaker basis than the one actually used.
-    if (wider.competitors.length > attempt.competitors.length) {
+    if (wider.carried || wider.competitors.length > attempt.competitors.length) {
       attempt = wider;
       radiusMilesUsed = widerMiles;
       radiusExpanded = true;
@@ -620,6 +669,7 @@ export async function loadLiveIntelligence(
   }
 
   let { competitors, compressionInput, compRoomMatch, compBasis } = attempt;
+  const ladderCarried = attempt.carried;
   // The price-only rung below is the last resort at whatever radius the ladder
   // settled on — widening the geography there too would quietly undo the
   // ladder at the exact moment the evidence is weakest.
@@ -640,7 +690,10 @@ export async function loadLiveIntelligence(
    * nothing here writes or reads a baseline key.
    */
   let compTermsMatch: CompTermsBasis = 'MATCHED';
-  if (live.csi.priceOnlyFallback && competitors.length < live.csi.minComps) {
+  // "Not carried" rather than a raw count: a reduced-floor room-matched
+  // carry is an answer, and the price-only rung — ANY room, terms dropped —
+  // must not overwrite it with strictly weaker evidence.
+  if (live.csi.priceOnlyFallback && !ladderCarried) {
     const priceOnly = await findCompetitorRates(
       hotel.id,
       request.checkIn,
@@ -749,6 +802,9 @@ export async function loadLiveIntelligence(
       unknown: unknownDimensions(matchTerms),
       termsBasis: compTermsMatch,
       radiusExpanded,
+      // The engine's comp minimum is tiered on the rung: room-matched rungs
+      // carry at minCompsRoomMatched, ANY at the full minComps.
+      roomMatch: compRoomMatch,
     },
     // The contextual penalty. Only when both sides' inclusions are known —
     // otherwise the price ratio stands exactly as it did.
