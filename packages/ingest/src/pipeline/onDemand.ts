@@ -44,6 +44,7 @@ import { DEFAULT_ENROLL_OPTIONS, discoverCityComparables } from './enrollHotel.j
 import {
   WHATAHOTEL_INGEST_TUNING,
   WHATAHOTEL_SOURCE_CODE,
+  WahApiError,
   createWhataHotelAdapter,
 } from '../adapters/whatahotel/index.js';
 import { DEFAULT_INGEST_OPTIONS, ingestRecords, ingestStayKey } from './pipeline.js';
@@ -82,6 +83,19 @@ export interface OnDemandOptions {
    * not a hang.
    */
   readonly subjectRetries: number;
+  /**
+   * The wall-clock budget for ALL retries in one request — the subject's
+   * attempts and the single comparables wave together. It starts when the
+   * first wave returns, so a slow first wave leaves less room to retry, and
+   * a retry only starts while the budget has time left; one call already in
+   * flight may run to its own timeout past it. Retries are also gated to
+   * FAST faults (a `WahApiError` the source answered with, in a second or
+   * two) and never to a hang: a call that just spent 8s timing out tells
+   * us the source is stalling, and a second stall would spend the guest's
+   * whole request learning nothing new. See `tests/unit/on-demand.test.ts`
+   * for the arithmetic that keeps this under the route's 45s deadline.
+   */
+  readonly retryBudgetMs: number;
   readonly now?: Date;
 }
 
@@ -130,6 +144,7 @@ export const DEFAULT_ON_DEMAND_OPTIONS: OnDemandOptions = {
   retryHoldMinutes: 15,
   errorRetryHoldMinutes: 2,
   subjectRetries: 2,
+  retryBudgetMs: 10_000,
 };
 
 export type OnDemandSkipReason =
@@ -245,12 +260,10 @@ export async function collectStayOnDemand(
     options.maxComparables,
   );
   const subjectQuery = queries[0] as RateQuery;
-  return fetchIngestRecord(
-    queries,
-    hotelIdByWahId,
-    queryKeyOf(subjectQuery),
-    options.subjectRetries,
-  );
+  return fetchIngestRecord(queries, hotelIdByWahId, queryKeyOf(subjectQuery), {
+    subjectRetries: options.subjectRetries,
+    retryBudgetMs: options.retryBudgetMs,
+  });
 }
 
 /**
@@ -315,7 +328,10 @@ export async function topUpComparablesOnDemand(
   const compQueries = queries.slice(1);
   if (compQueries.length === 0) return NOT_PERFORMED('NO_COMPARABLES');
 
-  return fetchIngestRecord(compQueries, hotelIdByWahId, null);
+  return fetchIngestRecord(compQueries, hotelIdByWahId, null, {
+    subjectRetries: 0,
+    retryBudgetMs: options.retryBudgetMs,
+  });
 }
 
 const queryKeyOf = (q: RateQuery): string => `${q.wahHotelId}|${q.checkIn}|${q.nights}|${q.adults}`;
@@ -350,9 +366,14 @@ async function fetchIngestRecord(
   queries: readonly RateQuery[],
   hotelIdByWahId: Map<string, number>,
   subjectKey: string | null,
-  subjectRetries = 0,
+  retry: Pick<OnDemandOptions, 'subjectRetries' | 'retryBudgetMs'>,
 ): Promise<OnDemandResult> {
   const failures = new Set<string>();
+  // The subset of `failures` the source answered with a fast, retryable
+  // fault — as opposed to a hang, a permanent status or a dead mapping. Only
+  // these are worth a second call: the outage fails at random per request,
+  // so a fast 500 is a coin toss, while a timeout is the source stalling.
+  const faulted = new Set<string>();
   const soldOut = new Set<string>();
   const queryKey = queryKeyOf;
   const adapter = createWhataHotelAdapter({
@@ -364,7 +385,11 @@ async function fetchIngestRecord(
     concurrency: 9,
     ...GUEST_UPSTREAM,
     continueOnError: true,
-    onError: (query) => failures.add(queryKey(query)),
+    onError: (query, err) => {
+      const key = queryKey(query);
+      failures.add(key);
+      if (err instanceof WahApiError && err.retryable) faulted.add(key);
+    },
     onNoAvailability: (query) => soldOut.add(queryKey(query)),
   });
 
@@ -386,11 +411,30 @@ async function fetchIngestRecord(
     };
   }
 
-  // The subject's answer was an upstream fault: try it again, alone. The
-  // source fails at random per request during its outage, so a second call
-  // is a fresh coin toss — see OnDemandOptions.subjectRetries. Each attempt
-  // is one fast call within the guest budget; a sold-out answer (not in
-  // `failures`) is final and never retried.
+  // Retries, inside one wall-clock budget that starts now — after the first
+  // wave, so a slow wave leaves less room rather than more. Only FAST faults
+  // are retried (see `faulted`); a sold-out answer is final, and a hang is
+  // not retried at all, because the next call would most likely hang too.
+  const retryDeadline = Date.now() + retry.retryBudgetMs;
+  const retryOnce = async (batch: readonly RateQuery[], what: string): Promise<void> => {
+    for (const q of batch) {
+      failures.delete(queryKey(q));
+      faulted.delete(queryKey(q));
+    }
+    try {
+      const again = await adapter.fetchRates([...batch]);
+      if (again.length > 0) records = [...records, ...again];
+    } catch (err) {
+      // A total failure (continueOnError already contains per-stay faults).
+      // The ledger must still see these as errors, not as never asked.
+      console.error(`on-demand ${what} retry failed:`, (err as Error).message);
+      for (const q of batch) failures.add(queryKey(q));
+    }
+  };
+
+  // The subject first, alone: it is the whole request, and at a ~43% per-call
+  // success rate two retries lift one page view from 43% to ~81%. See
+  // OnDemandOptions.subjectRetries.
   const subjectQuery =
     subjectKey === null ? null : queries.find((q) => queryKeyOf(q) === subjectKey);
   for (
@@ -398,18 +442,25 @@ async function fetchIngestRecord(
     subjectQuery !== undefined &&
     subjectQuery !== null &&
     subjectKey !== null &&
-    failures.has(subjectKey) &&
-    attempt < subjectRetries;
+    faulted.has(subjectKey) &&
+    attempt < retry.subjectRetries &&
+    Date.now() < retryDeadline;
     attempt += 1
   ) {
-    failures.delete(subjectKey);
-    try {
-      const again = await adapter.fetchRates([subjectQuery]);
-      if (again.length > 0) records = [...records, ...again];
-    } catch (err) {
-      console.error('on-demand subject retry failed:', (err as Error).message);
-      failures.add(subjectKey);
-    }
+    await retryOnce([subjectQuery], 'subject');
+  }
+
+  // Then the faulted comparables, as ONE more wave. Comps are what turn a
+  // hotel-value answer into a score: the Comp-Set Index needs `minComps`
+  // rates on the subject's terms, and during the outage a wave of eight
+  // loses four or five of them to the same coin toss. One wave, not a loop —
+  // the guest budget buys a second chance, not a guarantee.
+  const faultedComps = queries.filter((q) => {
+    const key = queryKey(q);
+    return key !== subjectKey && faulted.has(key);
+  });
+  if (faultedComps.length > 0 && Date.now() < retryDeadline) {
+    await retryOnce(faultedComps, 'comparables');
   }
 
   const ingest =
