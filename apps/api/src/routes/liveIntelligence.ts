@@ -594,6 +594,9 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     // Tilts the RANKING among eligible candidates only — a preference can
     // never conjure an alternative the eligibility rule would not allow.
     preference,
+    // A preferred-partner-brand subject suppresses the section: a guest
+    // already booking a partner brand is never pointed at another hotel.
+    loaded.hotel.name,
   );
 
   const bundle = buildLiveExplanationBundle({
