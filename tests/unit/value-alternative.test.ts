@@ -18,6 +18,7 @@ import {
   chooseRoomUpgrade,
   chooseSuperiorAlternative,
   isProtectedBrand,
+  isPreferredPartnerBrand,
   premiumPosition,
 } from '../../packages/core/src/index.js';
 
@@ -343,5 +344,89 @@ describe('the preferred-partner rule (rule 25) — favors, never punishes, never
       [{ ...superior('partner', true), rating: 4.25 }],
     );
     expect(belowBar).toBeNull();
+  });
+});
+
+describe('the partner-brand tier (rule 25, owner list 2026-09-15)', () => {
+  it('recognises the four partner brands in any common spelling', () => {
+    for (const name of [
+      'Four Seasons Maui at Wailea',
+      'Mandarin Oriental, Miami',
+      'The Ritz-Carlton, Key Biscayne',
+      'Ritz Carlton Oahu Turtle Bay',
+      'The St. Regis Bal Harbour Resort',
+      'St Regis Aspen',
+    ]) {
+      expect(isPreferredPartnerBrand(name), name).toBe(true);
+    }
+    expect(isPreferredPartnerBrand('The Kahala Resort')).toBe(false);
+    expect(isPreferredPartnerBrand('Grand Wailea, A Waldorf Astoria Resort')).toBe(false);
+  });
+
+  it('a partner-brand subject is never pointed at another hotel — cheaper included', () => {
+    const cheaper = [
+      { wahHotelId: 'rival', name: 'Rival Resort', nightlyMinor: 50_000, isAvailable: true },
+    ];
+    for (const subject of [
+      'Four Seasons Maui at Wailea',
+      'Mandarin Oriental, Miami',
+      'The Ritz-Carlton, Key Biscayne',
+      'The St. Regis Bal Harbour Resort',
+    ]) {
+      expect(chooseAlternative(100_000, cheaper, undefined, subject), subject).toBeNull();
+    }
+    // A non-partner subject keeps the section exactly as before.
+    expect(chooseAlternative(100_000, cheaper, undefined, 'The Kahala Resort')).not.toBeNull();
+  });
+
+  it('a partner-brand candidate outranks a perks-only partner in a near-tie', () => {
+    const twin = (id: string, name: string, perks: boolean) => ({
+      wahHotelId: id,
+      name,
+      nightlyMinor: 80_000,
+      isAvailable: true,
+      rating: 4.5,
+      reviewCount: 1_000,
+      isPreferredPartner: perks,
+    });
+    const picked = chooseAlternative(100_000, [
+      twin('perks', 'Perks Hotel', true),
+      twin('brand', 'The St. Regis Example', false),
+    ]);
+    expect(picked?.wahHotelId).toBe('brand');
+    // Brand standing alone earns the badge, no stored perks required.
+    expect(picked?.isPreferredPartner).toBe(true);
+  });
+
+  it('the brand bonus is still not a trump: a materially bigger saving wins', () => {
+    const picked = chooseAlternative(100_000, [
+      {
+        wahHotelId: 'deep',
+        name: 'Deep Saver',
+        nightlyMinor: 50_000,
+        isAvailable: true,
+        rating: 4.5,
+        reviewCount: 1_000,
+      },
+      {
+        wahHotelId: 'brand',
+        name: 'Four Seasons Example',
+        nightlyMinor: 85_000,
+        isAvailable: true,
+        rating: 4.5,
+        reviewCount: 1_000,
+      },
+    ]);
+    expect(picked?.wahHotelId).toBe('deep');
+  });
+
+  it('every partner brand is protected from the upsell too', () => {
+    for (const name of [
+      'Mandarin Oriental, Miami',
+      'The Ritz-Carlton, Key Biscayne',
+      'The St. Regis Bal Harbour Resort',
+    ]) {
+      expect(isProtectedBrand(name), name).toBe(true);
+    }
   });
 });

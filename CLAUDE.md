@@ -376,10 +376,18 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     the page did not say — never "bookable".
 
 25. **Preferred-partner standing favors, never punishes, and never touches a
-    number.** Owner business rule (2026-09-14). A hotel holding stored
-    preferred-partner perks (`hotel_benefit` rows — the source's `perks`
-    array) gets a fixed RANKING bonus when alternatives are chosen
-    (`PREFERRED_PARTNER_RANK_BONUS`, valueAlternative.ts) and a
+    number.** Owner business rule (2026-09-14; brands named 2026-09-15). Two
+    tiers of partner: the named partner BRANDS — Four Seasons, Mandarin
+    Oriental, Ritz-Carlton, St. Regis (`isPreferredPartnerBrand`,
+    valueAlternative.ts, matched on property name) — and any hotel holding
+    stored preferred-partner perks (`hotel_benefit` rows — the source's
+    `perks` array). The favor, tiered "most" to least: a partner-brand
+    SUBJECT is fully protected — `isProtectedBrand` now covers all four
+    brands, so a guest booking one is never pointed at another hotel, not
+    even a cheaper one (both alternative sections suppress; the room upgrade
+    at the same property is the only recommendation); a partner-brand
+    CANDIDATE ranks with `PARTNER_BRAND_RANK_BONUS` (0.12), a perks-only
+    partner with `PREFERRED_PARTNER_RANK_BONUS` (0.08), and both earn the
     `preferred_partner` badge in the response. Three limits, same shape as
     rule 23: it never moves a number (no Deal Score, CSI or stored analysis —
     a partner premium inside the score would poison calibration, and the 6.0
@@ -389,11 +397,11 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     recommendation — and absence of the flag is UNKNOWN, scored exactly as
     before, never penalized); and it never edits a fact (price statements
     stay true for partners and non-partners alike — "not saying anything
-    negative" is delivered by the no-disparagement rules that already cover
-    every catalogued hotel, not by suppressing facts). The bonus is a
-    tie-breaker, not a trump: 0.08 on a 0..1 blend decides between comparable
-    candidates and cannot outrank a materially bigger saving or a materially
-    stronger verified reputation; tests pin both directions.
+    negative" is delivered by rule 26, which covers every catalogued hotel,
+    not by suppressing facts). The bonuses are tie-breakers, not trumps: on a
+    0..1 blend they decide between comparable candidates and cannot outrank
+    a materially bigger saving or a materially stronger verified reputation;
+    tests pin both directions.
 
 26. **No negative assessment of a hotel ever renders.** Owner business rule
     (2026-09-15), completing the arc of rules 21-23 and 25. The line is

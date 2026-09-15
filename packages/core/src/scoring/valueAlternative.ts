@@ -161,6 +161,20 @@ export interface ValueAlternative {
 export const PREFERRED_PARTNER_RANK_BONUS = 0.08;
 
 /**
+ * The stronger bonus for the named partner BRANDS ("most favor" — owner
+ * directive, 2026-09-15). Still a tie-breaker under the same rule-25 limits:
+ * 0.12 on a 0..1 blend cannot outrank a materially bigger saving or a
+ * materially stronger verified reputation, and eligibility never moves.
+ */
+export const PARTNER_BRAND_RANK_BONUS = 0.12;
+
+/** The rule-25 ranking bonus a candidate earns, tiered brand > perks > none. */
+function partnerBonus(name: string, hasStoredPerks: boolean | undefined): number {
+  if (isPreferredPartnerBrand(name)) return PARTNER_BRAND_RANK_BONUS;
+  return hasStoredPerks ? PREFERRED_PARTNER_RANK_BONUS : 0;
+}
+
+/**
  * How the saving/reputation blend tilts for a stated preference (Phase 6).
  *
  * The eligibility rule NEVER moves — a preference cannot conjure an
@@ -193,7 +207,15 @@ export function chooseAlternative(
   subjectNightlyMinor: Minor,
   candidates: readonly AlternativeCandidate[],
   preference?: string,
+  /**
+   * When given, a preferred-partner-brand subject suppresses the section
+   * entirely (owner directive, 2026-09-15): a guest already booking a
+   * partner brand is never pointed at another hotel — not even a cheaper
+   * one. Same rule, same place as the superior alternative's protection.
+   */
+  subjectHotelName?: string,
 ): ValueAlternative | null {
+  if (subjectHotelName !== undefined && isProtectedBrand(subjectHotelName)) return null;
   const eligible = candidates.filter(
     (c) => c.isAvailable && c.nightlyMinor <= subjectNightlyMinor * 0.9 && c.nightlyMinor > 0,
   );
@@ -213,7 +235,7 @@ export function chooseAlternative(
     return (
       savingShare * weights.saving +
       reputation * weights.reputation +
-      (c.isPreferredPartner ? PREFERRED_PARTNER_RANK_BONUS : 0)
+      partnerBonus(c.name, c.isPreferredPartner)
     );
   };
 
@@ -227,7 +249,7 @@ export function chooseAlternative(
     saveNightlyMinor: subjectNightlyMinor - best.nightlyMinor,
     rating: best.rating ?? null,
     reviewCount: best.reviewCount ?? null,
-    isPreferredPartner: best.isPreferredPartner ?? false,
+    isPreferredPartner: (best.isPreferredPartner ?? false) || isPreferredPartnerBrand(best.name),
   };
 }
 
@@ -269,13 +291,29 @@ export interface RoomUpgrade {
 }
 
 /**
+ * The agency's preferred-partner BRANDS (owner list, 2026-09-15): Four
+ * Seasons, Mandarin Oriental, Ritz-Carlton, St. Regis — the programs where
+ * WhataHotel holds partner standing, which is also why booking one through
+ * this agency carries the guest the partner perks. Matching is on the
+ * property name because that is what the catalogue carries; deliberately
+ * broad (any spelling that contains the brand words).
+ */
+const PARTNER_BRAND = /four\s*seasons|mandarin\s*oriental|ritz[\s-]*carlton|st\.?\s*regis/i;
+
+export function isPreferredPartnerBrand(hotelName: string): boolean {
+  return PARTNER_BRAND.test(hotelName);
+}
+
+/**
  * The business rule, in code where prompts cannot lose it: a guest already
- * booking a Four Seasons is never pointed at another hotel. Matching is on
- * the property name because that is what the catalogue carries; it is
- * deliberately broad (any spelling that contains the brand words).
+ * booking a preferred-partner brand is never pointed at another hotel.
+ * Originally Four Seasons only; extended to the full partner-brand list
+ * (owner directive, 2026-09-15). The recommendation surface on a partner
+ * page is the room upgrade at the SAME property — deepening the booking,
+ * never competing with it.
  */
 export function isProtectedBrand(hotelName: string): boolean {
-  return /four\s*seasons/i.test(hotelName);
+  return isPreferredPartnerBrand(hotelName);
 }
 
 /**
@@ -325,9 +363,9 @@ export function chooseSuperiorAlternative(
     const volume = Math.min(1, Math.log10(Math.max(1, c.reviewCount ?? 1)) / 3.5);
     return (
       ((c.rating ?? 0) / 5) * (0.5 + 0.5 * volume) +
-      // Same tie-breaker, same limits as chooseAlternative: order and a
-      // badge, never eligibility (the rating bar and price floor stand).
-      (c.isPreferredPartner ? PREFERRED_PARTNER_RANK_BONUS : 0)
+      // Same tiered tie-breaker, same limits as chooseAlternative: order and
+      // a badge, never eligibility (the rating bar and price floor stand).
+      partnerBonus(c.name, c.isPreferredPartner)
     );
   };
   let best = eligible[0] as SuperiorCandidate;
@@ -341,7 +379,7 @@ export function chooseSuperiorAlternative(
     rating: best.rating as number,
     reviewCount: best.reviewCount ?? null,
     themes: best.themes ?? [],
-    isPreferredPartner: best.isPreferredPartner ?? false,
+    isPreferredPartner: (best.isPreferredPartner ?? false) || isPreferredPartnerBrand(best.name),
   };
 }
 

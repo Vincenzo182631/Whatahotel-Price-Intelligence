@@ -204,6 +204,8 @@ export {
   chooseRoomUpgrade,
   chooseSuperiorAlternative,
   isProtectedBrand,
+  isPreferredPartnerBrand,
+  PARTNER_BRAND_RANK_BONUS,
 } from './scoring/valueAlternative.js';
 export type {
   AlternativeCandidate,
