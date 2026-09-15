@@ -58,3 +58,31 @@ describe('a premium may be stated, never adjudicated', () => {
     expect(check('We do not have enough data to compare.').ok).toBe(false);
   });
 });
+
+describe('V5 — no negative assessment in any wording (rule 26)', () => {
+  it('rejects deficit constructions that judge while appearing to describe', () => {
+    for (const text of [
+      'The rate is 38% above the median and what it includes covers little of that.',
+      'The available data does not justify the premium at this property.',
+      'The premium is not justified by what the rate includes.',
+      'This rate fails to deliver value for the price difference.',
+      'At 38% above the median the price is excessively high.',
+      'The included perks fall short of comparable hotels.',
+      'A subpar option at this rate.',
+      'Guest reviews describe an underwhelming experience.',
+    ]) {
+      expect(check(text).ok, text).toBe(false);
+    }
+  });
+
+  it('still passes measurements pointing the unflattering way, and product facts', () => {
+    for (const text of [
+      'The rate is 38% above the comparable median.',
+      'This room is priced above every comparable hotel checked.',
+      'The rates do not state what each includes, so the comparison rests on price alone.',
+      'This room is priced above comparable hotels for these dates.',
+    ]) {
+      expect(check(text).ok, text).toBe(true);
+    }
+  });
+});

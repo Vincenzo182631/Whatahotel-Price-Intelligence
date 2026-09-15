@@ -141,12 +141,12 @@
   // Consultative frames, keyed on the API's `position`. The intelligence
   // underneath is unchanged; the customer-facing register is an advisor's,
   // not a critic's — no "LOW", no "bad", no verdict on the guest's choice.
+  // Rule 26 retired the SIGNIFICANT_PREMIUM positions (and their warn tone):
+  // no negative assessment of a hotel ever renders.
   var POSITION_LABEL = {
     PREMIUM_APPEARS_SUPPORTED: 'Premium appears supported',
     PREMIUM_MAY_BE_REASONABLE: 'Premium may be reasonable',
     HIGHER_PRICED_OPTION: 'Higher-priced option',
-    SIGNIFICANT_PREMIUM: 'Significant premium',
-    SIGNIFICANT_PREMIUM_LIMITED_AVAILABILITY: 'Significant premium — limited availability',
     LIMITED_DATA: 'Limited data',
   };
 
@@ -154,8 +154,6 @@
     PREMIUM_APPEARS_SUPPORTED: 'wahpi--good',
     PREMIUM_MAY_BE_REASONABLE: 'wahpi--neutral',
     HIGHER_PRICED_OPTION: 'wahpi--neutral',
-    SIGNIFICANT_PREMIUM: 'wahpi--warn',
-    SIGNIFICANT_PREMIUM_LIMITED_AVAILABILITY: 'wahpi--warn',
     LIMITED_DATA: 'wahpi--neutral',
   };
 

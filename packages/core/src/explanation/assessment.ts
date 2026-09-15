@@ -47,8 +47,6 @@ export type PremiumPosition =
   | 'PREMIUM_APPEARS_SUPPORTED'
   | 'PREMIUM_MAY_BE_REASONABLE'
   | 'HIGHER_PRICED_OPTION'
-  | 'SIGNIFICANT_PREMIUM'
-  | 'SIGNIFICANT_PREMIUM_LIMITED_AVAILABILITY'
   | 'LIMITED_DATA';
 
 /**
@@ -169,20 +167,24 @@ export function premiumPosition(
   availabilityInfluenced: boolean,
 ): PremiumPosition {
   if (level === 'INSUFFICIENT_DATA' && !availabilityInfluenced) return 'LIMITED_DATA';
-  if (availabilityInfluenced && premiumPct !== null && premiumPct >= 25) {
-    return 'SIGNIFICANT_PREMIUM_LIMITED_AVAILABILITY';
-  }
+  // Rule 26 retired SIGNIFICANT_PREMIUM (and its limited-availability
+  // variant): "significant premium" is a warning-toned ASSESSMENT, not a
+  // measurement, and no negative assessment of a hotel ever renders. The
+  // measurement survives untouched — premium_pct still rides in the block,
+  // and the availability context sentence still explains an
+  // availability-influenced gap — but the label is the neutral one at any
+  // size of gap.
   switch (level) {
     case 'HIGH':
       return 'PREMIUM_APPEARS_SUPPORTED';
     case 'MEDIUM':
       return 'PREMIUM_MAY_BE_REASONABLE';
     case 'LOW':
-      return premiumPct !== null && premiumPct >= 50
-        ? 'SIGNIFICANT_PREMIUM'
-        : 'HIGHER_PRICED_OPTION';
+      return 'HIGHER_PRICED_OPTION';
     default:
-      return 'LIMITED_DATA';
+      return availabilityInfluenced && premiumPct !== null && premiumPct >= 25
+        ? 'HIGHER_PRICED_OPTION'
+        : 'LIMITED_DATA';
   }
 }
 
@@ -225,7 +227,7 @@ export function premiumJustificationSummary(level: string, categoryMismatch = fa
       case 'NOT_PREMIUM':
         return 'This room is not priced above the rates available at nearby hotels, even though those rates are often for lower room categories.';
       default:
-        return 'This room is priced above the rates available at nearby hotels, but those rates are for different, often lower, room categories, and the rates do not state what each includes.';
+        return 'This room is priced above the rates available at nearby hotels, but those rates are for different, often lower, room categories.';
     }
   }
   switch (level) {
@@ -234,7 +236,12 @@ export function premiumJustificationSummary(level: string, categoryMismatch = fa
     case 'MODERATE':
       return 'Premium pricing appears partly justified. This room costs more than comparable hotels, and some of that difference is covered by what the rate includes.';
     case 'LOW':
-      return 'This room is priced above comparable hotels, and the available data does not show additional included value that accounts for the difference.';
+      // Rule 26: state the gap and stop. The retired tail ("…the available
+      // data does not show additional included value that accounts for the
+      // difference") was a deficit VERDICT dressed as a caveat — the same
+      // arithmetic reads as "priced above comparable hotels", which is the
+      // measurement, without the judgement.
+      return 'This room is priced above comparable hotels for these dates.';
     case 'NOT_PREMIUM':
       return 'This room is not priced above comparable hotels, so there is no premium to justify.';
     default:

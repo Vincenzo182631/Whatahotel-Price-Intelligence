@@ -395,6 +395,26 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     candidates and cannot outrank a materially bigger saving or a materially
     stronger verified reputation; tests pin both directions.
 
+26. **No negative assessment of a hotel ever renders.** Owner business rule
+    (2026-09-15), completing the arc of rules 21-23 and 25. The line is
+    VALENCE, not direction: a measurement renders whichever way it points —
+    "22% above the comparable median", "above every rate checked", the
+    premium percentage — because a guest can verify a measurement; what never
+    renders is an editorial judgement on top of it. Retired: the
+    `SIGNIFICANT_PREMIUM` positions and their warn tone (the neutral
+    `HIGHER_PRICED_OPTION` frame serves every gap size), the deficit clauses
+    ("does not show additional included value that accounts for the
+    difference", "what it includes covers little of that") — each stated a
+    conclusion about worth that nothing here measures. Enforced against the
+    model by validator V5 (`NEGATIVE_ASSESSMENT` in validate.ts, alongside
+    V4's blunt-verdict ban): a draft judging the hotel is rejected whole and
+    the deterministic renderer — which writes none of it — ships instead.
+    What this rule does NOT do: it does not hide facts (rule 23's carve-out
+    stands — price statements stay true and visible), it does not touch a
+    number (scores, indexes and stored analyses are calibration data), and
+    the existing honest-caveat allowance survives (a fact about the PRODUCT,
+    "the rates do not state what each includes", still passes V3/V5).
+
 ## Adding or changing a factor
 
 1. Update `docs/mvp/02-deal-score.md` with the rationale first.
