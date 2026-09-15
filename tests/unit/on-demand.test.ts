@@ -100,14 +100,26 @@ describe('the guest upstream budget', () => {
       backoffs += 500 * 2 ** (attempt - 1);
     }
     const phaseWorstMs = timeoutMs * (maxRetries + 1) + backoffs;
-    // The subject retries (source outage, 2026-09-15) are extra single calls
-    // on top of the three phases; each is bounded by the same timeout. In
-    // practice a fault answers in a second or two — the timeout only bites
-    // on a hang — but the arithmetic must hold at the worst case.
+    // The retries (source outage, 2026-09-15) sit on top of the three phases
+    // inside ONE wall-clock budget: a retry only STARTS while the budget has
+    // time left, so the worst case is the budget plus one final call that
+    // began just inside it and ran to the timeout. Retries are gated to fast
+    // faults, never hangs, so in practice each costs a second or two — but
+    // the arithmetic must hold at the worst case.
     const requestWorstMs =
-      phaseWorstMs * 3 + DEFAULT_ON_DEMAND_OPTIONS.subjectRetries * phaseWorstMs;
+      phaseWorstMs * 3 + DEFAULT_ON_DEMAND_OPTIONS.retryBudgetMs + phaseWorstMs;
     // Under the route's 45s request deadline (liveIntelligence.ts), which is
     // the hard guarantee; this keeps the ordinary path from ever needing it.
     expect(requestWorstMs).toBeLessThan(45_000);
+  });
+
+  it('gives the subject its retries inside the budget, not beyond it', () => {
+    // Two subject retries at a fast fault (~2s each) plus one comparables wave
+    // must fit the budget comfortably, or the wave that turns hotel-value
+    // into a score never gets to run.
+    const fastFaultMs = 2_500;
+    expect(DEFAULT_ON_DEMAND_OPTIONS.subjectRetries * fastFaultMs + fastFaultMs).toBeLessThan(
+      DEFAULT_ON_DEMAND_OPTIONS.retryBudgetMs,
+    );
   });
 });

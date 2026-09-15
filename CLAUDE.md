@@ -194,7 +194,13 @@ engine.
     random per request — the same hotel and dates answer on the next try —
     so persistence, not patience, is what recovers coverage: the on-demand
     path also retries the SUBJECT query alone (`subjectRetries`, 2), lifting
-    a page view from ~43% to ~81%.
+    a page view from ~43% to ~81%, then gives the faulted COMPARABLES one
+    more wave, because comps are what turn a hotel-value answer into a
+    score. Two limits: retries fire only on a FAST fault (a `WahApiError`
+    the source answered with), never on a hang — the next call would most
+    likely hang too — and all of them share one wall-clock budget
+    (`retryBudgetMs`, 10s) that starts after the first wave, so the request
+    stays under the route's 45s deadline whatever the source does.
 
 17. **The catalogue is the source's whole inventory, not a curated list.** The
     widget has to answer on every hotel page on whatahotel.com, so nothing may
