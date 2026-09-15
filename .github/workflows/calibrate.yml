@@ -1,0 +1,77 @@
+# The calibration sweep, as a button — the week-4 (and beyond) interim runs.
+#
+# Owner-approved schedule (2026-09-15): once the upstream outage ends and
+# clean history starts accruing, an interim sweep runs at ~week 4 after
+# recovery, then ~6 and ~8, so the metrics are watched converging instead of
+# waiting a quarter in the dark. The daily ops checkpoint dispatches this
+# workflow on that schedule; a human can dispatch it any time.
+#
+# What it does and deliberately does NOT do (rule 8): the sweep NEVER writes
+# config. It replays stored history point-in-time, measures the current
+# weights, sweeps alternatives, and emits a REPORT with a suggestion.
+# Activating a configuration stays a reviewed decision with evidence
+# attached — the report artifact from this run is that evidence. Against a
+# database whose history is synthetic or too thin, the report says so in a
+# banner and the CLI exits 0, so a meaningless run cannot redden anything.
+name: Calibration sweep
+
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: 'Why this run (lands in the run name), e.g. "week-4 interim"'
+        required: false
+        default: ''
+
+run-name: 'Calibration sweep ${{ inputs.note }}'
+
+concurrency:
+  group: calibrate
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the database secret is set
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+        run: |
+          if [ "$HAS_DATABASE_URL" != "true" ]; then
+            echo "::error::DATABASE_URL is not set."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Run the sweep
+        run: node scripts/calibrate.mjs --sweep --report calibration-report.md
+
+      - name: Surface the report summary
+        if: always()
+        run: |
+          if [ -f calibration-report.md ]; then
+            head -60 calibration-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: calibration-report-${{ github.run_id }}
+          path: calibration-report.md
+          retention-days: 90
+          if-no-files-found: warn
