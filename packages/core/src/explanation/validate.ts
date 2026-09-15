@@ -70,6 +70,27 @@ const DATA_APOLOGY =
 const DISPARAGEMENT =
   /\b(overpriced|over-priced|bad (?:value|deal|choice)|poor (?:value|choice)|not worth (?:it|the)|isn'?t worth (?:it|the)|too expensive|steep for what|rip-?off|avoid this)\b/i;
 
+/**
+ * V5 — no negative ASSESSMENT of a hotel, in any wording (owner rule 26,
+ * 2026-09-15).
+ *
+ * V4 bans the blunt verdict words; this bans the dressed-up ones — the
+ * deficit constructions that judge a rate while appearing to describe it:
+ * "does not justify", "fails to account for", "covers little of",
+ * "excessively priced". Each states a conclusion about worth that the
+ * evidence does not measure, in a register a guest reads as "the widget
+ * says this hotel is a bad choice".
+ *
+ * The line it draws is valence, not direction. Measurements keep rendering
+ * whatever way they point: "22% above the comparable median", "above every
+ * rate checked", the premium percentage itself — all pass, because a guest
+ * can verify a measurement. What cannot ship is the editorial judgement on
+ * top of it, and a draft carrying one is rejected whole — the deterministic
+ * renderer writes none of these, so falling back costs nothing.
+ */
+const NEGATIVE_ASSESSMENT =
+  /\b(does(?: not|n'?t) (?:justify|account for|support the pric|make (?:it|this) worth)|not justified|unjustified|hard to justify|fails? to (?:justify|account|deliver|impress)|excessively (?:high|priced|expensive)|covers? (?:very )?little of|little to show for|falls? short|subpar|underwhelming|disappointing|mediocre|lackluster|second-?rate|inferior)\b/i;
+
 export function validateNarrative(
   text: string,
   constraints: NarrativeConstraints,
@@ -89,6 +110,11 @@ export function validateNarrative(
   const disparaging = DISPARAGEMENT.exec(text);
   if (disparaging) {
     violations.push(`verdict about the hotel rather than the price: "${disparaging[0]}"`);
+  }
+
+  const negative = NEGATIVE_ASSESSMENT.exec(text);
+  if (negative) {
+    violations.push(`negative assessment of the hotel (rule 26): "${negative[0]}"`);
   }
 
   // Compared at one decimal because that is the precision the allowlist is

@@ -125,7 +125,10 @@ function contextSentence(bundle: LiveExplanationBundle): string | null {
     return `The rate includes ${money(bundle, premium.included_value_nightly_minor)} a night of extras, covering ${extent} the price gap.`;
   }
   if (premium.level === 'LOW' && premium.premium_pct !== null) {
-    return `The rate is ${pct(premium.premium_pct)} above the comparable median and what it includes covers little of that.`;
+    // Rule 26: the measurement without the verdict — the retired tail
+    // ("…what it includes covers little of that") judged the rate rather
+    // than describing it.
+    return `The rate is ${pct(premium.premium_pct)} above the comparable median.`;
   }
   if (premium.level === 'LIMITED_DATA' && premium.premium_pct !== null && premium.premium_pct > 0) {
     // Say what the RATES don't state, not what WE don't have — same fact,

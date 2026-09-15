@@ -169,15 +169,17 @@ describe('premiumPosition — the consultative frame is computed, not chosen', (
     expect(premiumPosition('HIGH', 30, false)).toBe('PREMIUM_APPEARS_SUPPORTED');
     expect(premiumPosition('MEDIUM', 30, false)).toBe('PREMIUM_MAY_BE_REASONABLE');
     expect(premiumPosition('LOW', 30, false)).toBe('HIGHER_PRICED_OPTION');
-    expect(premiumPosition('LOW', 80, false)).toBe('SIGNIFICANT_PREMIUM');
     expect(premiumPosition('INSUFFICIENT_DATA', null, false)).toBe('LIMITED_DATA');
   });
 
-  it('the availability frame outranks the plain ones when the premium is large', () => {
-    expect(premiumPosition('LOW', 400, true)).toBe('SIGNIFICANT_PREMIUM_LIMITED_AVAILABILITY');
-    expect(premiumPosition('INSUFFICIENT_DATA', 400, true)).toBe(
-      'SIGNIFICANT_PREMIUM_LIMITED_AVAILABILITY',
-    );
+  it('rule 26: no premium, at any size, escalates past the neutral frame', () => {
+    // SIGNIFICANT_PREMIUM and its limited-availability variant are retired —
+    // "significant premium" is a warning-toned assessment, not a
+    // measurement, and no negative assessment of a hotel ever renders. The
+    // premium percentage itself still rides in the block.
+    expect(premiumPosition('LOW', 80, false)).toBe('HIGHER_PRICED_OPTION');
+    expect(premiumPosition('LOW', 400, true)).toBe('HIGHER_PRICED_OPTION');
+    expect(premiumPosition('INSUFFICIENT_DATA', 400, true)).toBe('HIGHER_PRICED_OPTION');
   });
 });
 
