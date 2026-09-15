@@ -47,6 +47,19 @@ export interface GridSpec {
    */
   readonly backoffAfterFailures: number;
   readonly backoffMaxHours: number;
+  /**
+   * The backoff CAP for a stay whose last outcome was an upstream fault
+   * (`ERROR`), as opposed to sold out or empty. Rule 16's backoff exists for
+   * stays that genuinely have nothing to give; a 500 says nothing about the
+   * stay. Measured 2026-09-15, day ~19 of the source outage: ~57% of rates
+   * calls fail at random per request — the same hotel and dates answer on
+   * the next try, and a 4-night stay answered while 1, 2 and 3 nights did
+   * not. Under the plain doubling schedule three unlucky tries pushed a stay
+   * toward a week-long backoff for a fault that was never about it. Capped
+   * at one collection cycle, every grid stay is retried every run, and at a
+   * 43% per-try success rate twelve runs land it with near certainty.
+   */
+  readonly errorBackoffMaxHours: number;
 }
 
 export const DEFAULT_GRID_SPEC: GridSpec = {
@@ -84,13 +97,25 @@ export const DEFAULT_GRID_SPEC: GridSpec = {
   adults: 2,
   backoffAfterFailures: 3,
   backoffMaxHours: 168, // one week
+  errorBackoffMaxHours: 2, // one collection cycle — see the interface note
 };
 
-/** Hours to wait before retrying a stay that has failed this many times. */
-export function backoffHours(consecutiveFailures: number, spec: GridSpec): number {
+/**
+ * Hours to wait before retrying a stay that has failed this many times.
+ *
+ * `lastOutcome` tiers the cap: an upstream fault (`ERROR`) never waits longer
+ * than `errorBackoffMaxHours`; sold-out and empty stays keep the full
+ * doubling schedule, which is what rule 16 was written for.
+ */
+export function backoffHours(
+  consecutiveFailures: number,
+  spec: GridSpec,
+  lastOutcome: string | null = null,
+): number {
   if (consecutiveFailures < spec.backoffAfterFailures) return 0;
   const over = consecutiveFailures - spec.backoffAfterFailures;
-  return Math.min(2 ** over, spec.backoffMaxHours);
+  const hours = Math.min(2 ** over, spec.backoffMaxHours);
+  return lastOutcome === 'ERROR' ? Math.min(hours, spec.errorBackoffMaxHours) : hours;
 }
 
 /**
@@ -144,7 +169,7 @@ export async function findMissingGridStays(
 
   const { rows: attempts } = await client.query(
     `SELECT hotel_id, lead_days, nights, adults,
-            consecutive_failures,
+            consecutive_failures, last_outcome,
             EXTRACT(EPOCH FROM (now() - last_attempt_at)) / 3600 AS hours_since
        FROM collection_attempt
       WHERE consecutive_failures > 0`,
@@ -153,7 +178,7 @@ export async function findMissingGridStays(
   for (const row of attempts) {
     const failures = Number(row.consecutive_failures);
     const hoursSince = Number(row.hours_since);
-    if (hoursSince < backoffHours(failures, spec)) {
+    if (hoursSince < backoffHours(failures, spec, (row.last_outcome as string | null) ?? null)) {
       backedOff.add(`${row.hotel_id}|${row.lead_days}|${row.nights}|${row.adults}`);
     }
   }
@@ -251,14 +276,24 @@ export async function wasStayRecentlyFruitless(
   adults: number,
   withinMinutes: number,
   q?: Queryable,
+  /**
+   * The hold after an upstream FAULT (`ERROR`), when shorter than
+   * `withinMinutes`. A sold-out stay will be sold out in fifteen minutes; a
+   * 500 from a source failing ~57% of calls at random (measured 2026-09-15)
+   * says nothing about the stay, and holding the guest's next look for a
+   * quarter of an hour turned one unlucky call into a blank page. Defaults
+   * to the full hold so existing callers keep their behaviour.
+   */
+  withinMinutesOnError: number = withinMinutes,
 ): Promise<boolean> {
   const { rows } = await db(q).query(
     `SELECT 1 FROM collection_attempt
       WHERE hotel_id = $1 AND check_in = $2::date AND nights = $3 AND adults = $4
         AND consecutive_failures > 0
-        AND last_attempt_at > now() - ($5 || ' minutes')::interval
+        AND last_attempt_at > now()
+          - ((CASE WHEN last_outcome = 'ERROR' THEN $6 ELSE $5 END) || ' minutes')::interval
       LIMIT 1`,
-    [hotelId, checkIn, nights, adults, withinMinutes],
+    [hotelId, checkIn, nights, adults, withinMinutes, withinMinutesOnError],
   );
   return rows.length > 0;
 }

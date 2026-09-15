@@ -187,6 +187,14 @@ engine.
     Backoff keys on the **grid slot** (`hotel|lead|nights|adults`), never the
     date: wanted dates shift daily, so date keys reset the counter every UTC
     day and the backoff can never outlast the 6-hour cron (migration 0010).
+    **A fault is not a fruitless stay.** Backoff tiers on `last_outcome`
+    (2026-09-15): sold-out and empty keep the doubling schedule, an upstream
+    `ERROR` never waits longer than `errorBackoffMaxHours` (one cycle), and
+    the on-demand hold after an `ERROR` is `errorRetryHoldMinutes` (2), not 15. Measured on day ~19 of the source outage, ~57% of rates calls fail at
+    random per request — the same hotel and dates answer on the next try —
+    so persistence, not patience, is what recovers coverage: the on-demand
+    path also retries the SUBJECT query alone (`subjectRetries`, 2), lifting
+    a page view from ~43% to ~81%.
 
 17. **The catalogue is the source's whole inventory, not a curated list.** The
     widget has to answer on every hotel page on whatahotel.com, so nothing may
