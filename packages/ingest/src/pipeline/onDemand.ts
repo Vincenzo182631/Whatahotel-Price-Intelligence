@@ -64,6 +64,24 @@ export interface OnDemandOptions {
   readonly maxComparables: number;
   /** A fruitless attempt younger than this blocks a refetch. */
   readonly retryHoldMinutes: number;
+  /**
+   * The hold after an upstream FAULT specifically — a 500, not a sold-out.
+   * Measured 2026-09-15 (day ~19 of the source outage): ~57% of rates calls
+   * fail at random per request, so a guest's second look at the same stay
+   * has the same ~43% chance as the first. Fifteen minutes turned one
+   * unlucky call into a blank page; two minutes bounds the spend at one
+   * call per stay per two minutes while letting a refresh actually retry.
+   */
+  readonly errorRetryHoldMinutes: number;
+  /**
+   * Extra attempts for the SUBJECT query alone when its first answer is an
+   * upstream fault. The comparables are a wave and can tolerate a miss; the
+   * subject is the whole request. At a 43% per-call success rate, two
+   * retries lift one page view from 43% to ~81%, at the cost of a fast 500
+   * round-trip each — the fault answers in a second or two with a message,
+   * not a hang.
+   */
+  readonly subjectRetries: number;
   readonly now?: Date;
 }
 
@@ -110,6 +128,8 @@ export const DEFAULT_ON_DEMAND_OPTIONS: OnDemandOptions = {
   // costs latency; relaxing the terms match would cost honesty (rule 5).
   maxComparables: 8,
   retryHoldMinutes: 15,
+  errorRetryHoldMinutes: 2,
+  subjectRetries: 2,
 };
 
 export type OnDemandSkipReason =
@@ -201,6 +221,8 @@ export async function collectStayOnDemand(
       stay.nights,
       stay.adults,
       options.retryHoldMinutes,
+      undefined,
+      options.errorRetryHoldMinutes,
     )
   ) {
     return NOT_PERFORMED('RECENTLY_FRUITLESS');
@@ -223,7 +245,12 @@ export async function collectStayOnDemand(
     options.maxComparables,
   );
   const subjectQuery = queries[0] as RateQuery;
-  return fetchIngestRecord(queries, hotelIdByWahId, queryKeyOf(subjectQuery));
+  return fetchIngestRecord(
+    queries,
+    hotelIdByWahId,
+    queryKeyOf(subjectQuery),
+    options.subjectRetries,
+  );
 }
 
 /**
@@ -323,6 +350,7 @@ async function fetchIngestRecord(
   queries: readonly RateQuery[],
   hotelIdByWahId: Map<string, number>,
   subjectKey: string | null,
+  subjectRetries = 0,
 ): Promise<OnDemandResult> {
   const failures = new Set<string>();
   const soldOut = new Set<string>();
@@ -356,6 +384,32 @@ async function fetchIngestRecord(
       rejected: 0,
       subjectTracked: false,
     };
+  }
+
+  // The subject's answer was an upstream fault: try it again, alone. The
+  // source fails at random per request during its outage, so a second call
+  // is a fresh coin toss — see OnDemandOptions.subjectRetries. Each attempt
+  // is one fast call within the guest budget; a sold-out answer (not in
+  // `failures`) is final and never retried.
+  const subjectQuery =
+    subjectKey === null ? null : queries.find((q) => queryKeyOf(q) === subjectKey);
+  for (
+    let attempt = 0;
+    subjectQuery !== undefined &&
+    subjectQuery !== null &&
+    subjectKey !== null &&
+    failures.has(subjectKey) &&
+    attempt < subjectRetries;
+    attempt += 1
+  ) {
+    failures.delete(subjectKey);
+    try {
+      const again = await adapter.fetchRates([subjectQuery]);
+      if (again.length > 0) records = [...records, ...again];
+    } catch (err) {
+      console.error('on-demand subject retry failed:', (err as Error).message);
+      failures.add(subjectKey);
+    }
   }
 
   const ingest =

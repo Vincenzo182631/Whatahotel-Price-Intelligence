@@ -307,3 +307,27 @@ describe('grid coverage tolerance', () => {
     expect(out.map((s) => s.checkIn)).toEqual([dateAt(now, 10)]);
   });
 });
+
+describe('backoff tiers on the last outcome (source outage, 2026-09-15)', () => {
+  it('caps an upstream-fault backoff at one collection cycle', () => {
+    // Sold out keeps the full doubling schedule — rule 16's reason to exist.
+    expect(backoffHours(8, DEFAULT_GRID_SPEC, 'NO_AVAILABILITY')).toBe(32);
+    expect(backoffHours(12, DEFAULT_GRID_SPEC, 'EMPTY')).toBe(168);
+    // A 500 says nothing about the stay: never longer than a cycle.
+    expect(backoffHours(8, DEFAULT_GRID_SPEC, 'ERROR')).toBe(
+      DEFAULT_GRID_SPEC.errorBackoffMaxHours,
+    );
+    expect(backoffHours(12, DEFAULT_GRID_SPEC, 'ERROR')).toBe(
+      DEFAULT_GRID_SPEC.errorBackoffMaxHours,
+    );
+    // Below the threshold nothing backs off, whatever the outcome.
+    expect(backoffHours(2, DEFAULT_GRID_SPEC, 'ERROR')).toBe(0);
+    // An unstated outcome keeps the old schedule exactly.
+    expect(backoffHours(8, DEFAULT_GRID_SPEC)).toBe(32);
+  });
+
+  it('the fault cap is one cycle, never the full week', () => {
+    expect(DEFAULT_GRID_SPEC.errorBackoffMaxHours).toBeLessThanOrEqual(2);
+    expect(DEFAULT_GRID_SPEC.errorBackoffMaxHours).toBeLessThan(DEFAULT_GRID_SPEC.backoffMaxHours);
+  });
+});
