@@ -166,7 +166,14 @@
    * measured from the most recent verified rates (no historical pricing
    * exists for this source), so the badge states the product's actual basis.
    */
-  function renderBrand() {
+  /**
+   * `subtitle` names what this particular card IS.
+   *
+   * "Live Rate Comparison" over a card with no rate on it would be the
+   * header making a claim the body cannot support — the same failure as the
+   * old unbookable notice, in smaller type. HOTEL_ONLY passes its own.
+   */
+  function renderBrand(subtitle) {
     var wrap = el('header', 'wahpi__brand');
     var row = el('div', 'wahpi__brand-row');
     var name = el('div', 'wahpi__brand-name');
@@ -178,7 +185,7 @@
     live.appendChild(el('span', null, 'LIVE'));
     row.appendChild(live);
     wrap.appendChild(row);
-    wrap.appendChild(el('div', 'wahpi__brand-sub', 'Live Rate Comparison'));
+    wrap.appendChild(el('div', 'wahpi__brand-sub', subtitle || 'Live Rate Comparison'));
     return wrap;
   }
 
@@ -1578,7 +1585,7 @@
    * does not. An unmatched hotel renders nothing at all rather than an
    * empty star row.
    */
-  function renderLiveReputation(data) {
+  function renderLiveReputation(data, note) {
     var rep = data.reputation;
     if (!rep || rep.rating === null || rep.rating === undefined) return null;
 
@@ -1598,7 +1605,9 @@
         ),
       );
     }
-    row.appendChild(el('span', 'wahpi__reputation-note', 'Context only — not part of the score.'));
+    row.appendChild(
+      el('span', 'wahpi__reputation-note', note || 'Context only — not part of the score.'),
+    );
     wrap.appendChild(row);
     return wrap;
   }
@@ -1770,7 +1779,7 @@
     root.className = 'wahpi';
     root.setAttribute('aria-busy', 'false');
 
-    append(root, renderBrand());
+    append(root, renderBrand('Hotel Insight'));
 
     var head = section(null);
     head.appendChild(el('h2', null, data.subject.hotel.name));
@@ -1780,7 +1789,9 @@
     append(root, head);
 
     append(root, renderLiveWhyChoose(data));
-    append(root, renderLiveReputation(data));
+    // The rating renders with the hotel-only note: the usual "not part of the
+    // score" line points at a score this card does not show.
+    append(root, renderLiveReputation(data, 'Guest rating from Google — context, not our assessment.'));
 
     if (data.subject.hotel.bookable_online === false) {
       var note = section(null);
