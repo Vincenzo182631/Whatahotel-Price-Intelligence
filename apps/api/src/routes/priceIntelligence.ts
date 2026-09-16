@@ -11,6 +11,7 @@ import {
   isLoadFailure,
   loadActiveConfig,
   loadScoringInput,
+  findQuotedCurrencyByWahId,
   newPublicId,
   persistAnalysis,
 } from '@wahpi/data';
@@ -18,6 +19,7 @@ import {
 import {
   ApiError,
   cacheHeaders,
+  currencyFor,
   money,
   nightsBetween,
   optionalInt,
@@ -36,7 +38,7 @@ export const priceIntelligenceHandler: Handler = async (_req, res, ctx) => {
   const nights = nightsBetween(checkIn, checkOut);
   const adults = optionalInt(url, 'adults', 2, 1, 10);
   const children = optionalInt(url, 'children', 0, 0, 10);
-  const currency = (url.searchParams.get('currency') ?? 'USD').toUpperCase();
+  const currency = currencyFor(url, await findQuotedCurrencyByWahId(wahHotelId));
   const roomTypeParam = url.searchParams.get('room_type_id');
   const include = new Set((url.searchParams.get('include') ?? 'explanation').split(','));
 

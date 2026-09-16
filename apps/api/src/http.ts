@@ -212,3 +212,30 @@ export function cacheHeaders(ttlSeconds: number, staleSeconds: number): Record<s
 export function money(amountMinor: number | null, currency: string): unknown {
   return amountMinor === null ? null : { amount_minor: amountMinor, currency };
 }
+
+/**
+ * The currency a request should be answered in.
+ *
+ * Rule 18: the source prices in the HOTEL's currency, not the caller's — Doha
+ * answers in QAR, Paris in EUR — and every stored-rate query filters on
+ * currency, correctly, because mixing them would compare 1,600 QAR to 1,600
+ * USD. So a hard-coded USD default does not produce a wrong price, it produces
+ * NO price: the endpoint reports "no rate for these dates" while holding a
+ * perfectly good rate it refused to look at. Measured 2026-09-16 on Four
+ * Seasons Paris George V, whose comparables endpoint answered empty for a
+ * stay we held three euro-priced peers for.
+ *
+ * `quoted` is the hotel's own currency (most recent observation, then
+ * hotel.base_currency). USD survives only as the last resort for a hotel we
+ * have never priced at all.
+ *
+ * PINNING STILL MEANS PINNING. An explicit ?currency= is obeyed exactly, and
+ * gets that currency or nothing — never a silent substitution, because we
+ * hold no FX rates and inventing one would put a fabricated number in front
+ * of a customer.
+ */
+export function currencyFor(url: URL, quoted: string | null): string {
+  const pinned = url.searchParams.get('currency');
+  if (pinned !== null && pinned.trim() !== '') return pinned.toUpperCase();
+  return (quoted ?? 'USD').toUpperCase();
+}

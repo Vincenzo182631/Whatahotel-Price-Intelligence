@@ -10,6 +10,7 @@ import {
   findAvailableRoomTypes,
   findComparableRates,
   findHotelByWahId,
+  findQuotedCurrency,
   findSameStaySeries,
   findSeriesGaps,
   loadActiveConfig,
@@ -19,6 +20,7 @@ import {
 import {
   ApiError,
   cacheHeaders,
+  currencyFor,
   money,
   nightsBetween,
   optionalInt,
@@ -167,7 +169,7 @@ export const roomTypesHandler: Handler = async (_req, res, ctx) => {
   const nights = nightsBetween(checkIn, checkOut);
   const adults = optionalInt(ctx.url, 'adults', 2, 1, 10);
   const children = optionalInt(ctx.url, 'children', 0, 0, 10);
-  const currency = (ctx.url.searchParams.get('currency') ?? 'USD').toUpperCase();
+  const currency = currencyFor(ctx.url, await findQuotedCurrency(hotel.id));
 
   const { config } = await loadActiveConfig();
   const rooms = await findAvailableRoomTypes(hotel.id, checkIn, nights, adults, children, currency);
@@ -202,7 +204,7 @@ export const priceHistoryHandler: Handler = async (_req, res, ctx) => {
   const nights = nightsBetween(checkIn, checkOut);
   const adults = optionalInt(ctx.url, 'adults', 2, 1, 10);
   const children = optionalInt(ctx.url, 'children', 0, 0, 10);
-  const currency = (ctx.url.searchParams.get('currency') ?? 'USD').toUpperCase();
+  const currency = currencyFor(ctx.url, await findQuotedCurrency(hotel.id));
   const windowDays = optionalInt(ctx.url, 'window', 90, 1, 365);
 
   const rooms = await findAvailableRoomTypes(hotel.id, checkIn, nights, adults, children, currency);
@@ -253,7 +255,7 @@ export const comparablesHandler: Handler = async (_req, res, ctx) => {
   const nights = nightsBetween(checkIn, checkOut);
   const adults = optionalInt(ctx.url, 'adults', 2, 1, 10);
   const children = optionalInt(ctx.url, 'children', 0, 0, 10);
-  const currency = (ctx.url.searchParams.get('currency') ?? 'USD').toUpperCase();
+  const currency = currencyFor(ctx.url, await findQuotedCurrency(hotel.id));
   const limit = optionalInt(ctx.url, 'limit', 6, 1, 20);
 
   const { config } = await loadActiveConfig();
