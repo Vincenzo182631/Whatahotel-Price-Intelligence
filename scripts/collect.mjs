@@ -263,7 +263,17 @@ async function main() {
   //
   // Skipped under --bootstrap, which exists to lay down the grid and nothing
   // else.
-  const warmTasks = BOOTSTRAP ? [] : await warmingTasks();
+  // Never allowed to break a collection. Warming is an optimisation: it makes
+  // the next guest's answer better, while the grid and the refreshes are the
+  // dataset itself. A database that has not had migration 0020 applied yet —
+  // the window between merging this and running the Database setup workflow —
+  // must degrade to "no warming", not to a failed run that collects nothing.
+  const warmTasks = BOOTSTRAP
+    ? []
+    : await warmingTasks().catch((err) => {
+        console.error('warming plan failed:', err instanceof Error ? err.message : err);
+        return [];
+      });
 
   const { tasks, total, warmPlanned, warmTaken } = mergeTasks(gridTasks, dueTasks, MAX_TASKS, {
     refreshShare: REFRESH_SHARE,
