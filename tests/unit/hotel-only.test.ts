@@ -152,6 +152,17 @@ describe('what the widget says when no rate came back', () => {
     expect(WIDGET_CODE).toContain('This property is not bookable online.');
   });
 
+  it('does not call the card a rate comparison when it holds no rate', () => {
+    // The header is a claim too. "Live Rate Comparison" over a card with no
+    // rate is the same failure as the old unbookable notice, in smaller type.
+    expect(WIDGET_CODE).toMatch(/renderBrand\('Hotel Insight'\)/);
+    expect(WIDGET_CODE).toMatch(/function renderBrand\(subtitle\)/);
+  });
+
+  it('does not point a hotel-only card at a score it never shows', () => {
+    expect(WIDGET_CODE).toContain('context, not our assessment');
+  });
+
   it('routes a hotel-only body away from the market renderer', () => {
     // Every block in renderLive describes a rate; this body has none.
     expect(WIDGET_CODE).toMatch(/intelligence_mode === 'HOTEL_ONLY'/);
