@@ -28,8 +28,11 @@
  */
 import {
   DEFAULT_GRID_SPEC,
+  DEFAULT_WARMING_OPTIONS,
   closePool,
   findMissingGridStays,
+  planStayWarming,
+  pruneStayRequests,
   recordCollectionAttempts,
 } from '../packages/data/dist/index.js';
 import {
@@ -42,6 +45,7 @@ import {
   ensureWhataHotelSource,
   ingestRecords,
   ingestStayKey,
+  mergeTasks,
   planCollection,
   rebuildComparables,
   refreshBaselines,
@@ -85,6 +89,23 @@ const MAX_TASKS = Number(arg('limit', DEFAULT_SCHEDULER_OPTIONS.maxTasks));
 // the WARM tail behind it. It is a floor and not a quota — an unused half goes
 // straight back to the grid.
 const REFRESH_SHARE = Math.min(1, Math.max(0, Number(arg('refresh-share', 0.5))));
+// Share of each run reserved for WARMING — stays a guest actually asked about
+// (stay_request), fetched ahead of the next guest rather than inside their
+// page view.
+//
+// Warming is served FIRST, because it is the only work in the run backed by
+// evidence that a person wants the answer: the grid is a guess about which
+// dates might be asked for, and a refresh keeps an answer we already have
+// true. A guest's own dates outrank both. It is capped rather than unbounded
+// so it can never starve rule 14's grid top-up, and like the refresh share it
+// is a floor, not a quota — unused slots go straight back.
+//
+// A fifth, because measured demand is small next to the grid (a few hundred
+// distinct stays against 3,500 slots) and this is meant to cover it entirely
+// while leaving the schedule intact. Raise it only with the log line below as
+// evidence: "warming N of M wanted" saturating is what says the share is too
+// small.
+const WARM_SHARE = Math.min(1, Math.max(0, Number(arg('warm-share', 0.2))));
 const CONCURRENCY = Number(arg('concurrency', 4));
 
 function isoDate(offsetDays) {
@@ -109,64 +130,32 @@ async function missingGridTasks() {
 }
 
 /**
- * Merge new-grid stays with due refreshes, deduped, giving refreshes a
- * guaranteed share of the run.
+ * Stays a guest asked about that are missing or stale — the warming queue.
  *
- * This used to be [...gridTasks, ...dueTasks].slice(0, limit), which serves
- * grid top-up FIRST and refreshes with whatever survives. That is fine while
- * the backlog is smaller than the limit and catastrophic the moment it is not:
- * measured 2026-08-27, a 9,533-stay backlog against a 10,000 limit left 467
- * slots for 8,486 due refreshes, and at the earlier 2,000 limit it left ZERO
- * for days. The tier scheduler stopped running and nothing said so.
- *
- * What that costs is not abstract. A tracked stay that is never refreshed goes
- * stale, assessLiveConfidence caps at LOW past maxRateAgeHours (12), and a
- * guest sees confidence collapse on a hotel whose comp set and score are
- * perfectly sound. Grid top-up buys future calendar neighbours; refreshes keep
- * the price we are showing true. When they compete, the price we are already
- * showing wins.
- *
- * The reservation wastes nothing. Each side is capped at what it can actually
- * use, and whatever the other side does not want is handed straight back — a
- * run with no backlog spends everything on refreshes, and a run with nothing
- * due spends everything on the grid.
- *
- * Dedup runs BEFORE allocation, and grid wins a tie: one fetch of a stay that
- * is both missing and due satisfies both, so counting it twice would reserve a
- * slot for work already being done.
+ * Tiered HOT on the same rule as the grid: a warmed stay is by definition one
+ * someone is looking at, and the near-term ones are the decisions being made
+ * now. The tier only orders work inside the run; the reservation in
+ * mergeTasks is what actually bounds the spend.
  */
-function mergeTasks(gridTasks, dueTasks, limit, refreshShare = REFRESH_SHARE) {
-  const keyOf = (t) => `${t.hotelId}|${t.checkIn}|${t.nights}|${t.adults}`;
+async function warmingTasks() {
+  const wanted = await planStayWarming({
+    ...DEFAULT_WARMING_OPTIONS,
+    // No point planning more than the run could ever take.
+    limit: MAX_TASKS,
+  });
+  const hotLeadMs = DEFAULT_SCHEDULER_OPTIONS.hotLeadDaysMax * 86_400_000;
+  const now = Date.now();
 
-  const gridKeys = new Set(gridTasks.map(keyOf));
-  const grid = [];
-  const seen = new Set();
-  for (const task of gridTasks) {
-    const k = keyOf(task);
-    if (seen.has(k)) continue;
-    seen.add(k);
-    grid.push(task);
-  }
-  // Disjoint by construction, so the two takes below cannot overlap.
-  const due = [];
-  for (const task of dueTasks) {
-    const k = keyOf(task);
-    if (gridKeys.has(k) || seen.has(k)) continue;
-    seen.add(k);
-    due.push(task);
-  }
-
-  // planCollection returns due stays sorted by tier then staleness, so slicing
-  // takes HOT before WARM before COLD — the reservation inherits that order
-  // rather than needing its own.
-  const reserved = Math.min(due.length, Math.floor(limit * refreshShare));
-  const gridTake = Math.min(grid.length, Math.max(0, limit - reserved));
-  const dueTake = Math.min(due.length, Math.max(0, limit - gridTake));
-
-  return {
-    tasks: [...grid.slice(0, gridTake), ...due.slice(0, dueTake)],
-    total: grid.length + due.length,
-  };
+  return wanted.map((stay) => ({
+    hotelId: stay.hotelId,
+    wahHotelId: stay.wahHotelId,
+    checkIn: stay.checkIn,
+    nights: stay.nights,
+    adults: stay.adults,
+    tier: Date.parse(`${stay.checkIn}T00:00:00Z`) - now <= hotLeadMs ? 'HOT' : 'WARM',
+    lastObservedAt: stay.lastObservedAt,
+    reason: 'GUEST_REQUESTED',
+  }));
 }
 
 async function main() {
@@ -266,9 +255,31 @@ async function main() {
     ? []
     : await planCollection({ ...DEFAULT_SCHEDULER_OPTIONS, maxTasks: MAX_TASKS });
 
-  const { tasks, total } = mergeTasks(gridTasks, dueTasks, MAX_TASKS);
+  // Third source, and the only one with a person behind it: stays a guest
+  // actually opened. The collector has minutes and patient retry settings;
+  // a page view has eight seconds. Doing this work here is what turns the
+  // second visit to a page into a scored answer instead of a repeat of the
+  // first visit's failure.
+  //
+  // Skipped under --bootstrap, which exists to lay down the grid and nothing
+  // else.
+  const warmTasks = BOOTSTRAP ? [] : await warmingTasks();
+
+  const { tasks, total, warmPlanned, warmTaken } = mergeTasks(gridTasks, dueTasks, MAX_TASKS, {
+    refreshShare: REFRESH_SHARE,
+    warmTasks,
+    warmShare: WARM_SHARE,
+  });
 
   const byTier = tasks.reduce((acc, t) => ({ ...acc, [t.tier]: (acc[t.tier] ?? 0) + 1 }), {});
+  if (warmPlanned > 0 || warmTaken > 0) {
+    // Saturation here is the signal to raise --warm-share: it means guests
+    // asked about more stays than the reserved slice can carry.
+    console.log(
+      `• Warming: ${warmTaken} of ${warmPlanned} guest-requested stay(s)` +
+        `${warmTaken < warmPlanned ? ` — reserved share is full (--warm-share ${WARM_SHARE})` : ''}`,
+    );
+  }
   console.log(
     `• Plan: ${tasks.length} stay(s) — ${gridTasks.length} new, ${dueTasks.length} due ` +
       `(${
@@ -279,26 +290,27 @@ async function main() {
   );
   // Capacity: which kind of work the limit is actually being spent on.
   //
-  // mergeTasks concatenates [...gridTasks, ...dueTasks] and slices to the
-  // limit, so GRID TOP-UP IS SERVED FIRST and refreshes get whatever is left.
-  // When the backlog exceeds the limit, that is nothing: every planned stay is
-  // a grid top-up and the tier scheduler — HOT every 6h, WARM every 24h —
-  // does not run at all.
+  // Read this line rather than inferring the split from the shares: each
+  // share is a FLOOR that hands back what it does not use (see mergeTasks),
+  // so the actual division changes with what each queue holds that run.
   //
-  // The first version of this line had the causality backwards, reporting that
-  // refreshes consumed the limit. They cannot: they are last in the queue.
-  // Counting the planned tasks by reason says which is true instead of
-  // assuming, and the two failures want opposite fixes.
+  // An early version of this line had the causality backwards, reporting that
+  // refreshes consumed the limit when they were in fact last in the queue and
+  // getting nothing. Counting the planned tasks BY REASON says which is true
+  // instead of assuming, and the failures want opposite fixes: a starved grid
+  // wants a bigger limit, starved refreshes want a bigger refresh share, and
+  // starved warming wants a bigger warm share.
   //
   // Why starved refreshes matter beyond the missed fetch: assessLiveConfidence
   // caps at LOW when the subject rate is older than maxRateAgeHours (12), so
   // stalled refreshes surface to guests as falling confidence on hotels whose
   // comp sets are perfectly good.
   const topUps = tasks.filter((t) => t.reason === 'NEW_STAY').length;
-  const refreshes = tasks.length - topUps;
+  const warmed = tasks.filter((t) => t.reason === 'GUEST_REQUESTED').length;
+  const refreshes = tasks.length - topUps - warmed;
   const dueSaturated = dueTasks.length >= MAX_TASKS;
   console.log(
-    `• Capacity: limit ${MAX_TASKS}/run — planning ${topUps} grid top-up(s) and ` +
+    `• Capacity: limit ${MAX_TASKS}/run — planning ${warmed} warm, ${topUps} grid top-up(s) and ` +
       `${refreshes} refresh(es); backlog ${gridTasks.length}, ` +
       `due ${dueTasks.length}${dueSaturated ? ' (at the cap, true demand is higher)' : ''}`,
   );
@@ -494,6 +506,17 @@ async function main() {
       `${comparables.hotelsProcessed} hotel(s); ` +
       `${comparables.hotelsWithoutComparables} without a comp set`,
   );
+
+  // Demand that can no longer inform a fetch: a check-in that has passed, or
+  // a stay nobody has opened in two months. Cheap, and it keeps the warming
+  // queue about what people want NOW rather than growing forever.
+  try {
+    const pruned = await pruneStayRequests();
+    if (pruned > 0) console.log(`• Pruned ${pruned} expired stay request(s)`);
+  } catch (err) {
+    // Housekeeping never fails a collection that already did its work.
+    console.error('stay-request prune failed:', err instanceof Error ? err.message : err);
+  }
 
   console.log(`✓ Done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
 }

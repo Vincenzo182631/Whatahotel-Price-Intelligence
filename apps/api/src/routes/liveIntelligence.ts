@@ -45,6 +45,7 @@ import {
   loadActiveConfig,
   loadLiveIntelligence,
   promoteHotelForCollection,
+  recordStayRequest,
 } from '@wahpi/data';
 import {
   DEFAULT_ENROLL_OPTIONS,
@@ -368,6 +369,27 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       await promoteHotelForCollection(wahHotelId);
     } catch (err) {
       console.error('collection promotion failed:', (err as Error).message);
+    }
+
+    // Promotion says WHICH HOTEL is worth collecting; this says which STAY.
+    // They are different questions, and only the second one reaches the dates
+    // a guest actually picked: the collector's grid is anchored lead times,
+    // while guests choose arbitrary ones. Recorded for every request, answered
+    // or not — especially not, since a stay we could not price is exactly the
+    // one the next guest on this page will also fail to get, and the collector
+    // can retry it patiently instead of inside someone's page view.
+    //
+    // Same standing as the promotion above: scheduling input, never a fact,
+    // and never allowed to break the read.
+    try {
+      // The loaded hotel already carries its id on every path that has one;
+      // only a failed load has to ask, and that path is the rare one.
+      const hotelId = isLiveLoadFailure(loaded)
+        ? ((await findHotelByWahId(wahHotelId))?.id ?? null)
+        : loaded.hotel.id;
+      if (hotelId !== null) await recordStayRequest(hotelId, checkIn, nights, adults);
+    } catch (err) {
+      console.error('stay request record failed:', (err as Error).message);
     }
   }
 

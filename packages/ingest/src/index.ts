@@ -100,4 +100,6 @@ export {
   planCollection,
   tierFor,
 } from './scheduler/tiers.js';
+export { mergeTasks } from './scheduler/merge.js';
+export type { MergeOptions, MergedPlan } from './scheduler/merge.js';
 export type { CollectionTask, CollectionTier, SchedulerOptions } from './scheduler/tiers.js';
