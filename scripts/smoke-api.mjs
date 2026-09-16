@@ -308,14 +308,47 @@ async function main() {
   );
   check('live-intelligence 404s on an unknown hotel', liveMissing.status === 404);
 
+  // A stay with no rate may be answered two ways, and NEITHER of them may
+  // carry a price or a score: the honest 409, or HOTEL_ONLY — the hotel's
+  // reputation, themes and stated perks, which need no rate to be true.
+  //
+  // This check used to require the 409 outright. That was the right
+  // guarantee stated as the wrong rule: what must never happen is a stay we
+  // cannot verify being SCORED, or a price being described that we do not
+  // hold. Pinning the status code instead of the guarantee would have made
+  // the honest hotel-only answer look like a regression, so the assertions
+  // below test the guarantee directly — and test more of it than before.
   const liveNoRate = await get(
     `/api/v1/live-intelligence?hotel_id=${hotelId}&check_in=2031-06-01&check_out=2031-06-04`,
   );
+  const hotelOnly = liveNoRate.status === 200 && liveNoRate.body?.intelligence_mode === 'HOTEL_ONLY';
   check(
-    'live-intelligence 409s rather than scoring a stay it has no rate for',
-    liveNoRate.status === 409,
-    `got ${liveNoRate.status}`,
+    'live-intelligence answers a stay it has no rate for with 409 or HOTEL_ONLY',
+    liveNoRate.status === 409 || hotelOnly,
+    `got ${liveNoRate.status} / ${liveNoRate.body?.intelligence_mode ?? 'no mode'}`,
   );
+  if (hotelOnly) {
+    check(
+      'a hotel-only answer carries no score',
+      liveNoRate.body.deal_score === null && liveNoRate.body.verdict?.out_of_ten === null,
+      `score ${JSON.stringify(liveNoRate.body.deal_score)}`,
+    );
+    check(
+      'a hotel-only answer carries no rate',
+      liveNoRate.body.subject?.rate === null,
+      `rate ${JSON.stringify(liveNoRate.body.subject?.rate)}`,
+    );
+    check(
+      'a hotel-only answer describes no money at all',
+      !/amount_minor|currency|nightly|total_|csi|comp_set/i.test(JSON.stringify(liveNoRate.body)),
+      'a price-shaped field reached a response that has no rate behind it',
+    );
+    check(
+      'a hotel-only answer never claims the hotel is unbookable without the page saying so',
+      liveNoRate.body.subject?.hotel?.bookable_online !== undefined,
+      'bookable_online must be published, even as null (rule 24)',
+    );
+  }
 
   console.log(`\n${checks - failures}/${checks} checks passed`);
   if (failures > 0) process.exit(1);

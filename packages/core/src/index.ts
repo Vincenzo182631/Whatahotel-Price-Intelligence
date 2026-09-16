@@ -181,6 +181,7 @@ export {
   HOTEL_VALUE_EVIDENCE,
   THEME_PROSE,
   deterministicHotelValue,
+  hotelOnlyFacts,
   hotelValueConfidence,
   hotelValueEvidencePresent,
   supportingSignals,
@@ -189,6 +190,7 @@ export {
 export type {
   HotelValue,
   HotelValueEvidence,
+  HotelValueFacts,
   HotelValueValidation,
 } from './explanation/hotelValue.js';
 export { PREFERENCES, PREFERENCE_LABEL, parsePreference } from './explanation/preference.js';

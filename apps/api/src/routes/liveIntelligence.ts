@@ -30,10 +30,14 @@ import {
   liveBandLabel,
   liveVerdictLabel,
   parsePreference,
+  deterministicHotelValue,
+  hotelOnlyFacts,
   premiumJustificationSummary,
+  type Preference,
   type ReputationFact,
 } from '@wahpi/core';
 import {
+  findBenefits,
   findHotelByWahId,
   findVerifiedReputations,
   findVerifiedReputationsByWahIds,
@@ -387,7 +391,34 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         throw new ApiError('RATE_NOT_FOUND', 'That rate is no longer available for this stay.', {
           rate_id: rateId,
         });
-      case 'NO_CURRENT_RATE':
+      case 'NO_CURRENT_RATE': {
+        // No rate for this stay — and, during the source outage, usually no
+        // rate for a reason that has nothing to do with the hotel: ~57% of
+        // rates calls fail at random per request even after the retries.
+        //
+        // What used to happen here was the worst available answer. The 409
+        // told the widget "not bookable online for these dates", which is a
+        // CLAIM ABOUT THE HOTEL — and one the response has no basis for
+        // whenever the cause was an upstream fault. It is false on its face
+        // (rule 24: NULL means the page did not say, never "not bookable"),
+        // and it reads as a negative assessment of a property the site
+        // sells (rule 26). A fault of ours became a statement about them.
+        //
+        // The honest answer is the hotel itself. Reputation, what guests
+        // say, and what the hotel states it includes are hotel-level facts:
+        // they do not depend on a rate existing, they are already validated,
+        // and they are what the guest who pressed WhataRate! actually wants
+        // when the price comparison cannot be made. The score stays null
+        // (rule 3) and NOTHING here describes a price we do not hold.
+        //
+        // The one case that still speaks about the stay is a property the
+        // page itself says cannot be booked online. That is a measured fact,
+        // not our failure, and it keeps the advisor message.
+        const hotelOnly = await hotelOnlyAnswer(wahHotelId, checkIn, preference, now, config);
+        if (hotelOnly) {
+          sendJson(res, 200, hotelOnly, cacheHeaders(60, 300));
+          return;
+        }
         throw new ApiError('NO_CURRENT_RATE', 'No available rate for these dates.', {
           hotel_id: wahHotelId,
           check_in: checkIn,
@@ -403,6 +434,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
               ? { performed: false, error: onDemandError }
               : null,
         });
+      }
     }
   }
 
@@ -1204,3 +1236,135 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     'x-request-id': ctx.requestId,
   });
 };
+
+/**
+ * The answer when the source will not price this stay for us.
+ *
+ * HOTEL_ONLY is a third mode beside MARKET and HOTEL_VALUE, and the line
+ * between it and HOTEL_VALUE is what we HOLD, not what we chose to show:
+ *
+ *   MARKET       a rate, comparables, a score.
+ *   HOTEL_VALUE  a rate, but no comparison that could carry a score.
+ *   HOTEL_ONLY   no rate at all — so not one word about price.
+ *
+ * Everything it carries is hotel-level and already validated: the verified
+ * Google rating (rule 22 — evidence, never a term), what recent guests
+ * mention, and the perks the source itself states. The sentences come from
+ * `deterministicHotelValue`, the same reader the other two modes use, so a
+ * guest reads the same voice whichever mode answered.
+ *
+ * What it must never do:
+ *   - invent or imply a price, a saving, a comparison or a score (the body
+ *     carries no price fields at all, which makes that structural);
+ *   - say a hotel cannot be booked because OUR fetch failed (rule 24) —
+ *     `bookable_online` carries that, and only when the page said so;
+ *   - narrate our own data gaps (validator V3's rule, and the reason this
+ *     returns the hotel rather than an apology).
+ *
+ * Returns null when there is genuinely nothing to say — an uncatalogued
+ * hotel, or one with no rating, no themes and no perks. The caller then
+ * falls through to the honest 409, because an empty card is worse than no
+ * card. Rule 3's principle: absent evidence renders nothing, never a zero.
+ */
+async function hotelOnlyAnswer(
+  wahHotelId: string,
+  checkIn: string,
+  preference: Preference,
+  now: Date,
+  config: { readonly version: number },
+): Promise<Record<string, unknown> | null> {
+  const hotel = await findHotelByWahId(wahHotelId);
+  if (!hotel) return null;
+
+  let reputation: ReputationFact | null = null;
+  let editorialSummary: string | null = null;
+  let reviewThemes: readonly string[] = [];
+  let perks: string[] = [];
+  try {
+    // Both are hotel-level and indexed; neither depends on the stay. The
+    // benefits query takes the check-in only to honour a perk's validity
+    // window, never to price anything.
+    const [reps, benefits] = await Promise.all([
+      findVerifiedReputations([hotel.id]),
+      findBenefits(hotel.id, null, checkIn),
+    ]);
+    const mine = reps.get(hotel.id);
+    if (mine && mine.rating !== null) {
+      reputation = {
+        source: 'GOOGLE',
+        rating: mine.rating,
+        review_count: mine.userRatingCount,
+        display_name: mine.displayName,
+      };
+    }
+    if (mine) {
+      editorialSummary = mine.editorialSummary;
+      reviewThemes = mine.reviewThemes;
+    }
+    perks = benefits.map((b) => b.displayName);
+  } catch (err) {
+    // Context is optional here too. A failed lookup means a thinner card or
+    // no card, never a broken response.
+    console.error('hotel-only fact lookup failed:', (err as Error).message);
+  }
+
+  const facts = hotelOnlyFacts({
+    preference,
+    city: hotel.destination,
+    reputation,
+    perks,
+    editorialSummary,
+    reviewThemes,
+  });
+  const value = deterministicHotelValue(facts);
+  // Nothing measured, nothing said.
+  if (!value) return null;
+
+  return {
+    generated_at: now.toISOString(),
+    model: 'LIVE_MARKET',
+    config_version: config.version,
+    intelligence_mode: 'HOTEL_ONLY',
+    data_source: 'STORED',
+    subject: {
+      hotel: {
+        hotel_id: hotel.wahHotelId,
+        name: hotel.name,
+        destination: hotel.destination,
+        luxury_tier: hotel.luxuryTier,
+        /**
+         * Rule 24, published rather than inferred. FALSE is the page's own
+         * statement and the only basis for telling a guest to speak to an
+         * advisor; NULL means the page did not say, and a client must not
+         * read it as either answer.
+         */
+        bookable_online: hotel.bookableOnline,
+      },
+      // Named explicitly so no client has to infer the absence of a price
+      // from missing keys — and so anything that tries to render one has
+      // nothing to render.
+      rate: null,
+    },
+    deal_score: null,
+    verdict: { out_of_ten: null, band: null, label: null },
+    hotel_value: {
+      headline: value.headline,
+      summary: value.summary,
+      supporting_signals: value.supporting_facts,
+      confidence: value.confidence,
+      source: value.source,
+    },
+    reputation: reputation
+      ? {
+          source: reputation.source,
+          rating: reputation.rating,
+          review_count: reputation.review_count,
+          display_name: reputation.display_name,
+          // The same disclosure the scored modes publish (rule 22).
+          affects_score: false,
+        }
+      : null,
+    explanation: { text: value.summary, source: 'TEMPLATE' },
+    signals: null,
+  };
+}

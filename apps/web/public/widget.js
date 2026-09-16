@@ -1751,6 +1751,52 @@
    * button behind a fold is a conversion killed and a provenance line
    * behind one is honesty deferred.
    */
+  /**
+   * HOTEL_ONLY: the source would not price this stay, so the card is about
+   * the hotel and says nothing about money.
+   *
+   * This exists because the alternative was worse than silence. A failed
+   * rate fetch used to render "Not bookable online for these dates" — a
+   * claim about the property, made on the strength of our own upstream
+   * fault, on a page the property pays to appear on. Now the API sends what
+   * it actually knows (rating, what guests mention, stated inclusions) and
+   * the widget shows that.
+   *
+   * The advisor line appears only when the API states bookable_online:false —
+   * the hotel's own page saying so, never inferred from a fetch that failed.
+   */
+  function renderHotelOnly(root, data) {
+    root.textContent = '';
+    root.className = 'wahpi';
+    root.setAttribute('aria-busy', 'false');
+
+    append(root, renderBrand());
+
+    var head = section(null);
+    head.appendChild(el('h2', null, data.subject.hotel.name));
+    if (data.subject.hotel.destination) {
+      head.appendChild(el('div', 'wahpi__subject-meta', data.subject.hotel.destination));
+    }
+    append(root, head);
+
+    append(root, renderLiveWhyChoose(data));
+    append(root, renderLiveReputation(data));
+
+    if (data.subject.hotel.bookable_online === false) {
+      var note = section(null);
+      note.appendChild(
+        el(
+          'p',
+          'wahpi__notice',
+          'This property is not bookable online. Our advisors can check availability ' +
+            'directly and often access rooms not shown online — reach out and we will ' +
+            'help you find the right stay.',
+        ),
+      );
+      append(root, note);
+    }
+  }
+
   function renderLive(root, data, state) {
     root.textContent = '';
     root.className = 'wahpi';
@@ -2308,21 +2354,36 @@
             mount(root, next);
             return result.body;
           }
-          if (live) renderLive(root, result.body, state);
+          // HOTEL_ONLY carries no price, no score and no comparison, so it
+          // does not go through the market renderer — every block there
+          // describes a rate this body deliberately does not have.
+          if (live && result.body.intelligence_mode === 'HOTEL_ONLY') {
+            renderHotelOnly(root, result.body);
+          } else if (live) renderLive(root, result.body, state);
           else renderAnalysis(root, result.body, state);
           return result.body;
         }
 
         var code = result.body && result.body.error ? result.body.error.code : 'INTERNAL_ERROR';
         if (code === 'NO_CURRENT_RATE') {
-          // The one message allowed to say a stay cannot be presented — and
-          // even here, the copy is about the STAY and the advisor, never
-          // about our data (owner directive, 2026-08-26). Deliberately not
-          // hidden behind unavailable:'hide': an unbookable stay is
-          // information a customer can use.
+          // The one message allowed to say a stay cannot be presented, and it
+          // is about the STAY and the advisor, never about our data (owner
+          // directive, 2026-08-26). Deliberately not hidden behind
+          // unavailable:'hide': a route to a human is information a customer
+          // can use.
+          //
+          // The TITLE changed (2026-09-16). It used to read "Not bookable
+          // online for these dates", which asserted something about the
+          // property that this response cannot know: a rates fault and a
+          // genuinely unbookable hotel look identical from here, and during
+          // the source outage the claim was usually false — a negative
+          // statement about a hotel the site sells, caused by our own
+          // upstream (rules 24 and 26). Where the hotel's page DOES say it,
+          // the API answers HOTEL_ONLY with bookable_online:false and the
+          // renderer above states it plainly.
           renderNotice(
             root,
-            'Not bookable online for these dates',
+            'Check these dates with an advisor',
             'Our advisors can check availability directly and often access rooms not shown online — reach out and we will help you find the right stay.',
           );
         } else if (code === 'RATE_NOT_FOUND' && options.rateId) {

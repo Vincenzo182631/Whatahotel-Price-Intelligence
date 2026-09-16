@@ -13,6 +13,16 @@ export interface HotelRow {
   readonly starRating: number | null;
   readonly baseCurrency: string;
   readonly collectionTier: string;
+  /**
+   * What the hotel's own public page said about booking it online (rule 24).
+   *
+   * NULL means the page did not say — never "bookable", and never "not". The
+   * distinction earns its keep when the rates API fails: a bare fault and a
+   * property that genuinely cannot be booked online are indistinguishable in
+   * the rates response, so this is the only thing that tells a customer-facing
+   * answer which of the two it is looking at.
+   */
+  readonly bookableOnline: boolean | null;
 }
 
 export interface RoomTypeRow {
@@ -28,7 +38,7 @@ export interface RoomTypeRow {
 
 const HOTEL_COLUMNS = `
     h.id, h.wah_hotel_id, h.name, h.brand, h.destination_id, d.name AS destination,
-    h.luxury_tier, h.star_rating, h.base_currency, h.collection_tier`;
+    h.luxury_tier, h.star_rating, h.base_currency, h.collection_tier, h.bookable_online`;
 
 function toHotel(row: Record<string, unknown>): HotelRow {
   return {
@@ -42,6 +52,7 @@ function toHotel(row: Record<string, unknown>): HotelRow {
     starRating: (row.star_rating as number) ?? null,
     baseCurrency: row.base_currency as string,
     collectionTier: row.collection_tier as string,
+    bookableOnline: (row.bookable_online as boolean | null) ?? null,
   };
 }
 
