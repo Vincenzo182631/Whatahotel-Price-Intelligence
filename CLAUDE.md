@@ -603,6 +603,23 @@ and the comp top-up still fires on it so a merely-unfetched market upgrades to
 a terms-matched comparison. It is not the rule-5 merge: nothing is presented
 as like-for-like, and baselines never see it.
 
+**A THIN comp set also tops up** (`needsMoreComparables`, 2026-09-16). The
+top-up used to ask "is the comparison missing?" — and with config v9's
+reduced floor (`minCompsRoomMatched` 2 against `minComps` 3) a room-matched
+rung carrying two comps is not missing, so a request with a thin set stopped
+looking and answered from it. The reduced floor is a concession to thin data,
+never a statement that two hotels describe a market. Measured on Four Seasons
+Paris George V, 6-8 Oct 2026: two stored comps read "45% above comparable
+luxury hotels" at LOW confidence; one more real peer — a single fetch away —
+took the set to four, the median from EUR 2,205 to EUR 2,768, the reading to
+"16% above", and confidence to HIGH. Same hotel, same night, same engine. The
+error has a DIRECTION, which is what makes it worse than noise: a
+half-collected market loses its dearest members first, so a thin set skews
+against the most expensive hotel in it — the apples-to-apples failure of
+rules 20 and 21, arriving through coverage instead of through matching. The
+top-up is bounded by the attempt ledger and the request deadline, and one
+that finds nothing leaves the answer exactly as it was.
+
 **Hotel Value mode** (2026-08-26): a live response whose score is null carries
 `intelligence_mode: HOTEL_VALUE`, and every customer surface presents the
 hotel-value assessment (rating, themes, perks — the existing validated layer)

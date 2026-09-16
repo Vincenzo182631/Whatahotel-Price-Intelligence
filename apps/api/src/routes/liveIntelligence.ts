@@ -32,6 +32,7 @@ import {
   parsePreference,
   deterministicHotelValue,
   hotelOnlyFacts,
+  needsMoreComparables,
   premiumJustificationSummary,
   type Preference,
   type ReputationFact,
@@ -479,8 +480,26 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     // properly. The reload below re-runs the whole ladder, so a top-up that
     // lands terms-matched comps upgrades the comparison and its confidence;
     // one that does not leaves the price-only answer exactly as it was.
-    (loaded.compSet.signal.unavailableReason === 'INSUFFICIENT_COMPARABLES' ||
-      loaded.compTermsMatch === 'PRICE_ONLY')
+    //
+    // And — the case this block missed until 2026-09-16 — when the index IS
+    // produced but is riding on the REDUCED floor: config v9 lets a
+    // room-matched rung carry with `minCompsRoomMatched` (2) rather than
+    // `minComps` (3), which is a concession to thin data, not a statement
+    // that two is enough. The old condition asked "is the comparison
+    // missing?", and two comps is not missing, so the request stopped
+    // looking and reported what it had.
+    //
+    // Measured on Four Seasons Paris George V, 6-8 Oct 2026: two stored
+    // comparables put it "45% above comparable luxury hotels" at LOW
+    // confidence. One of its real peers was a single fetch away — asking for
+    // it took the set to four, the median from EUR 2,205 to EUR 2,768, the
+    // reading to "16% above", and confidence to HIGH. Same hotel, same
+    // night, same engine; the gap was entirely which competitors we happened
+    // to hold. A thin comp set does not read as uncertain to a guest, it
+    // reads as a confident number about the wrong market — and it skews
+    // against the dearest hotel in any set, which is exactly the
+    // apples-to-apples failure rules 20 and 21 exist to prevent.
+    needsMoreComparables(loaded.compSet, config.live.csi)
   ) {
     try {
       // `loaded` is mutable, so the failure-narrowing above does not survive

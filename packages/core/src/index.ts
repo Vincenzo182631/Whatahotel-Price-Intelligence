@@ -71,6 +71,7 @@ export {
   computeCalendarDelta,
   computeCompSetIndex,
   minCompsFor,
+  needsMoreComparables,
   computePremiumJustification,
   computeCompression,
 } from './scoring/liveSignals.js';

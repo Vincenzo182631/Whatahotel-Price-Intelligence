@@ -169,6 +169,45 @@ export function minCompsFor(
 }
 
 /**
+ * Should this request go and fetch more competitors before answering?
+ *
+ * Three reasons, and the third is the one that was missing until 2026-09-16:
+ *
+ *   1. The index could not be produced at all.
+ *   2. It was produced by comparing PRICE ALONE, because the terms-matched
+ *      ladder found nothing. Fresh comparables may fix that properly.
+ *   3. It was produced, terms-matched, but is riding on the REDUCED floor —
+ *      fewer comps than `minComps`. Config v9 lets a room-matched rung carry
+ *      with `minCompsRoomMatched` (2), which is a concession to thin data,
+ *      NOT a statement that two is enough to describe a market.
+ *
+ * Why (3) matters more than it sounds: a thin comp set does not reach a guest
+ * as uncertainty, it reaches them as a confident number about the wrong
+ * market. Measured on Four Seasons Paris George V for 6-8 Oct 2026, two
+ * stored comparables read "45% above comparable luxury hotels"; one more real
+ * peer, a single fetch away, took it to four comps and "16% above" with
+ * confidence rising from LOW to HIGH. The error also has a DIRECTION — a
+ * half-collected market loses its dearest members first, so the thin set
+ * skews against the most expensive hotel in it, which is precisely the
+ * apples-to-apples failure rules 20 and 21 exist to prevent.
+ *
+ * Fetching is bounded elsewhere (the attempt ledger and the request
+ * deadline), and a top-up that finds nothing leaves the answer exactly as it
+ * was — so the cost of asking is latency, and the cost of not asking is
+ * being wrong about a hotel.
+ */
+export function needsMoreComparables(
+  compSet: Pick<CompSetResult, 'compsUsed' | 'termsBasis'> & {
+    readonly signal: Pick<LiveSignal, 'unavailableReason'>;
+  },
+  cfg: ScoringConfig['live']['csi'],
+): boolean {
+  if (compSet.signal.unavailableReason === 'INSUFFICIENT_COMPARABLES') return true;
+  if (compSet.termsBasis === 'PRICE_ONLY') return true;
+  return compSet.compsUsed < cfg.minComps;
+}
+
+/**
  * How this hotel's live rate compares with its comp set for the same stay.
  *
  * Every competitor must be live-validated: a rate that is missing, zero, older
