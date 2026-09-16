@@ -95,28 +95,49 @@ export async function findComparableIdentities(
     `SELECT h.id, h.wah_hotel_id
        FROM hotel_comparable c
        JOIN hotel h ON h.id = c.comparable_id
-      WHERE c.hotel_id = $1 AND h.is_active AND h.collection_tier <> 'OFF'
+      WHERE c.hotel_id = $1 AND h.is_active
       ORDER BY c.rank
       LIMIT $2`,
     [hotelId, limit],
   );
-  if (rows.length > 0) {
-    return rows.map((r) => ({ hotelId: r.id as number, wahHotelId: r.wah_hotel_id as string }));
-  }
+  const curated = rows.map((r) => ({
+    hotelId: r.id as number,
+    wahHotelId: r.wah_hotel_id as string,
+  }));
+  // A curated set that FILLS the budget is the answer: it is ranked on accrued
+  // baselines, which is price-tier similarity measured rather than guessed.
+  if (curated.length >= limit) return curated;
 
-  // No curated comp set yet. `rebuildComparables` ranks on accrued baselines,
-  // so a hotel enrolled minutes ago has none — and returning nothing here
-  // would mean a brand-new destination could never produce a Comp-Set Index,
+  // The curated set is empty OR SHORT, so top it up from the destination.
+  // `rebuildComparables` ranks on accrued baselines, so a hotel enrolled
+  // minutes ago has none — and returning nothing (or a thin list) here means a
+  // Comp-Set Index built from whichever peers happened to be collected first,
   // which is 45% of the live score. Same destination is the weaker but honest
   // stand-in: it is the same filter the curated set starts from, minus the
   // price and tier ranking it cannot compute yet. The curated set takes over
-  // automatically on the first rollup that has baselines to rank.
+  // as the first rollup gives it baselines to rank.
   //
-  // Tier OFF is deliberately NOT excluded here, unlike the curated branch
-  // above. OFF means "not on the collection schedule", which is the normal
-  // state of a sweep-discovered hotel; the caller fetches these hotels' rates
-  // live for this exact stay, so being off the schedule says nothing about
-  // whether the source will answer for them.
+  // TOPPING UP A SHORT SET, not only replacing an empty one (2026-09-16).
+  // The old code returned the curated rows whenever there was at least one,
+  // so a hotel with three ranked peers compared against three — and the
+  // hotels missing from that list were, by construction, the ones nobody had
+  // browsed yet, because an unbrowsed hotel accrues no baselines and so is
+  // never ranked into anyone's curated set. Measured on Four Seasons Paris
+  // George V, 6-8 Oct 2026: Bvlgari and Shangri-La sat in the catalogue,
+  // never fetched, while the comparison ran on cheaper peers and read "45%
+  // above comparable luxury hotels". They are not marginal hotels; they are
+  // the subject's closest price peers, and their absence moved the answer by
+  // 29 points.
+  //
+  // Tier OFF is NOT excluded, here or in the curated branch above (the filter
+  // there was removed the same day). OFF means "not on the collection
+  // schedule", which is the normal state of a sweep-discovered hotel and says
+  // nothing about whether the source will answer for it — the caller fetches
+  // these hotels' rates live for this exact stay, and rule 17 is explicit
+  // that comparables never need scheduling. Excluding them made the
+  // discovery call self-defeating: `discoverCityComparables` asks the source
+  // for the city's best hotels, stores them at OFF exactly as it should, and
+  // the re-read then filtered out everything it had just found.
   const { rows: sameDestination } = await db(q).query(
     `SELECT h.id, h.wah_hotel_id
        FROM hotel h,
@@ -156,10 +177,19 @@ export async function findComparableIdentities(
       LIMIT $2`,
     [hotelId, limit, nearbyRadiusKm],
   );
-  return sameDestination.map((r) => ({
-    hotelId: r.id as number,
-    wahHotelId: r.wah_hotel_id as string,
-  }));
+  // Curated first — it is the ranked, measured set — then the destination
+  // supplement, deduped, up to the budget. Order matters: the caller's fetch
+  // cap is spent on the best-evidenced peers first.
+  const seen = new Set(curated.map((c) => c.hotelId));
+  const merged = [...curated];
+  for (const r of sameDestination) {
+    const id = r.id as number;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    merged.push({ hotelId: id, wahHotelId: r.wah_hotel_id as string });
+    if (merged.length >= limit) break;
+  }
+  return merged;
 }
 
 /**

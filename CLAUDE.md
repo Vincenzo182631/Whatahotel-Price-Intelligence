@@ -300,6 +300,32 @@ engine.
     term classification. `cityrates`' own `rateDaily` is unreliable and is
     never used as a price.
 
+    **A comparable does not have to be on the collection schedule** (fixed
+    2026-09-16). The curated branch of `findComparableIdentities` filtered
+    `collection_tier <> 'OFF'`, which sealed a loop: the sweep catalogues
+    every hotel at OFF, a hotel leaves OFF only when a guest opens ITS OWN
+    page, and a hotel that exists purely as somebody else's comparable never
+    gets that page view — so it was never fetched, never priced, and never
+    compared, permanently. It also made discovery self-defeating:
+    `discoverCityComparables` asks the source for the city's best hotels and
+    stores them at OFF exactly as rule 17 requires, and the re-read then
+    dropped everything it had just found. The filter contradicted the branch
+    twenty lines below it (which never excluded OFF, and says why) and the
+    comp-set CTE it feeds (which has no tier filter at all).
+
+    **And a SHORT curated set now tops up from the destination**, where before
+    any non-empty curated set short-circuited the fallback. The two bugs
+    compound: an unbrowsed hotel accrues no baselines, `rebuildComparables`
+    ranks on baselines, so the hotels missing from a curated set are exactly
+    the ones nobody has browsed — and the comparison then runs on whichever
+    peers happened to get traffic first. Measured on Four Seasons Paris
+    George V, 6-8 Oct 2026: Bvlgari and Shangri-La sat in the catalogue,
+    invisible, while the index read **145.1 ("45% above comparable luxury
+    hotels", LOW confidence)**. With one of them present it reads **115.6
+    ("16% above", HIGH)**. The error's DIRECTION is the point — the peers a
+    thin set omits skew dearest-first, so the penalty lands on the flagship
+    properties the site sells.
+
 20. **Compare a room to an equivalent room, not to the market's cheapest.**
     The comp set matches on rate TERMS, which answers "is this the same
     product commercially" and says nothing about whether it is the same kind of
