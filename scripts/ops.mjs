@@ -32,7 +32,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { COHORT } from './cohort-fixture.mjs';
+import { COHORT, EXCLUDED, EXCLUSIONS_MEASURED_AT } from './cohort-fixture.mjs';
 
 const args = process.argv.slice(2);
 const cmd = args.shift();
@@ -260,6 +260,13 @@ async function cmdScore() {
 async function cmdCohort() {
   console.log(`cohort of ${COHORT.length} against ${BASE}`);
   console.log(`stay ${CHECK_IN} → ${CHECK_OUT}, ${ADULTS} adults`);
+  // Say the exclusions out loud on every run. They are hotels the SOURCE
+  // cannot answer for, not hotels we gave up on, and an exclusion list no
+  // one is reminded of quietly becomes permanent — see the fixture header.
+  console.log(
+    `${EXCLUDED.length} hotel(s) excluded as unanswerable, last measured ` +
+      `${EXCLUSIONS_MEASURED_AT} — re-check with: ops score <id>`,
+  );
   const conc = Number(value('--conc', '6'));
   const results = new Array(COHORT.length);
   let next = 0;
