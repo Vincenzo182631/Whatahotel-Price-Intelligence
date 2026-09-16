@@ -58,6 +58,14 @@ export {
 export type { AttemptOutcome, GridSpec, GridStay } from './repositories/collection.js';
 
 export {
+  DEFAULT_WARMING_OPTIONS,
+  planStayWarming,
+  pruneStayRequests,
+  recordStayRequest,
+} from './repositories/stayRequests.js';
+export type { RequestedStay, WarmingOptions } from './repositories/stayRequests.js';
+
+export {
   findResolutionTargets,
   findUnplacedVerifiedTargets,
   findVerifiedReputations,

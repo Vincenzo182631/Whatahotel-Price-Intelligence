@@ -33,6 +33,7 @@ WAH_API_KEY=... npm run collect -- --catalog-sweep   # sync the WHOLE catalogue
 WAH_API_KEY=... npm run collect                      # top up the grid + refresh what is due
 WAH_API_KEY=... npm run collect -- --bootstrap       # grid only, skip the due-refresh
 WAH_API_KEY=... npm run collect -- --dry-run         # show the plan, call nothing
+WAH_API_KEY=... npm run collect -- --warm-share 0.3  # more of the run on guest-requested stays
 
 npm run pages                     # read hotel pages: street address + bookability
 npm run pages -- --dry-run        # show the queue, fetch nothing
@@ -201,6 +202,27 @@ engine.
     likely hang too — and all of them share one wall-clock budget
     (`retryBudgetMs`, 10s) that starts after the first wave, so the request
     stays under the route's 45s deadline whatever the source does.
+
+    **Warming: the collector follows real demand** (migration 0020,
+    2026-09-16). The scheduler could not SEE demand — `planCollection` derives
+    its work from `rate_observation` and dates "viewed" from `analysis`, both
+    of which only know stays that already worked — so the stays most worth
+    collecting were invisible to it: a guest opens a hotel page for dates
+    nothing has collected, the live fetch fails, and the request leaves no
+    trace anywhere the collector reads. The next guest on that page repeats
+    the same failing fetch, forever. `stay_request` records the stay a guest
+    asked about (hotel, dates, occupancy — never a person), `planStayWarming`
+    returns the wanted stays that are missing or older than
+    `staleAfterHours` (12, matching `maxRateAgeHours`), and the collector
+    fetches them with its PATIENT settings instead of the guest's 8-second
+    budget. Same standing as `collection_attempt`: scheduling input, never a
+    fact, never a score, and it runs through the ordinary backoff so a dead
+    stay still backs off. Warming is served FIRST in `mergeTasks` — it is the
+    only work in a run backed by evidence that a person wants the answer —
+    but it is capped by `--warm-share` (0.2) so it can never starve rule 14's
+    grid top-up. Each share is a FLOOR, not a quota: unused slots go straight
+    back. Tier `OFF` is deliberately not excluded here (see above): a guest
+    asking IS the demand that justifies the call.
 
 17. **The catalogue is the source's whole inventory, not a curated list.** The
     widget has to answer on every hotel page on whatahotel.com, so nothing may
