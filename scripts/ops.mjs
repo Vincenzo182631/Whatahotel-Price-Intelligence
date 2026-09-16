@@ -101,13 +101,29 @@ function printRows(rows) {
 }
 
 function tally(rows) {
-  const t = { scored: 0, hotelValue: 0, LOW: 0, MEDIUM: 0, HIGH: 0, expanded: 0, errors: 0 };
+  // `presentable` is the number a guest would recognise: a card rendered, of
+  // any kind. It is tracked beside `scored` because the two answer different
+  // questions — how often the comparison works, and how often the widget is
+  // not a blank space — and during the outage those diverge sharply.
+  const t = {
+    scored: 0,
+    hotelValue: 0,
+    hotelOnly: 0,
+    presentable: 0,
+    LOW: 0,
+    MEDIUM: 0,
+    HIGH: 0,
+    expanded: 0,
+    errors: 0,
+  };
   for (const r of rows) {
     if (r.score != null) t.scored += 1;
     if (r.mode === 'HOTEL_VALUE') t.hotelValue += 1;
+    if (r.mode === 'HOTEL_ONLY') t.hotelOnly += 1;
     if (r.confidence && t[r.confidence] != null) t[r.confidence] += 1;
     if (r.radiusExpanded) t.expanded += 1;
     if (r.mode?.startsWith('HTTP_') || r.mode === 'FETCH_FAILED') t.errors += 1;
+    else if (r.mode) t.presentable += 1;
   }
   return t;
 }
