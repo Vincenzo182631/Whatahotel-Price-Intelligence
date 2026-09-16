@@ -295,7 +295,7 @@ export interface LiveBundleInput {
 }
 
 /** Customer-facing chip for each review-theme key the ingest side emits. */
-const THEME_CHIP: Readonly<Record<string, string>> = {
+export const THEME_CHIP: Readonly<Record<string, string>> = {
   service: 'Praised service',
   location: 'Location',
   beach: 'Beach',
@@ -315,7 +315,34 @@ const THEME_CHIP: Readonly<Record<string, string>> = {
  * a genuine perk that didn't fit the four-chip display is not inventing
  * anything. Display capping happens at render time (hotelValue.ts).
  */
-const MAX_SIGNALS = 8;
+export const MAX_SIGNALS = 8;
+
+/**
+ * The verified chips for a hotel, from hotel-level evidence alone.
+ *
+ * Extracted so the HOTEL_ONLY answer (a stay whose rate the source would not
+ * give us) builds the exact same vocabulary as a full bundle. Two paths
+ * producing two spellings of "Praised service" would mean a model citing one
+ * of them verbatim gets rejected for citing the other — and the customer
+ * seeing different words for the same measured fact depending on whether a
+ * rate happened to come back.
+ */
+export function buildSupportingSignals(input: {
+  readonly reputation?: ReputationFact | null;
+  readonly perks?: readonly string[];
+  readonly reviewThemes?: readonly string[];
+}): string[] {
+  const perks = (input.perks ?? []).slice(0, 6);
+  const themes = (input.reviewThemes ?? []).slice(0, 5);
+  const signals: string[] = [];
+  if (input.reputation) signals.push(`★ ${input.reputation.rating} Google rating`);
+  for (const theme of themes) {
+    const chip = THEME_CHIP[theme];
+    if (chip) signals.push(chip);
+  }
+  for (const perk of perks) signals.push(perk);
+  return signals.slice(0, MAX_SIGNALS);
+}
 
 const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
   USD: '$',
@@ -552,18 +579,11 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
     hotel_facts: (() => {
       const perks = (input.perks ?? []).slice(0, 6);
       const themes = (input.reviewThemes ?? []).slice(0, 5);
-      const signals: string[] = [];
-      if (input.reputation) signals.push(`★ ${input.reputation.rating} Google rating`);
-      for (const theme of themes) {
-        const chip = THEME_CHIP[theme];
-        if (chip) signals.push(chip);
-      }
-      for (const perk of perks) signals.push(perk);
       return {
         perks,
         editorial_summary: input.editorialSummary ?? null,
         review_themes: themes,
-        supporting_signals: signals.slice(0, MAX_SIGNALS),
+        supporting_signals: buildSupportingSignals(input),
       };
     })(),
     reputation: {

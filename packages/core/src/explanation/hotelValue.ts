@@ -24,7 +24,9 @@
  *     means null — the section hides rather than stretches.
  */
 
-import type { LiveExplanationBundle } from './liveBundle.js';
+import type { LiveExplanationBundle, ReputationFact } from './liveBundle.js';
+import { buildSupportingSignals } from './liveBundle.js';
+import type { Preference } from './preference.js';
 import { validateNarrative } from './validate.js';
 import type { AssessmentConfidence } from './assessment.js';
 import { THEME_PROSE } from './themes.js';
@@ -65,6 +67,83 @@ export const HOTEL_VALUE_EVIDENCE = [
 ] as const;
 export type HotelValueEvidence = (typeof HOTEL_VALUE_EVIDENCE)[number];
 
+/**
+ * Everything this section actually reads.
+ *
+ * A `LiveExplanationBundle` satisfies it structurally, and so does the
+ * HOTEL_ONLY fact set built when the source gave us no rate for the stay at
+ * all (`hotelOnlyFacts`). Narrowing the parameter rather than duplicating the
+ * reader is what keeps ONE set of sentences: a guest who gets the hotel-only
+ * answer reads prose written by the same code, checked by the same
+ * validators, as a guest whose rate came back — the two differ in which facts
+ * exist, never in what the system is willing to say about them.
+ *
+ * The rate-shaped fields are nullable for exactly that reason. With no rate
+ * there is no room being priced and no availability picture, so those
+ * sentences simply do not fire; nothing here fills the gap with a guess.
+ */
+export interface HotelValueFacts {
+  readonly preference: Preference;
+  readonly subject: {
+    readonly city?: string | null;
+    readonly room_class?: string | null;
+    readonly room_view?: string | null;
+  };
+  readonly hotel_facts: {
+    readonly perks: readonly string[];
+    readonly editorial_summary: string | null;
+    readonly review_themes: readonly string[];
+    readonly supporting_signals: readonly string[];
+  };
+  readonly reputation: { readonly subject: ReputationFact | null };
+  readonly availability: {
+    readonly selected_position?: 'ENTRY' | 'MID' | 'TOP' | null;
+    readonly cheaper_categories_available?: number;
+    readonly available_categories?: number;
+    readonly availability_influenced?: boolean;
+  };
+}
+
+/**
+ * The fact set for a stay the source would not price for us.
+ *
+ * Built from hotel-level evidence only — the verified rating, what guests
+ * say, what the hotel itself states it includes — none of which depends on a
+ * rate existing. It carries NO price fields, so no downstream sentence can
+ * accidentally describe a rate we do not have.
+ */
+export function hotelOnlyFacts(input: {
+  readonly preference: Preference;
+  readonly city?: string | null;
+  readonly reputation?: ReputationFact | null;
+  readonly perks?: readonly string[];
+  readonly editorialSummary?: string | null;
+  readonly reviewThemes?: readonly string[];
+}): HotelValueFacts {
+  const perks = (input.perks ?? []).slice(0, 6);
+  const themes = (input.reviewThemes ?? []).slice(0, 5);
+  return {
+    preference: input.preference,
+    subject: { city: input.city ?? null, room_class: null, room_view: null },
+    hotel_facts: {
+      perks,
+      editorial_summary: input.editorialSummary ?? null,
+      review_themes: themes,
+      supporting_signals: buildSupportingSignals(input),
+    },
+    reputation: { subject: input.reputation ?? null },
+    // No rate means no room was selected and no availability was read. Zeroes
+    // here are "nothing to say", and every reader below is written to stay
+    // silent on them rather than to read them as a measurement (rule 9).
+    availability: {
+      selected_position: null,
+      cheaper_categories_available: 0,
+      available_categories: 0,
+      availability_influenced: false,
+    },
+  };
+}
+
 export interface HotelValue {
   /** A short phrase, not a paragraph. The section TITLE is fixed by the UI. */
   readonly headline: string;
@@ -88,12 +167,12 @@ export { THEME_PROSE } from './themes.js';
  * model cites these strings verbatim or its draft is rejected; it cannot
  * invent a badge, and it cannot be failed for a string it was never shown.
  */
-export function supportingSignals(bundle: LiveExplanationBundle): string[] {
+export function supportingSignals(bundle: HotelValueFacts): string[] {
   return [...bundle.hotel_facts.supporting_signals];
 }
 
 /** Which evidence the bundle actually carries for this section. */
-export function hotelValueEvidencePresent(bundle: LiveExplanationBundle): Set<HotelValueEvidence> {
+export function hotelValueEvidencePresent(bundle: HotelValueFacts): Set<HotelValueEvidence> {
   const present = new Set<HotelValueEvidence>();
   if (bundle.reputation.subject) present.add('google_rating');
   if (bundle.hotel_facts.review_themes.length > 0) present.add('google_review_themes');
@@ -101,7 +180,7 @@ export function hotelValueEvidencePresent(bundle: LiveExplanationBundle): Set<Ho
   if (bundle.hotel_facts.perks.length > 0) present.add('hotel_perks');
   if (bundle.subject.city) present.add('hotel_location');
   if (bundle.subject.room_class) present.add('room_category');
-  if (bundle.availability.available_categories > 0) present.add('availability');
+  if ((bundle.availability.available_categories ?? 0) > 0) present.add('availability');
   return present;
 }
 
@@ -110,7 +189,7 @@ export function hotelValueEvidencePresent(bundle: LiveExplanationBundle): Set<Ho
  * what the rate includes; a single strand of evidence is MEDIUM; anything
  * thinner is LOW (and usually hidden by the null gate below).
  */
-export function hotelValueConfidence(bundle: LiveExplanationBundle): AssessmentConfidence {
+export function hotelValueConfidence(bundle: HotelValueFacts): AssessmentConfidence {
   const rep = bundle.reputation.subject !== null;
   const themes = bundle.hotel_facts.review_themes.length >= 2;
   const perks = bundle.hotel_facts.perks.length >= 2;
@@ -132,7 +211,7 @@ const listOut = (items: readonly string[]): string =>
  * bundle states, in the consultative register: "may", "recent reviewers
  * mention", never an imperative.
  */
-export function deterministicHotelValue(bundle: LiveExplanationBundle): HotelValue | null {
+export function deterministicHotelValue(bundle: HotelValueFacts): HotelValue | null {
   const rep = bundle.reputation.subject;
   const { perks, review_themes: themes } = bundle.hotel_facts;
   const statedView = bundle.subject.room_view ? VIEW_PROSE[bundle.subject.room_view] : undefined;
@@ -181,7 +260,7 @@ export function deterministicHotelValue(bundle: LiveExplanationBundle): HotelVal
   // categories is a choice, and the reading should say so instead of
   // treating the price as the property's fault.
   const avail = bundle.availability;
-  if (avail.selected_position === 'TOP' && avail.cheaper_categories_available > 0) {
+  if (avail.selected_position === 'TOP' && (avail.cheaper_categories_available ?? 0) > 0) {
     sentences.push(
       "You're viewing one of the property's higher room categories, so the rate reflects the room selection as well as the property itself.",
     );

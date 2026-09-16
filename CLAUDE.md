@@ -592,6 +592,31 @@ stays null (rule 3), the engine is untouched, and the one message allowed to
 say a stay cannot be presented is the unbookable notice — phrased about the
 stay and the advisor, never about our data.
 
+**HOTEL_ONLY: an answer when the source will not price the stay**
+(2026-09-16). A live request whose stay has NO rate — the common outcome
+during the source outage, where ~57% of rates calls fail at random per
+request even after the on-demand retries — now answers `200` with
+`intelligence_mode: HOTEL_ONLY` instead of `409`. It carries hotel-level
+evidence only: the verified Google rating, what recent guests mention, and
+the perks the source states. There are no price fields in the body at all,
+which makes "never describe a rate we do not hold" structural rather than
+editorial. The score stays null (rule 3), the sentences come from the same
+`deterministicHotelValue` reader the other modes use (one voice, one chip
+vocabulary — `buildSupportingSignals`), and with no rating, themes or perks
+it returns null and the honest 409 still applies: an empty card is worse
+than no card.
+
+**What this replaced was a false statement about a hotel.** The 409 made the
+widget render "Not bookable online for these dates" — a claim about the
+PROPERTY, asserted on the strength of our own upstream fault, on a page the
+property pays to appear on. A rates fault and a genuinely unbookable hotel
+are indistinguishable from the rates API, so the claim was usually wrong
+during the outage, and it is exactly the negative assessment rule 26
+forbids. Unbookability is now stated only where the hotel's own page said so
+(`bookable_online === false`, rule 24 — NULL still means the page did not
+say); the remaining no-evidence 409 shows an advisor route titled about the
+DATES, never about the hotel.
+
 **Premium justification is not only money** (2026-08-26): when the source
 states no inclusions — the common case — `premiumSupport()` justifies the
 premium from the rating measured against the COMPARABLES' median, the review
