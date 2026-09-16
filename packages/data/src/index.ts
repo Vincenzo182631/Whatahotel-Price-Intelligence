@@ -24,6 +24,7 @@ export {
   findAvailableRoomTypes,
   findCurrentRate,
   findQuotedCurrency,
+  findQuotedCurrencyByWahId,
   findSameStaySeries,
   findSeriesGaps,
   resolveRoomCode,

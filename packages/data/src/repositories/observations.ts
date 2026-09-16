@@ -332,6 +332,34 @@ export async function findQuotedCurrency(hotelId: number, q?: Queryable): Promis
   return (fallback[0]?.base_currency as string) ?? null;
 }
 
+/**
+ * The same question, keyed by the SOURCE's hotel id.
+ *
+ * The API's public identifier is the WhataHotel id, and the endpoints that
+ * need this (price-intelligence) resolve the hotel inside their loader rather
+ * than before it — so asking by internal id would mean looking the hotel up
+ * twice to answer a question one join already answers.
+ */
+export async function findQuotedCurrencyByWahId(
+  wahHotelId: string,
+  q?: Queryable,
+): Promise<string | null> {
+  const { rows } = await db(q).query(
+    `SELECT COALESCE(
+              (SELECT o.currency
+                 FROM rate_observation o
+                WHERE o.hotel_id = h.id
+                ORDER BY o.observed_at DESC
+                LIMIT 1),
+              h.base_currency
+            ) AS currency
+       FROM hotel h
+      WHERE h.wah_hotel_id = $1`,
+    [wahHotelId],
+  );
+  return (rows[0]?.currency as string) ?? null;
+}
+
 export async function findAvailableRoomTypes(
   hotelId: number,
   checkIn: string,
