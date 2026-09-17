@@ -1,0 +1,87 @@
+# Can the code on this ref run against the config PRODUCTION is serving?
+#
+# The fault this exists for, measured 2026-09-17: config v10 added
+# live.csi.outlierRatio and the engine read it unconditionally, while the
+# production database still held v9. Every stay carrying a rate answered 500
+# for twenty minutes. Nothing caught it and nothing could have — unit tests
+# run against DEFAULT_CONFIG, which by definition has every field the code
+# just added, and CI has no database.
+#
+# The gap is structural rather than careless: code ships the moment it merges,
+# and seeding a config version is a separate reviewed decision (rule 8). In
+# between, production runs new code against an old config. This is the check
+# that fits in that gap.
+#
+# Run it BEFORE merging anything that touches defaults.ts, and again after
+# seeding a new version.
+#
+# READ-ONLY: one SELECT for the active config, then every live signal is
+# exercised in memory against fixtures. Safe against production at any time,
+# which is the point — production's config is the one that matters.
+name: Config preflight
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packages/core/src/config/**'
+      - 'packages/core/src/scoring/**'
+      - 'db/seeds/002_scoring_config.sql'
+
+concurrency:
+  group: config-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Named explicitly, never enumerated (see db-setup.yml for why).
+      #
+      # A fork PR cannot see secrets, so this reports and stops rather than
+      # failing: a contributor who cannot reach the database has not done
+      # anything wrong, and a red X there would mean nothing.
+      - name: Check the database secret is visible
+        id: secret
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+        run: echo "present=$HAS_DATABASE_URL" >> "$GITHUB_OUTPUT"
+
+      - if: steps.secret.outputs.present != 'true'
+        run: |
+          echo "::notice::DATABASE_URL is not visible to this run, so the stored config was not checked."
+          echo '### Config preflight: skipped (no database access from this run)' >> "$GITHUB_STEP_SUMMARY"
+
+      - if: steps.secret.outputs.present == 'true'
+        run: npm ci
+
+      - if: steps.secret.outputs.present == 'true'
+        run: npm run build
+
+      - name: Run this checkout's engine against the LIVE config
+        if: steps.secret.outputs.present == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -o pipefail
+          node scripts/config-preflight.mjs | tee preflight.log
+
+      - name: Summary
+        if: always() && steps.secret.outputs.present == 'true'
+        run: |
+          {
+            echo '### Config preflight'
+            echo
+            echo '```'
+            cat preflight.log 2>/dev/null || echo 'no output'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

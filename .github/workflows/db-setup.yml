@@ -181,6 +181,20 @@ jobs:
           # The whole run is a transaction ending in ROLLBACK.
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/checks/schema_checks.sql
 
+      - name: Can the engine run on the config just seeded
+        # The seed is only half of activating a config version. This proves
+        # the other half: that the code can actually READ what was written.
+        #
+        # 2026-09-17 is the case it exists for, in reverse — there the code
+        # was newer than the stored config and every rate-carrying stay
+        # answered 500. Seeding a config the deployed code cannot read would
+        # produce the same outage from the other direction, and the seed step
+        # above would still report success.
+        if: inputs.confirm == 'apply'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/config-preflight.mjs
+
       - name: Readiness report
         # NOT always(). This used to run even after an earlier step had failed,
         # and then failed itself trying to reach a database it had no URL for —
