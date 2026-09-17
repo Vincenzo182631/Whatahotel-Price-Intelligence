@@ -165,6 +165,12 @@ export async function findComparableIdentities(
             (SELECT destination_id, latitude, longitude FROM hotel WHERE id = $1) s
       WHERE h.is_active
         AND h.id <> $1
+        -- Curated hotels are excluded HERE, not filtered out afterwards: the
+        -- LIMIT below counts rows, so discarding them in JS spends the
+        -- supplement's budget on hotels that were never eligible. With a
+        -- reserve of one and a curated peer that is also the nearest
+        -- destination hotel, that returned an empty supplement.
+        AND h.id <> ALL($4::bigint[])
         -- A hotel a guest cannot book is not an alternative, and fetching its
         -- rates spends the source's quota on a hotel the comparison discards.
         -- NULL means the page never said, which is not "unbookable".
@@ -196,20 +202,18 @@ export async function findComparableIdentities(
                (h.latitude - s.latitude) ^ 2 + (h.longitude - s.longitude) ^ 2,
                h.id
       LIMIT $2`,
-    [hotelId, limit, nearbyRadiusKm],
+    [hotelId, limit, nearbyRadiusKm, curated.map((c) => c.hotelId)],
   );
   // Curated first — it is the ranked, measured set — then the destination
   // supplement, deduped, up to the budget. Order matters: the caller's fetch
   // cap is spent on the best-evidenced peers first.
   const seen = new Set(kept.map((c) => c.hotelId));
   const merged = [...kept];
-  const trimmed = new Set(curated.map((c) => c.hotelId));
   for (const r of sameDestination) {
     const id = r.id as number;
-    // Skip anything already taken, and anything the reserve trimmed off the
-    // curated list — a reserved slot exists to reach BEYOND that list, and
-    // refilling it from the same list would make the reserve a no-op.
-    if (seen.has(id) || (supplementSlots > 0 && trimmed.has(id))) continue;
+    // Curated hotels are already excluded in SQL; this only guards against a
+    // duplicate row.
+    if (seen.has(id)) continue;
     seen.add(id);
     merged.push({ hotelId: id, wahHotelId: r.wah_hotel_id as string });
     if (merged.length >= limit) break;
