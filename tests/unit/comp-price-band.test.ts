@@ -126,4 +126,31 @@ describe('the price-tier guard', () => {
     // airport hotel would have manufactured.
     expect(Math.round(premium.premiumPct as number)).toBe(5);
   });
+
+  it('behaves as the stored config version does when the band is absent', () => {
+    // The active config is loaded from `scoring_config` and cast, so a
+    // version predating outlierRatio reaches the engine WITHOUT the field.
+    // Reading through it threw, and every stay with a rate answered 500 in
+    // production. A missing band means "this version has no guard", never
+    // "use today's default".
+    const v9 = {
+      ...DEFAULT_CONFIG,
+      live: {
+        ...DEFAULT_CONFIG.live,
+        csi: { ...DEFAULT_CONFIG.live.csi, outlierRatio: undefined },
+      },
+    } as unknown as typeof DEFAULT_CONFIG;
+
+    const comps = [comp(85_000), comp(92_000), comp(79_000), comp(20_000, 'airport')];
+    const r = computeCompSetIndex(88_900, comps, v9, NOW, MATCH);
+
+    expect(r.signal.available).toBe(true);
+    expect(r.compsUsed).toBe(4);
+    expect(r.compsExcludedOutlier).toBe(0);
+    // The airport hotel is back in the median, which is exactly what v9 did.
+    expect(r.medianCompetitorNightlyMinor).toBe(82_000);
+
+    // And the premium survives the same config without throwing.
+    expect(() => computePremiumJustification(88_900, null, comps, v9)).not.toThrow();
+  });
 });
