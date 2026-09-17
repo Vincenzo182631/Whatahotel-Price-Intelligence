@@ -477,3 +477,48 @@ sentence, the premium summary, the availability context — leads with the
 category mismatch as the FRAME rather than a footnote, and never phrases the
 gap as "above comparable hotels". The API publishes the flag as
 `signals.comp_set.category_mismatch`.
+
+---
+
+## Config v10 — the price-tier outlier guard
+
+`live.csi.outlierRatio` ( `{ min: 0.34, max: 3 }` ). A competitor whose nightly
+rate falls outside a third to triple the SUBJECT's is set aside before the
+median is taken, on both the Comp-Set Index and Premium Justification.
+
+**What it fixes.** The comparison ladder matches on the ROOM (class, view) and
+the rate TERMS. Those answer "is this the same product commercially" — and
+they cannot answer "is this sold in the same market". A terms-matched,
+class-matched refundable king room exists at an airport hotel and at
+Halekulani, and at a third of the price it is not a peer; leaving it in the
+median manufactures a premium out of a tier difference rather than measuring
+one. The guard is symmetric because the failure runs both ways, and the
+UPWARD direction is the more dangerous: an out-of-tier villa drags the median
+up and manufactures a _bargain_, which flatters.
+
+**What it must not do, and why the band is this wide.** This is an outlier
+guard, not nearest-price selection. Peers are still chosen by room and terms,
+never because their price resembles the subject's. Choosing comparables by
+price proximity would drive every CSI toward 100 by construction — the index
+would report "market rate" for everything and tell a guest nothing, which is
+the one failure that would make the whole live model pointless. The band is
+therefore set far outside any price signal this engine has ever produced: the
+widest real reading on production data was 145 (Four Seasons Paris George V
+against a half-collected market, 2026-09-16), and 3x cannot reach it. Tests
+pin both directions — a 45% premium and a strong-value bargain both survive
+the guard untouched.
+
+**Insufficiency is an honest outcome.** The guard runs before the `minComps`
+floor, so a set that is only viable because of out-of-tier hotels reports
+`INSUFFICIENT_COMPARABLES` rather than answering from the wrong market. That
+costs some answers. An answer describing a market the guest is not in is
+worse than no answer — the same trade rule 3 makes for an absent score.
+
+**Both signals use one definition** (`withinPriceBand`), so the premium
+percentage a guest reads is always the premium over the hotels the index
+actually compared against. Two pools would describe two different markets.
+
+**Reported separately.** `compsExcludedOutlier` is published as
+`signals.comp_set.comps_excluded_outlier` and rendered distinctly from
+`comps_excluded`: a rate-less competitor was never evidence, whereas these
+were live and were set aside for a stated reason.

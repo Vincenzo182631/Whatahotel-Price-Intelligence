@@ -1225,6 +1225,10 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         // hotel's commercial data.
         comps_used: compSet.compsUsed,
         comps_excluded: compSet.compsExcluded,
+        // Reported separately from comps_excluded: a rate-less competitor was
+        // never comparable evidence, while these were live and were set aside
+        // for belonging to a different price tier (config live.csi.outlierRatio).
+        comps_excluded_outlier: compSet.compsExcludedOutlier,
         // How much of the cross-hotel match rested on stated terms, and what
         // the source left unstated. Exposed because a consumer rendering the
         // index without this would present a term-blind comparison as

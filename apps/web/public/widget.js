@@ -1672,6 +1672,11 @@
           ' per night.' +
           (comp.comps_excluded > 0
             ? ' ' + comp.comps_excluded + ' excluded for having no live rate — never estimated.'
+            : '') +
+          (comp.comps_excluded_outlier > 0
+            ? ' ' +
+              comp.comps_excluded_outlier +
+              ' set aside for being in a different price tier — matching the room type does not make a hotel a peer.'
             : ''),
       ),
     );

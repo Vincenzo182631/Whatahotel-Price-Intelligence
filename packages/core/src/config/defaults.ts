@@ -122,6 +122,36 @@ export interface ScoringConfig {
       readonly radiusMiles: readonly number[];
       /** Competitor rates older than this are not live-validated; excluded. */
       readonly maxCompAgeHours: number;
+      /**
+       * The price band a competitor must fall inside, as a ratio of the
+       * SUBJECT's nightly rate, to count as a comparable at all.
+       *
+       * The comp set matches on the ROOM (class, view) and the rate TERMS,
+       * which answers "is this the same product" — but two hotels can sell a
+       * matching refundable king room and not be selling the same thing at
+       * all. Measured on Halekulani (Honolulu, $889/night): a terms-matched,
+       * class-matched room at an airport hotel three times cheaper is not a
+       * peer, and including it moves the median enough to invent a premium
+       * out of a tier difference.
+       *
+       * Deliberately WIDE, and symmetric. This is an outlier guard, NOT
+       * nearest-price selection: peers are still chosen by room and terms,
+       * never because their price resembles the subject's. A hotel 30%, 50%
+       * or even 150% above its market is still compared against all of it —
+       * that gap is the signal, and a band tight enough to trim it would
+       * drive every CSI toward 100 and make the index say nothing. Only a
+       * gap big enough to mean "different product tier" is cut.
+       *
+       * Symmetric because the failure runs both ways: a $200 hotel drags a
+       * luxury subject's median down and manufactures a premium, and a
+       * $9,000 villa drags it up and manufactures a bargain. The second is
+       * the more dangerous of the two — it flatters.
+       *
+       * Excluded comparables are reported separately from rate-less ones
+       * (`compsExcludedOutlier`), because they were excluded for a different
+       * reason and the customer-facing copy says which.
+       */
+      readonly outlierRatio: { readonly min: number; readonly max: number };
       /** CSI at which the sub-score hits 0 and 100 respectively. */
       readonly scoreAtCsi: { readonly zero: number; readonly full: number };
     };
@@ -349,7 +379,7 @@ export const DEFAULT_CONFIG: ScoringConfig = {
   //
   // The v2 factor weights are retained unchanged, and every analysis records the
   // version that produced it, so older scores stay reproducible.
-  version: 9,
+  version: 10,
 
   score: {
     weight: {
@@ -397,6 +427,11 @@ export const DEFAULT_CONFIG: ScoringConfig = {
       // its missing comparable is 7 km away, inside the 5-mile rung (8.05 km).
       radiusMiles: [2, 3, 5],
       maxCompAgeHours: 24,
+      // A third to triple. Wide on purpose: the widest premium this engine
+      // has ever reported on real data was 45% (Four Seasons Paris George V
+      // against a half-collected market), so 3x cannot touch a genuine
+      // price signal — it only cuts hotels that are not in the same market.
+      outlierRatio: { min: 0.34, max: 3 },
       // CSI 130 → 0, CSI 70 → 100. Centred so parity (100) lands mid-scale.
       scoreAtCsi: { zero: 130, full: 70 },
     },
