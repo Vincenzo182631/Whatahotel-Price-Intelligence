@@ -120,6 +120,40 @@ export interface ScoringConfig {
        * destination label.
        */
       readonly radiusMiles: readonly number[];
+      /**
+       * The reach allowed to a hotel whose CATALOGUE holds no neighbours.
+       *
+       * The ordinary ladder stops at 5 miles on purpose: reaching across a
+       * metro area compares a prime-district hotel with suburban ones, which
+       * is the comparison the ladder exists to prevent. But that cap has a
+       * blind spot, measured on Four Seasons Oahu at Ko Olina (2026-09-17):
+       * an isolated resort has NO hotel within five miles, so every rung
+       * returns nothing and the property is unscoreable forever, in a healthy
+       * market, whatever we collect. Isolated resorts are a large part of
+       * what this source sells.
+       *
+       * The distinction that makes a wider reach safe is not distance, it is
+       * WHY the near rings were empty:
+       *
+       *   - the CATALOGUE holds neighbours nearby and none had a usable rate
+       *     → a coverage problem. Reaching past real peers to compare against
+       *     distant ones would be strictly worse than waiting, so this rung
+       *     must NOT fire. Collecting them is the fix (the on-demand top-up).
+       *
+       *   - the CATALOGUE holds no neighbours at all → nothing we collect can
+       *     ever produce a comparison here. A wider, disclosed comparison is
+       *     the only thing that can be said, and silence is the alternative.
+       *
+       * The test therefore counts CATALOGUED hotels in range, not rates, and
+       * the rung fires only in the second case. It is disclosed as
+       * `isolated_market` and forces `radiusExpanded`, which already caps
+       * confidence below HIGH — a comparison this far out is real evidence
+       * but never a statement about a neighbourhood.
+       *
+       * 0 disables it, and so does an absent value: a config version that
+       * predates this field behaves exactly as it did (rule 6).
+       */
+      readonly isolatedRadiusMiles?: number;
       /** Competitor rates older than this are not live-validated; excluded. */
       readonly maxCompAgeHours: number;
       /**
@@ -379,7 +413,7 @@ export const DEFAULT_CONFIG: ScoringConfig = {
   //
   // The v2 factor weights are retained unchanged, and every analysis records the
   // version that produced it, so older scores stay reproducible.
-  version: 10,
+  version: 11,
 
   score: {
     weight: {
@@ -426,6 +460,10 @@ export const DEFAULT_CONFIG: ScoringConfig = {
       // The St. Regis Aruba case that motivated the old 30 km still resolves:
       // its missing comparable is 7 km away, inside the 5-mile rung (8.05 km).
       radiusMiles: [2, 3, 5],
+      // 30 miles reaches Waikiki from Ko Olina, which is the measured case.
+      // It can only ever apply where the catalogue is empty inside 5 miles,
+      // so it cannot re-create the metro-wide comparison v8 removed.
+      isolatedRadiusMiles: 30,
       maxCompAgeHours: 24,
       // A third to triple. Wide on purpose: the widest premium this engine
       // has ever reported on real data was 45% (Four Seasons Paris George V

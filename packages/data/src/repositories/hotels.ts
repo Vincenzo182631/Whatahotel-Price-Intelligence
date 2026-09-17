@@ -23,6 +23,17 @@ export interface HotelRow {
    * answer which of the two it is looking at.
    */
   readonly bookableOnline: boolean | null;
+  /**
+   * Position, when we hold one. NULL is common and is not a fault.
+   *
+   * Read here so a caller can tell "this hotel has no catalogued neighbours"
+   * from "we cannot place this hotel at all" — a distinction the isolation
+   * rung in loadLiveIntelligence turns on, because a hotel without
+   * coordinates matches on its destination label instead and would look
+   * surrounded wherever it actually is.
+   */
+  readonly latitude: number | null;
+  readonly longitude: number | null;
 }
 
 export interface RoomTypeRow {
@@ -38,7 +49,8 @@ export interface RoomTypeRow {
 
 const HOTEL_COLUMNS = `
     h.id, h.wah_hotel_id, h.name, h.brand, h.destination_id, d.name AS destination,
-    h.luxury_tier, h.star_rating, h.base_currency, h.collection_tier, h.bookable_online`;
+    h.luxury_tier, h.star_rating, h.base_currency, h.collection_tier, h.bookable_online,
+    h.latitude, h.longitude`;
 
 function toHotel(row: Record<string, unknown>): HotelRow {
   return {
@@ -53,6 +65,8 @@ function toHotel(row: Record<string, unknown>): HotelRow {
     baseCurrency: row.base_currency as string,
     collectionTier: row.collection_tier as string,
     bookableOnline: (row.bookable_online as boolean | null) ?? null,
+    latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
+    longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
   };
 }
 

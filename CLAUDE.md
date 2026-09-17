@@ -493,7 +493,7 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     recommendation — and absence of the flag is UNKNOWN, scored exactly as
     before, never penalized); and it never edits a fact (price statements
     stay true for partners and non-partners alike — "not saying anything
-    negative" is delivered by rule 27, which covers every catalogued hotel,
+    negative" is delivered by rule 28, which covers every catalogued hotel,
     not by suppressing facts). The bonuses are tie-breakers, not trumps: on a
     0..1 blend they decide between comparable candidates and cannot outrank
     a materially bigger saving or a materially stronger verified reputation;
@@ -525,7 +525,34 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     `compsExcluded` — a rate-less competitor was never evidence; these were
     live and were set aside for a stated reason.
 
-27. **No negative assessment of a hotel ever renders.** Owner business rule
+27. **An isolated hotel has no neighbourhood, so it gets a wider comparison
+    and says so** (config v11, 2026-09-17). The radius ladder stops at 5 miles
+    on purpose — reaching across a metro area compares a prime-district hotel
+    with suburban ones. That cap has a blind spot: Four Seasons Oahu at Ko
+    Olina holds ZERO catalogued hotels inside 5 miles, so every rung returned
+    nothing and the property was unscoreable forever, in a healthy market,
+    whatever we collected. Isolated resorts are a large part of what this
+    source sells, and Greg found this by opening the widget on one.
+    `live.csi.isolatedRadiusMiles` (30) is the reach allowed in that case.
+    **What makes it safe is the test, not the distance.** The rung asks why
+    the near rings were empty, by counting CATALOGUED hotels in range
+    (`findComparableIdentities`, which reads `hotel` and never joins a rate):
+    neighbours exist but hold no usable rate is a COVERAGE problem, and
+    reaching past real peers to compare against distant ones is strictly
+    worse than waiting for the on-demand top-up, so the rung must not fire;
+    no neighbours exist at all means nothing we ever collect can produce a
+    comparison, and a wider disclosed comparison is the only alternative to
+    silence. It also requires COORDINATES — without them
+    `findComparableIdentities` matches on the destination label, which would
+    return the whole of Honolulu and make an isolated resort look surrounded.
+    It forces `radiusExpanded` (so confidence caps below HIGH), publishes
+    `isolated_market`, and marks the selection method with `!`. A comparison
+    drawn from 30 miles away is real evidence about a PRICE and never a
+    statement about a neighbourhood. The field is OPTIONAL, so a stored
+    config predating it behaves exactly as before (rule 6, and the v10
+    outage).
+
+28. **No negative assessment of a hotel ever renders.** Owner business rule
     (2026-09-15), completing the arc of rules 21-23 and 25. The line is
     VALENCE, not direction: a measurement renders whichever way it points —
     "22% above the comparable median", "above every rate checked", the
@@ -736,7 +763,7 @@ widget render "Not bookable online for these dates" — a claim about the
 PROPERTY, asserted on the strength of our own upstream fault, on a page the
 property pays to appear on. A rates fault and a genuinely unbookable hotel
 are indistinguishable from the rates API, so the claim was usually wrong
-during the outage, and it is exactly the negative assessment rule 27
+during the outage, and it is exactly the negative assessment rule 28
 forbids. Unbookability is now stated only where the hotel's own page said so
 (`bookable_online === false`, rule 24 — NULL still means the page did not
 say); the remaining no-evidence 409 shows an advisor route titled about the
