@@ -150,6 +150,13 @@ export interface CompSetResult {
   readonly compsUsed: number;
   /** Checked but excluded because they were sold out or stale. */
   readonly compsExcluded: number;
+  /**
+   * Checked, live, and excluded anyway for sitting outside the subject's
+   * price band — a different product tier, not a peer. Counted separately
+   * from `compsExcluded` because the reason is different and the customer
+   * copy says which.
+   */
+  readonly compsExcludedOutlier: number;
 }
 
 /**
@@ -205,6 +212,25 @@ export function needsMoreComparables(
   if (compSet.signal.unavailableReason === 'INSUFFICIENT_COMPARABLES') return true;
   if (compSet.termsBasis === 'PRICE_ONLY') return true;
   return compSet.compsUsed < cfg.minComps;
+}
+
+/**
+ * The competitors inside the subject's price band.
+ *
+ * ONE definition, used by both the Comp-Set Index and Premium Justification,
+ * so the two can never describe different markets — the premium percentage a
+ * guest reads has to be the premium over the same hotels the index compared
+ * against. See `outlierRatio` in config for why the band is as wide as it is,
+ * and why it is not nearest-price selection.
+ */
+function withinPriceBand<T extends { readonly nightlyMinor: Minor }>(
+  subjectNightlyMinor: Minor,
+  comps: readonly T[],
+  cfg: ScoringConfig['live']['csi'],
+): readonly T[] {
+  const lo = subjectNightlyMinor * cfg.outlierRatio.min;
+  const hi = subjectNightlyMinor * cfg.outlierRatio.max;
+  return comps.filter((c) => c.nightlyMinor >= lo && c.nightlyMinor <= hi);
 }
 
 /**
@@ -285,6 +311,7 @@ export function computeCompSetIndex(
       ...empty,
       compsUsed: 0,
       compsExcluded: 0,
+      compsExcludedOutlier: 0,
     };
   }
 
@@ -297,16 +324,31 @@ export function computeCompSetIndex(
   });
   const excluded = competitors.length - usable.length;
 
-  if (usable.length < minCompsFor(match.roomMatch, cfg)) {
+  // The price-tier guard. Matching the room and the terms establishes that two
+  // rates describe the same PRODUCT; it cannot establish that they are sold in
+  // the same market. A terms-matched, class-matched king room at a third of
+  // the subject's price belongs to a different tier of property, and leaving
+  // it in the median manufactures a premium out of that difference.
+  //
+  // Applied AFTER the live-validation filter and BEFORE the floor check, so a
+  // set that is only viable because of outliers is correctly reported as
+  // insufficient rather than answered from hotels that are not comparable.
+  // That loses some answers. An answer built on the wrong market is worse than
+  // no answer — the same trade rule 3 makes for an absent score.
+  const inBand = withinPriceBand(subjectNightlyMinor, usable, cfg);
+  const excludedOutlier = usable.length - inBand.length;
+
+  if (inBand.length < minCompsFor(match.roomMatch, cfg)) {
     return {
       signal: unavailable('S1_COMP_SET', name, weight, 'INSUFFICIENT_COMPARABLES'),
       ...empty,
-      compsUsed: usable.length,
+      compsUsed: inBand.length,
       compsExcluded: excluded,
+      compsExcludedOutlier: excludedOutlier,
     };
   }
 
-  const compMedian = median(usable.map((c) => c.nightlyMinor));
+  const compMedian = median(inBand.map((c) => c.nightlyMinor));
   const csi = (subjectNightlyMinor / compMedian) * 100;
   const pctBelowMedian = ((compMedian - subjectNightlyMinor) / compMedian) * 100;
 
@@ -331,8 +373,9 @@ export function computeCompSetIndex(
     band,
     pctBelowMedian,
     medianCompetitorNightlyMinor: Math.round(compMedian),
-    compsUsed: usable.length,
+    compsUsed: inBand.length,
     compsExcluded: excluded,
+    compsExcludedOutlier: excludedOutlier,
   };
 }
 
@@ -593,8 +636,15 @@ export function computePremiumJustification(
   config: ScoringConfig,
 ): PremiumJustificationResult {
   const cfg = config.live.premium;
-  const usable = competitors.filter(
-    (c) => c.isAvailable && Number.isFinite(c.nightlyMinor) && c.nightlyMinor > 0,
+  // The SAME price band the index applied, for the same reason: a premium
+  // measured against hotels the index refused to compare against would be a
+  // premium over a market the guest was never shown.
+  const usable = withinPriceBand(
+    subjectNightlyMinor,
+    competitors.filter(
+      (c) => c.isAvailable && Number.isFinite(c.nightlyMinor) && c.nightlyMinor > 0,
+    ),
+    config.live.csi,
   );
 
   const none: PremiumJustificationResult = {

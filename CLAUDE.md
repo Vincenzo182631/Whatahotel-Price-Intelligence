@@ -493,13 +493,39 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     recommendation — and absence of the flag is UNKNOWN, scored exactly as
     before, never penalized); and it never edits a fact (price statements
     stay true for partners and non-partners alike — "not saying anything
-    negative" is delivered by rule 26, which covers every catalogued hotel,
+    negative" is delivered by rule 27, which covers every catalogued hotel,
     not by suppressing facts). The bonuses are tie-breakers, not trumps: on a
     0..1 blend they decide between comparable candidates and cannot outrank
     a materially bigger saving or a materially stronger verified reputation;
     tests pin both directions.
 
-26. **No negative assessment of a hotel ever renders.** Owner business rule
+26. **Matching the room is not the same as matching the market** (config v10,
+    2026-09-17). The comp ladder matches on room class, view and rate terms,
+    which establishes that two rates describe the same PRODUCT and says
+    nothing about whether they are sold in the same market — a terms-matched,
+    class-matched refundable king room exists at an airport hotel and at
+    Halekulani. `live.csi.outlierRatio` (a third to triple the SUBJECT's
+    nightly) sets the out-of-tier ones aside before the median is taken, on
+    the Comp-Set Index and Premium Justification alike, through one shared
+    `withinPriceBand` so the two can never describe different markets. Three
+    things it must never become. It is **not nearest-price selection**:
+    comparables are still chosen by room and terms, never because their price
+    resembles the subject's — picking by price proximity drives every CSI
+    toward 100 by construction and the index stops saying anything, which is
+    why the band sits far outside any real signal (the widest reading ever
+    produced on production data was 145; 3x cannot reach it, and tests pin
+    that a 45% premium and a strong-value bargain both survive untouched). It
+    is **symmetric**, because an out-of-tier villa drags the median up and
+    manufactures a bargain — the flattering direction, and the more dangerous
+    one. And it runs **before** the `minComps` floor, so a set viable only
+    because of out-of-tier hotels reports `INSUFFICIENT_COMPARABLES` rather
+    than answering from the wrong market: an answer describing a market the
+    guest is not in is worse than no answer, which is rule 3's trade.
+    `compsExcludedOutlier` is published and rendered separately from
+    `compsExcluded` — a rate-less competitor was never evidence; these were
+    live and were set aside for a stated reason.
+
+27. **No negative assessment of a hotel ever renders.** Owner business rule
     (2026-09-15), completing the arc of rules 21-23 and 25. The line is
     VALENCE, not direction: a measurement renders whichever way it points —
     "22% above the comparable median", "above every rate checked", the
@@ -710,7 +736,7 @@ widget render "Not bookable online for these dates" — a claim about the
 PROPERTY, asserted on the strength of our own upstream fault, on a page the
 property pays to appear on. A rates fault and a genuinely unbookable hotel
 are indistinguishable from the rates API, so the claim was usually wrong
-during the outage, and it is exactly the negative assessment rule 26
+during the outage, and it is exactly the negative assessment rule 27
 forbids. Unbookability is now stated only where the hotel's own page said so
 (`bookable_online === false`, rule 24 — NULL still means the page did not
 say); the remaining no-evidence 409 shows an advisor route titled about the

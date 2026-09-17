@@ -113,6 +113,7 @@ function compSet(over: Partial<CompSetResult> = {}): CompSetResult {
     medianCompetitorNightlyMinor: 100_00,
     compsUsed: 6,
     compsExcluded: 0,
+    compsExcludedOutlier: 0,
     ...over,
   };
 }
