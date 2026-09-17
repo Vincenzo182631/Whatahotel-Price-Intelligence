@@ -1,0 +1,88 @@
+# Measure what `method=info` actually returns, before anything reads it.
+#
+# Matt reported the method fixed on 2026-09-17; it had answered 500 for our key
+# since the start, which is why rule 21 records that this source exposes no
+# amenity data. This workflow is how that claim gets checked against the real
+# API rather than taken on trust.
+#
+# It exists as a workflow because the API key belongs in the secret store and
+# nowhere else (rule 10). Nobody pastes it into a terminal to run this.
+#
+# READ-ONLY against both the source and our own API. It issues GETs, writes
+# nothing, and needs no connection string — hotel names come from our public
+# catalogue endpoint.
+name: Probe info method
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'How many catalogue hotels to sample'
+        required: false
+        default: '20'
+      base:
+        description: 'API base to read hotel names from'
+        required: false
+        default: 'https://whatahotel-price-intelligence-api.vercel.app'
+
+concurrency:
+  group: probe-info
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Named explicitly, never enumerated. Serializing the whole secret store
+      # to see what is in it is what tripped GitHub's malicious-workflow
+      # detector on the database-setup workflow.
+      - name: Check the API key is set
+        env:
+          HAS_WAH_API_KEY: ${{ secrets.WAH_API_KEY != '' }}
+        run: |
+          if [ "$HAS_WAH_API_KEY" != "true" ]; then
+            echo "::error::WAH_API_KEY is not set. This probe calls the real API or it does nothing."
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Probe
+        env:
+          WAH_API_KEY: ${{ secrets.WAH_API_KEY }}
+        run: |
+          set -o pipefail
+          node scripts/probe-info.mjs \
+            --limit "${{ inputs.limit }}" \
+            --base "${{ inputs.base }}" \
+            --out info-probe.json | tee info-probe.log
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '### info probe'
+            echo
+            echo '```'
+            tail -60 info-probe.log 2>/dev/null || echo 'no output'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: info-probe-${{ github.run_id }}
+          path: |
+            info-probe.json
+            info-probe.log
+          retention-days: 14
