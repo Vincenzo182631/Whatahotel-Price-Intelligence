@@ -326,6 +326,25 @@ engine.
     thin set omits skew dearest-first, so the penalty lands on the flagship
     properties the site sells.
 
+    **Discovery runs whenever the COMPARISON is thin, not only when the peer
+    LIST is short** (2026-09-17). `topUpComparablesOnDemand` used to skip
+    `discoverCityComparables` whenever the catalogue held a full slate — but
+    that function is only ever called BECAUSE the comparison came out thin,
+    and a full slate is not evidence the market was covered: the curated list
+    ranks on accrued baselines, an uncollected hotel has none, so "full"
+    means "the hotels collected first". The top-up now checks its spend hold
+    FIRST (a held request spends nothing, not even the discovery call), then
+    always asks the source who the city's best hotels are FOR THE GUEST'S
+    EXACT DATES, then re-reads the peer list with `discoverySlots` (3 of 8)
+    reserved for hotels the curated list does not contain — without a reserve
+    the discovered peers are crowded out by the same list that was already too
+    narrow, which makes the discovery call a no-op. Explore against exploit,
+    spent deliberately: a couple of slots buy the chance of finding a real
+    price peer at the cost of a couple of slots' worth of certainty.
+    `cityrates`' own price is still never used as a price (see above) — it
+    chooses WHO to compare against, and each hotel's rooms, terms and rates
+    still come from an ordinary fetch through the ordinary pipeline.
+
 20. **Compare a room to an equivalent room, not to the market's cheapest.**
     The comp set matches on rate TERMS, which answers "is this the same
     product commercially" and says nothing about whether it is the same kind of
