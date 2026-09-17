@@ -1,0 +1,80 @@
+# Print the radius ladder's decisions for one stay.
+#
+# The ladder chooses which comparison a customer sees, and none of its
+# reasoning reaches the response: a rung that declined and a rung that was
+# never reached both surface as "0 comparables at 2mi". On 2026-09-17 that
+# cost an evening on Four Seasons Oahu at Ko Olina, where six candidate
+# explanations were eliminated from outside the system before it became clear
+# the answer was only visible from inside it.
+#
+# READ-ONLY. loadLiveIntelligence issues SELECTs and nothing else. No source
+# calls, so it costs no API quota and is safe against production at any time.
+name: Ladder trace
+
+on:
+  workflow_dispatch:
+    inputs:
+      hotel:
+        description: 'Source hotel id (wah_hotel_id), e.g. 3046'
+        required: true
+      check_in:
+        description: 'Check-in date, YYYY-MM-DD'
+        required: true
+      nights:
+        description: 'Nights'
+        required: false
+        default: '3'
+      adults:
+        description: 'Adults'
+        required: false
+        default: '2'
+
+concurrency:
+  group: ladder-trace
+  cancel-in-progress: false
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Named explicitly, never enumerated (see db-setup.yml for why).
+      - name: Check the database secret is set
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+        run: |
+          if [ "$HAS_DATABASE_URL" != "true" ]; then
+            echo "::error::DATABASE_URL is not set. This reads real data or nothing."
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Trace
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -o pipefail
+          node scripts/ladder-trace.mjs \
+            "${{ inputs.hotel }}" "${{ inputs.check_in }}" \
+            "${{ inputs.nights }}" "${{ inputs.adults }}" | tee ladder.log
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '### Ladder trace'
+            echo
+            echo '```'
+            cat ladder.log 2>/dev/null || echo 'no output'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -663,9 +663,38 @@ export async function loadLiveIntelligence(
     };
   };
 
+  /**
+   * Opt-in ladder trace, off unless `WAHPI_LADDER_TRACE=1`.
+   *
+   * The ladder decides which comparison a customer sees, and every one of its
+   * decisions is invisible from the response: a rung that declined and a rung
+   * that was never reached both surface as the same "0 comparables at 2mi".
+   * That cost an evening on Four Seasons Oahu at Ko Olina (2026-09-17), where
+   * six candidate explanations were eliminated from outside before it became
+   * clear the answer was only visible from inside.
+   *
+   * Prints rung counts, the isolation test's inputs, and why each rung was or
+   * was not adopted. Writes nothing and changes no behaviour; unset, the
+   * function is an empty arrow the optimiser drops.
+   */
+  const trace: (msg: string) => void =
+    process.env.WAHPI_LADDER_TRACE === '1'
+      ? (msg) => console.log(`[ladder ${hotel.id}/${request.wahHotelId}] ${msg}`)
+      : () => {};
+
+  trace(
+    `coords lat=${hotel.latitude ?? 'NULL'} lon=${hotel.longitude ?? 'NULL'} · ` +
+      `rungs=[${rungs.join(',')}] · minComps=${live.csi.minComps} · ` +
+      `isolatedRadiusMiles=${live.csi.isolatedRadiusMiles ?? 'ABSENT'}`,
+  );
+
   let attempt = await selectAtRadius(firstRung * MILES_TO_KM);
   let radiusMilesUsed = firstRung;
   let radiusExpanded = false;
+  trace(
+    `rung ${firstRung}mi → ${attempt.competitors.length} comp(s), carried=${attempt.carried}, ` +
+      `room=${attempt.compRoomMatch}, basis=${attempt.compBasis}`,
+  );
   for (let rung = 1; rung < rungs.length; rung += 1) {
     // "Carried" rather than a raw count: a reduced-floor room-matched carry
     // is an answer, and climbing past it to gather MORE (necessarily weaker)
@@ -677,12 +706,19 @@ export async function loadLiveIntelligence(
     // carried where this one could not, or found more. A rung that adds
     // nothing should not be reported as an expansion — that would claim a
     // weaker basis than the one actually used.
-    if (wider.carried || wider.competitors.length > attempt.competitors.length) {
+    const better = wider.carried || wider.competitors.length > attempt.competitors.length;
+    trace(
+      `rung ${widerMiles}mi → ${wider.competitors.length} comp(s), carried=${wider.carried} · ` +
+        `${better ? 'ADOPTED' : 'declined (no improvement)'}`,
+    );
+    if (better) {
       attempt = wider;
       radiusMilesUsed = widerMiles;
       radiusExpanded = true;
     }
   }
+  if (attempt.carried)
+    trace(`ladder carried at ${radiusMilesUsed}mi — isolation rung not considered`);
 
   /**
    * The isolation rung.
@@ -707,22 +743,37 @@ export async function loadLiveIntelligence(
   let isolatedMarket = false;
   const isolatedMiles = live.csi.isolatedRadiusMiles ?? 0;
   const outerRungMiles = rungs[rungs.length - 1] ?? firstRung;
-  if (
+  const isolationEligible =
     !attempt.carried &&
     isolatedMiles > outerRungMiles &&
     hotel.latitude !== null &&
-    hotel.longitude !== null
-  ) {
+    hotel.longitude !== null;
+  trace(
+    `isolation eligible=${isolationEligible} · carried=${attempt.carried} · ` +
+      `${isolatedMiles}mi>${outerRungMiles}mi=${isolatedMiles > outerRungMiles} · ` +
+      `hasCoords=${hotel.latitude !== null && hotel.longitude !== null}`,
+  );
+  if (isolationEligible) {
     const cataloguedNearby = await findComparableIdentities(
       hotel.id,
       live.csi.minComps,
       outerRungMiles * MILES_TO_KM,
     );
+    trace(
+      `catalogued within ${outerRungMiles}mi = ${cataloguedNearby.length} ` +
+        `(isolated if < ${live.csi.minComps})`,
+    );
     if (cataloguedNearby.length < live.csi.minComps) {
       const far = await selectAtRadius(isolatedMiles * MILES_TO_KM);
       // Same test the ordinary rungs use: climb only when the wider ring
       // actually improved the evidence, never merely to gather more.
-      if (far.carried || far.competitors.length > attempt.competitors.length) {
+      const better = far.carried || far.competitors.length > attempt.competitors.length;
+      trace(
+        `isolation rung ${isolatedMiles}mi → ${far.competitors.length} comp(s), ` +
+          `carried=${far.carried}, room=${far.compRoomMatch} · ` +
+          `${better ? 'ADOPTED' : 'declined (no improvement)'}`,
+      );
+      if (better) {
         attempt = far;
         radiusMilesUsed = isolatedMiles;
         radiusExpanded = true;
