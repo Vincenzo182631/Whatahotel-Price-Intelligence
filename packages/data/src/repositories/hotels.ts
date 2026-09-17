@@ -89,6 +89,24 @@ export async function findComparableIdentities(
   // default is the ladder's FIRST rung: a caller that does not care which ring
   // it is asking about gets the primary competitive market, never the widest.
   nearbyRadiusKm: number = (DEFAULT_CONFIG.live.csi.radiusMiles[0] ?? 0) * 1.609344,
+  /**
+   * Slots held back from the curated set for hotels it does not contain.
+   *
+   * Zero — the default — spends the whole budget on curated peers, which is
+   * right when the comparison they produce is healthy. A caller that already
+   * KNOWS the comparison came out thin passes a reserve instead, because a
+   * full curated list is not evidence that the market was covered: it is
+   * ranked on accrued baselines, an uncollected hotel has none, so the list
+   * fills up with whichever hotels were collected first and the dearest peers
+   * are exactly the ones missing. Measured on Four Seasons Paris George V,
+   * 6-8 Oct 2026 — a full curated list, and Bvlgari and Shangri-La (both at
+   * the subject's own price level) nowhere in it.
+   *
+   * This is the explore-against-exploit trade, spent deliberately: a couple
+   * of slots buy the chance to find a real price peer, at the cost of a
+   * couple of slots' worth of certainty.
+   */
+  supplementSlots = 0,
   q?: Queryable,
 ): Promise<{ hotelId: number; wahHotelId: string }[]> {
   const { rows } = await db(q).query(
@@ -104,9 +122,12 @@ export async function findComparableIdentities(
     hotelId: r.id as number,
     wahHotelId: r.wah_hotel_id as string,
   }));
-  // A curated set that FILLS the budget is the answer: it is ranked on accrued
-  // baselines, which is price-tier similarity measured rather than guessed.
-  if (curated.length >= limit) return curated;
+  // A curated set that FILLS the budget is the answer — it is ranked on
+  // accrued baselines, which is price-tier similarity measured rather than
+  // guessed — UNLESS the caller reserved slots for hotels outside it.
+  const curatedBudget = Math.max(0, limit - Math.max(0, supplementSlots));
+  const kept = curated.slice(0, curatedBudget);
+  if (kept.length >= limit) return kept;
 
   // The curated set is empty OR SHORT, so top it up from the destination.
   // `rebuildComparables` ranks on accrued baselines, so a hotel enrolled
@@ -180,11 +201,15 @@ export async function findComparableIdentities(
   // Curated first — it is the ranked, measured set — then the destination
   // supplement, deduped, up to the budget. Order matters: the caller's fetch
   // cap is spent on the best-evidenced peers first.
-  const seen = new Set(curated.map((c) => c.hotelId));
-  const merged = [...curated];
+  const seen = new Set(kept.map((c) => c.hotelId));
+  const merged = [...kept];
+  const trimmed = new Set(curated.map((c) => c.hotelId));
   for (const r of sameDestination) {
     const id = r.id as number;
-    if (seen.has(id)) continue;
+    // Skip anything already taken, and anything the reserve trimmed off the
+    // curated list — a reserved slot exists to reach BEYOND that list, and
+    // refilling it from the same list would make the reserve a no-op.
+    if (seen.has(id) || (supplementSlots > 0 && trimmed.has(id))) continue;
     seen.add(id);
     merged.push({ hotelId: id, wahHotelId: r.wah_hotel_id as string });
     if (merged.length >= limit) break;

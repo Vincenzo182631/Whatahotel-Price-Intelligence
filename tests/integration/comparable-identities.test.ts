@@ -91,8 +91,8 @@ suite('integration · which comparables get fetched', () => {
   }
 
   /** Destination-keyed, so the radius branch is not in play for these rows. */
-  const fetched = async (limit: number): Promise<string[]> =>
-    (await findComparableIdentities(subjectId, limit, 0)).map((c) => c.wahHotelId);
+  const fetched = async (limit: number, reserve = 0): Promise<string[]> =>
+    (await findComparableIdentities(subjectId, limit, 0, reserve)).map((c) => c.wahHotelId);
 
   it('tops a short curated set up instead of answering from it alone', async () => {
     const got = await fetched(4);
@@ -125,5 +125,27 @@ suite('integration · which comparables get fetched', () => {
 
   it('never returns the subject as its own comparable', async () => {
     expect(await fetched(4)).not.toContain(PREFIX + 'SUBJECT');
+  });
+
+  it('reaches past a FULL curated list when slots are reserved', async () => {
+    // The George V case. With a budget of one, the curated peer fills it and
+    // nothing else can ever be fetched — which is how a hotel at the
+    // subject's own price level stays invisible while the comparison runs on
+    // whichever hotels were collected first. Reserving a slot is what lets a
+    // request reach a hotel nobody has browsed.
+    expect(await fetched(1)).toEqual([PREFIX + 'CURATED']);
+
+    const withReserve = await fetched(1, 1);
+    expect(withReserve).not.toContain(PREFIX + 'CURATED');
+    expect(withReserve.length).toBe(1);
+    expect([PREFIX + 'OFF-A', PREFIX + 'OFF-B']).toContain(withReserve[0]);
+  });
+
+  it('still spends most of the budget on the curated peers', async () => {
+    // The reserve is a couple of slots, not a replacement: the curated set is
+    // measured price-tier similarity and stays the primary evidence.
+    const got = await fetched(3, 1);
+    expect(got[0]).toBe(PREFIX + 'CURATED');
+    expect(got.length).toBeLessThanOrEqual(3);
   });
 });
