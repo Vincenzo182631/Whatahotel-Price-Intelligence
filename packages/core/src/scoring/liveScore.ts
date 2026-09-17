@@ -289,12 +289,31 @@ function buildReasons(
   if (compSet.signal.available && compSet.pctBelowMedian !== null) {
     const value = compSet.pctBelowMedian;
     const pct = Math.abs(Math.round(value));
+    // "comparable ROOMS NEARBY", not "comparable luxury hotels" (2026-09-17).
+    //
+    // The old wording asserted two things the comparison does not establish.
+    // It never established LUXURY: `hotel.luxury_tier` and `star_rating` are
+    // null across the catalogue and rule 21 records why — this source exposes
+    // no star rating and no quality signal of any kind, so we hold nothing
+    // that sorts a landmark from a beach resort. And it never established
+    // that the peers are comparable AS HOTELS: what the ladder actually holds
+    // fixed is the ROOM (class, and view where it can) and the rate TERMS,
+    // within a radius. Measured on The Royal Hawaiian, 6-8 Oct 2026, the line
+    // read "15% above comparable luxury hotels" while one of the two peers
+    // was Outrigger Waikiki Beach Resort.
+    //
+    // Saying "rooms nearby" is not a hedge, it is the claim we can defend: a
+    // guest can check it, and rule 26 lets a measurement render whichever way
+    // it points as long as it is a measurement rather than a judgement about
+    // the property. The `explanation` sentence has always phrased it this way
+    // ("the median for comparable rooms at 2 nearby hotels"); this is the
+    // summary catching up with it.
     out.push(
       pct < NEGLIGIBLE_PCT
-        ? 'In line with comparable luxury hotels'
+        ? 'In line with comparable rooms nearby'
         : value > 0
-          ? `${pct}% below comparable luxury hotels`
-          : `${pct}% above comparable luxury hotels`,
+          ? `${pct}% below comparable rooms nearby`
+          : `${pct}% above comparable rooms nearby`,
     );
     // Say what the comparison could NOT hold fixed. Without this the bullet
     // above reads as like-for-like on cancellation terms, which the tolerant
