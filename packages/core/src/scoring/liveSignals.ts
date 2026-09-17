@@ -228,8 +228,22 @@ function withinPriceBand<T extends { readonly nightlyMinor: Minor }>(
   comps: readonly T[],
   cfg: ScoringConfig['live']['csi'],
 ): readonly T[] {
-  const lo = subjectNightlyMinor * cfg.outlierRatio.min;
-  const hi = subjectNightlyMinor * cfg.outlierRatio.max;
+  // The ACTIVE config is loaded from `scoring_config` and cast to this type
+  // (loadActiveConfig), so the object reaching the engine at runtime is
+  // whatever shape was seeded — which for any config version predating a
+  // field is a config WITHOUT it. Reading `.min` off that threw, and every
+  // stay carrying a rate answered 500 until the new version was seeded.
+  //
+  // So a missing band is not a defaulted band: it means the active config
+  // does not have this guard, and the engine must behave exactly as that
+  // version does. Substituting the current default would apply a threshold
+  // the stored config never contained while `analysis` rows still recorded
+  // its version — rule 6's guarantee that a stored score is reproducible from
+  // the version beside it.
+  const ratio = (cfg as { outlierRatio?: { min: number; max: number } }).outlierRatio;
+  if (!ratio) return comps;
+  const lo = subjectNightlyMinor * ratio.min;
+  const hi = subjectNightlyMinor * ratio.max;
   return comps.filter((c) => c.nightlyMinor >= lo && c.nightlyMinor <= hi);
 }
 
