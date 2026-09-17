@@ -96,6 +96,17 @@ export interface OnDemandOptions {
    * for the arithmetic that keeps this under the route's 45s deadline.
    */
   readonly retryBudgetMs: number;
+  /**
+   * Slots of the comparables budget held for hotels the curated peer list
+   * does not contain, when topping up a comparison that came out thin.
+   *
+   * Three of eight. The curated list is ranked on accrued baselines and an
+   * uncollected hotel has none, so a full list means "the hotels collected
+   * first", not "the market". Without a reserve the newly discovered peers
+   * are crowded out by exactly the list that was already too narrow; with
+   * one, a guest's request can reach a hotel nobody has ever browsed.
+   */
+  readonly discoverySlots: number;
   readonly now?: Date;
 }
 
@@ -145,6 +156,7 @@ export const DEFAULT_ON_DEMAND_OPTIONS: OnDemandOptions = {
   errorRetryHoldMinutes: 2,
   subjectRetries: 2,
   retryBudgetMs: 10_000,
+  discoverySlots: 3,
 };
 
 export type OnDemandSkipReason =
@@ -291,32 +303,52 @@ export async function topUpComparablesOnDemand(
   const lead = leadDaysOf(stay.checkIn, now);
   if (lead < 0 || lead > options.maxLeadDays) return NOT_PERFORMED('LEAD_OUT_OF_RANGE');
 
-  // Ask the source who this city's hotels ARE before deciding who to compare
-  // against. cityrates returns its own ranked top-15 for these exact dates, so
-  // the comp set is the source's shortlist rather than an accident of which
-  // ids the catalogue happens to hold. Cached per stay; never fatal. Skipped
-  // when the catalogue already holds a full slate — same latency rule as the
-  // subject path above.
-  let comparables = await findComparableIdentities(stay.hotelId, options.maxComparables);
-  if (comparables.length < options.maxComparables) {
-    await discoverCityComparablesQuietly(stay);
-    comparables = await findComparableIdentities(stay.hotelId, options.maxComparables);
-  }
-  if (comparables.length === 0) return NOT_PERFORMED('NO_COMPARABLES');
-
+  // The hold FIRST, on the comparables we already know about, so a held
+  // request spends nothing at all — not even the discovery call below.
+  //
   // One fresh attempt row is enough to know the pass already happened: a
   // top-up asks every comparable in a single pass, so it never leaves a
   // partially-fresh set behind. Scheduled collection writes here too, which is
   // the point — if the collector asked these hotels minutes ago and the comp
   // set is still thin, asking again buys nothing.
-  const askedRecently = await countRecentAttempts(
-    comparables.map((c) => c.hotelId),
-    stay.checkIn,
-    stay.nights,
-    stay.adults,
-    options.retryHoldMinutes,
+  const known = await findComparableIdentities(stay.hotelId, options.maxComparables);
+  if (known.length > 0) {
+    const askedRecently = await countRecentAttempts(
+      known.map((c) => c.hotelId),
+      stay.checkIn,
+      stay.nights,
+      stay.adults,
+      options.retryHoldMinutes,
+    );
+    if (askedRecently > 0) return NOT_PERFORMED('RECENTLY_FRUITLESS');
+  }
+
+  // Now ask the source who this city's hotels ARE, for the guest's EXACT
+  // dates. cityrates returns its own ranked top-15 — the source's shortlist
+  // rather than an accident of which ids the catalogue happens to hold.
+  //
+  // ALWAYS, as of 2026-09-17, where this used to be skipped whenever the
+  // catalogue already held a full slate. This function is only ever called
+  // when the COMPARISON came out thin, and a full slate is not evidence the
+  // market was covered: the curated list is ranked on accrued baselines, an
+  // uncollected hotel has none, so a "full" list is simply the hotels
+  // collected first. Skipping discovery on it is how Bvlgari and Shangri-La
+  // — both at Four Seasons Paris George V's own price level — stayed
+  // invisible while the comparison ran on cheaper peers and read "45% above
+  // comparable luxury hotels".
+  //
+  // It costs one call, bounded by the hold above, and it is never fatal.
+  await discoverCityComparablesQuietly(stay);
+
+  // Re-read WITH a reserve, so the newly discovered hotels cannot simply be
+  // crowded out by the same curated list that was already too narrow.
+  const comparables = await findComparableIdentities(
+    stay.hotelId,
+    options.maxComparables,
+    undefined,
+    options.discoverySlots,
   );
-  if (askedRecently > 0) return NOT_PERFORMED('RECENTLY_FRUITLESS');
+  if (comparables.length === 0) return NOT_PERFORMED('NO_COMPARABLES');
 
   // The subject is deliberately absent from the plan: it already has a rate,
   // and re-fetching it would spend a call to learn what we know.
