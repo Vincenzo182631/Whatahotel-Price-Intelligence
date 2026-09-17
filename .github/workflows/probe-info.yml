@@ -20,6 +20,10 @@ on:
         description: 'How many catalogue hotels to sample'
         required: false
         default: '20'
+      ids:
+        description: 'Comma-separated hotel ids to probe instead of a sample (e.g. the dead-mapping list)'
+        required: false
+        default: ''
       base:
         description: 'API base to read hotel names from'
         required: false
@@ -62,8 +66,13 @@ jobs:
           WAH_API_KEY: ${{ secrets.WAH_API_KEY }}
         run: |
           set -o pipefail
-          node scripts/probe-info.mjs \
-            --limit "${{ inputs.limit }}" \
+          # Explicit ids win over the sample; an empty input keeps --limit.
+          if [ -n "${{ inputs.ids }}" ]; then
+            set -- --ids "${{ inputs.ids }}"
+          else
+            set -- --limit "${{ inputs.limit }}"
+          fi
+          node scripts/probe-info.mjs "$@" \
             --base "${{ inputs.base }}" \
             --out info-probe.json | tee info-probe.log
 
