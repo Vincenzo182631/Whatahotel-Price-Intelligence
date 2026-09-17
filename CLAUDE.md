@@ -380,6 +380,21 @@ engine.
     unchanged. A comparable that told us nothing is silent, not zero — scoring
     it zero would manufacture a justified premium out of gaps in our own data.
 
+    **So the summary line may not call the comparables LUXURY HOTELS**
+    (2026-09-17). `buildReasons` hardcoded "X% above comparable luxury
+    hotels" on every comparison, which asserts two things the ladder never
+    establishes. Not luxury: `hotel.luxury_tier` and `star_rating` are null
+    across the catalogue — this rule's own point — so nothing we hold sorts a
+    landmark from a beach resort. And not comparable AS HOTELS: what the
+    ladder holds fixed is the ROOM (class, and view where it can) and the
+    rate TERMS, within a radius. Measured on The Royal Hawaiian, 6-8 Oct
+    2026: the line read "15% above comparable luxury hotels" while one of
+    the two peers was Outrigger Waikiki Beach Resort. It now reads
+    "comparable rooms nearby", which is the claim the comparison can defend
+    and which the `explanation` sentence had been making correctly all
+    along ("the median for comparable rooms at 2 nearby hotels"). A test
+    pins that no reason line ever says "luxury", in either direction.
+
 22. **Reputation is evidence, never a term.** The Google rating (migration 0013) informs the explanation and is shown beside the price. Nothing under
     `packages/core/src/scoring` reads it, and the API says so with
     `affects_score: false`. A rating and a price index are different kinds of

@@ -258,10 +258,35 @@ describe('composing the live score', () => {
     expect(result.outOfTen).toBe(result.score! / 10);
     expect(result.reasons).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('below comparable luxury hotels'),
+        expect.stringContaining('below comparable rooms nearby'),
         expect.stringContaining('below nearby dates'),
       ]),
     );
+  });
+
+  it('never calls the comparables luxury hotels', () => {
+    // We hold no quality signal at all: `luxury_tier` and `star_rating` are
+    // null across the catalogue, and rule 21 records why — this source
+    // exposes no star rating and no guest rating, so nothing here sorts a
+    // landmark from a beach resort. Measured on The Royal Hawaiian,
+    // 6-8 Oct 2026, the summary read "15% above comparable luxury hotels"
+    // while one of the two peers was Outrigger Waikiki Beach Resort.
+    //
+    // What the ladder DOES hold fixed is the ROOM (class, and view where it
+    // can) and the rate TERMS, within a radius. That is what the line may
+    // say, in either direction.
+    for (const subject of [650_00, 1_400_00]) {
+      const result = composeLiveScore(
+        computeCompSetIndex(subject, strongComps, DEFAULT_CONFIG, NOW),
+        computeCalendarDelta(subject, cheapDates, DEFAULT_CONFIG),
+        computeCompression({ checked: 4, soldOut: 2 }, DEFAULT_CONFIG),
+        1,
+        DEFAULT_CONFIG,
+      );
+      const reasons = result.reasons.join(' | ');
+      expect(reasons, reasons).not.toMatch(/luxury/i);
+      expect(reasons, reasons).toMatch(/comparable rooms nearby/);
+    }
   });
 
   it('redistributes weight when compression is unavailable', () => {
