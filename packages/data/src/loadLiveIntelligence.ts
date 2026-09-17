@@ -38,6 +38,7 @@ import {
 import type { Queryable } from './client.js';
 import { findBenefits } from './repositories/context.js';
 import {
+  findComparableIdentities,
   findHotelByWahId,
   hasCuratedComparables,
   listRoomTypes,
@@ -153,6 +154,15 @@ export interface LoadedLiveIntelligence {
    */
   readonly competitiveRadiusMiles: number;
   readonly radiusExpanded: boolean;
+  /**
+   * The comparison reached past the ordinary ladder because the CATALOGUE
+   * holds no neighbours in range, not because the nearby ones lacked rates.
+   *
+   * Disclosed rather than hidden: a comparison drawn from 30 miles away is
+   * real evidence about a price, and is not a statement about a
+   * neighbourhood. See `isolatedRadiusMiles` in config.
+   */
+  readonly isolatedMarket: boolean;
   /**
    * The source ids of the competitors the comparison actually used.
    *
@@ -674,6 +684,53 @@ export async function loadLiveIntelligence(
     }
   }
 
+  /**
+   * The isolation rung.
+   *
+   * Runs only when the ordinary ladder carried nothing AND the catalogue
+   * itself is empty in range — the difference between "nothing to compare
+   * against here" and "the neighbours have not been collected yet". The
+   * second case must keep waiting; reaching past real peers to compare
+   * against distant ones is worse than saying nothing, and the on-demand
+   * top-up is what fixes it.
+   *
+   * `findComparableIdentities` answers the catalogue question directly: it
+   * reads `hotel` and never joins a rate, so a zero here means the market is
+   * genuinely empty rather than merely unfetched.
+   *
+   * Requires coordinates. Without them that function falls back to matching
+   * the destination label, which would return the whole of Honolulu and make
+   * an isolated resort look surrounded. We cannot establish isolation for a
+   * hotel we cannot place, and guessing is how a resort ends up compared
+   * against a city.
+   */
+  let isolatedMarket = false;
+  const isolatedMiles = live.csi.isolatedRadiusMiles ?? 0;
+  const outerRungMiles = rungs[rungs.length - 1] ?? firstRung;
+  if (
+    !attempt.carried &&
+    isolatedMiles > outerRungMiles &&
+    hotel.latitude !== null &&
+    hotel.longitude !== null
+  ) {
+    const cataloguedNearby = await findComparableIdentities(
+      hotel.id,
+      live.csi.minComps,
+      outerRungMiles * MILES_TO_KM,
+    );
+    if (cataloguedNearby.length < live.csi.minComps) {
+      const far = await selectAtRadius(isolatedMiles * MILES_TO_KM);
+      // Same test the ordinary rungs use: climb only when the wider ring
+      // actually improved the evidence, never merely to gather more.
+      if (far.carried || far.competitors.length > attempt.competitors.length) {
+        attempt = far;
+        radiusMilesUsed = isolatedMiles;
+        radiusExpanded = true;
+        isolatedMarket = true;
+      }
+    }
+  }
+
   let { competitors, compressionInput, compRoomMatch, compBasis } = attempt;
   const ladderCarried = attempt.carried;
   // The price-only rung below is the last resort at whatever radius the ladder
@@ -853,6 +910,7 @@ export async function loadLiveIntelligence(
     compBasis,
     competitiveRadiusMiles: radiusMilesUsed,
     radiusExpanded,
+    isolatedMarket,
     compRoomMatch,
     compTermsMatch,
     competitorWahIds: competitors.filter((c) => c.isAvailable).map((c) => c.hotelId),

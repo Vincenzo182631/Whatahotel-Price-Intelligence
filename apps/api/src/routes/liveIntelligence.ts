@@ -1198,6 +1198,10 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         // customer copy.
         competitive_radius_miles: loaded.competitiveRadiusMiles,
         radius_expanded: loaded.radiusExpanded,
+        // Disclosed, not hidden: the catalogue holds no hotel near this one,
+        // so the comparison reached past the ordinary ladder. Real evidence
+        // about a price, never a statement about a neighbourhood.
+        isolated_market: loaded.isolatedMarket,
         // One string naming every rung the selection actually landed on, so a
         // comp set can be audited at a glance instead of reconstructed from
         // four fields. Diagnostic only; the widget never renders it.
@@ -1210,7 +1214,8 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         // explanation layer, where premium_justification already carries it.
         comparable_selection_method:
           `${loaded.compBasis}@${loaded.competitiveRadiusMiles}mi` +
-          `${loaded.radiusExpanded ? '+' : ''}/${loaded.compRoomMatch}/${compSet.termsBasis}`,
+          `${loaded.isolatedMarket ? '!' : loaded.radiusExpanded ? '+' : ''}` +
+          `/${loaded.compRoomMatch}/${compSet.termsBasis}`,
         qualified_comparable_count: compSet.compsUsed,
         unavailable_reason: compSet.signal.unavailableReason,
         sub_score: compSet.signal.subScore,

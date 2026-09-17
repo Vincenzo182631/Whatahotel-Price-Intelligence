@@ -522,3 +522,50 @@ actually compared against. Two pools would describe two different markets.
 `signals.comp_set.comps_excluded_outlier` and rendered distinctly from
 `comps_excluded`: a rate-less competitor was never evidence, whereas these
 were live and were set aside for a stated reason.
+
+---
+
+## Config v11 — the isolation rung
+
+`live.csi.isolatedRadiusMiles` (30). The reach allowed to a hotel whose
+**catalogue** holds no neighbours inside the ordinary ladder's outer rung.
+
+**The blind spot it closes.** The ladder stops at 5 miles deliberately: v8
+removed a 30 km rung because it reached across a metro area and compared a
+prime-district hotel with suburban ones. But an isolated resort has no hotel
+within five miles at all, so every rung returns nothing and the property is
+unscoreable forever, in a perfectly healthy market, whatever we collect.
+Measured on Four Seasons Oahu at Ko Olina, 15–18 Oct 2026: a $945 rate, a
+working calendar signal, and `qualified_comparable_count: 0` with the ladder
+never leaving its first rung. Isolated resorts are a large share of what this
+source sells.
+
+**The test is why the near rings were empty, not how far away the peers are.**
+
+- The catalogue holds neighbours and none had a usable rate. That is a
+  coverage problem. Reaching past real peers to compare against distant ones
+  is strictly worse than waiting, and the on-demand top-up is the fix. The
+  rung must not fire.
+- The catalogue holds no neighbours at all. Nothing we ever collect can
+  produce a comparison here, so a wider, disclosed comparison is the only
+  alternative to permanent silence.
+
+`findComparableIdentities` answers that question directly, because it reads
+`hotel` and never joins a rate: a zero means the market is genuinely empty
+rather than merely unfetched. The rung also requires coordinates — without
+them that function matches on the destination label instead, which would
+return the whole of Honolulu and make an isolated resort look surrounded.
+
+**It climbs on the same terms as every other rung**, taking the wider ring
+only when that ring actually carried or found more, never merely to gather
+additional comparables.
+
+**Disclosure.** It forces `radiusExpanded`, which already caps confidence
+below HIGH, publishes `signals.comp_set.isolated_market`, and marks the
+selection method with `!` rather than `+`. A comparison drawn from 30 miles
+away is real evidence about a **price**. It is never a statement about a
+neighbourhood, and must not be rendered as one.
+
+**Optional by design.** An active stored config predating the field disables
+the rung and behaves exactly as v10 did, which is rule 6 and the lesson of
+the v10 deploy-ordering outage.

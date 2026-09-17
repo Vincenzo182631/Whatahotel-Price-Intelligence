@@ -1,4 +1,4 @@
--- Scoring configuration, version 10.
+-- Scoring configuration, version 11.
 --
 -- GENERATED FILE — do not edit by hand.
 -- Source of truth: packages/core/src/config/defaults.ts
@@ -13,14 +13,14 @@
 -- analysis row references the version that produced it, and deleting one would
 -- make those scores irreproducible.
 UPDATE scoring_config SET is_active = false
- WHERE is_active AND version <> 10;
+ WHERE is_active AND version <> 11;
 
 INSERT INTO scoring_config (version, config, is_active, note, created_by)
 VALUES (
-    10,
+    11,
     $config$
 {
-  "version": 10,
+  "version": 11,
   "score": {
     "weight": {
       "f1Historical": 0.33,
@@ -71,6 +71,7 @@ VALUES (
         3,
         5
       ],
+      "isolatedRadiusMiles": 30,
       "maxCompAgeHours": 24,
       "outlierRatio": {
         "min": 0.34,
