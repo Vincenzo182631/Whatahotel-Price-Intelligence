@@ -560,7 +560,18 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     It forces `radiusExpanded` (so confidence caps below HIGH), publishes
     `isolated_market`, and marks the selection method with `!`. A comparison
     drawn from 30 miles away is real evidence about a PRICE and never a
-    statement about a neighbourhood. The field is OPTIONAL, so a stored
+    statement about a neighbourhood.
+
+    **So the summary may not say NEARBY either.** `buildReasons` rendered
+    "30% above comparable rooms nearby" on Ko Olina's first scored answer,
+    where the comparison was two Waikiki rooms 30 km away. They are genuinely
+    the NEAREST comparable rooms — that is why the rung chose them — and they
+    are not nearby. `CompSetResult.isolatedMarket` carries the flag into core
+    for this one purpose and the line becomes "the nearest comparable rooms".
+    It is the same failure as rule 21's "luxury hotels", one radius further
+    out: a word in the summary asserting something the comparison never
+    established. `radiusExpanded` alone must NOT change it — climbing 2 → 3 →
+    5 miles is still a neighbourhood — and tests pin both directions. The field is OPTIONAL, so a stored
     config predating it behaves exactly as before (rule 6, and the v10
     outage).
 

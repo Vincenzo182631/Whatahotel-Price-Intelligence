@@ -930,6 +930,9 @@ export async function loadLiveIntelligence(
       unknown: unknownDimensions(matchTerms),
       termsBasis: compTermsMatch,
       radiusExpanded,
+      // Wording only — see CompSetResult.isolatedMarket. The engine's numbers
+      // do not move; "nearby" does.
+      isolatedMarket,
       // The engine's comp minimum is tiered on the rung: room-matched rungs
       // carry at minCompsRoomMatched, ANY at the full minComps.
       roomMatch: compRoomMatch,
