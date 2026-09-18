@@ -72,6 +72,10 @@ export const ASSESSMENT_EVIDENCE = [
   // up with the data.
   'room_amenity',
   'website_claim',
+  // Area evidence (2026-09-18): Google's own description of the property,
+  // and the address the hotel's own page states (rule 24). Both were already
+  // held and neither was citable.
+  'street_address',
   'calendar_position',
   'market_availability',
   'availability_position',
@@ -144,6 +148,8 @@ export const MOTIVATOR_EVIDENCE_KEY: Readonly<Record<string, AssessmentEvidence>
   ROOM_CATEGORY: 'room_match',
   DEAL_SCORE: 'comparable_rates',
   WEBSITE: 'website_claim',
+  GOOGLE_EDITORIAL: 'google_editorial_summary',
+  STREET_ADDRESS: 'street_address',
 };
 
 /** Which evidence the bundle actually carries, key by key. */
@@ -165,6 +171,7 @@ export function evidencePresent(bundle: LiveExplanationBundle): Set<AssessmentEv
   if (bundle.hotel_facts.review_themes.length > 0) present.add('google_review_themes');
   if (bundle.hotel_facts.editorial_summary) present.add('google_editorial_summary');
   if (comps.room_match !== null) present.add('room_match');
+  if (bundle.subject.street_address) present.add('street_address');
   if (bundle.hotel_facts.room_amenities.length > 0) present.add('room_amenity');
   // The selected motivator's own evidence is bundle content too, and the
   // only place a WEBSITE claim appears at all. Presence follows what the

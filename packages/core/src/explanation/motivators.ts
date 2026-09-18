@@ -55,7 +55,9 @@ export type MotivatorEvidenceSource =
   | 'GOOGLE_RATING'
   | 'ROOM_CATEGORY' // class and view, normalized by us (rule 11)
   | 'DEAL_SCORE' // the comparison itself, for the value motivators
-  | 'WEBSITE'; // read from the property's own site (migration 0022)
+  | 'WEBSITE' // read from the property's own site (migration 0022)
+  | 'GOOGLE_EDITORIAL' // Google's own description, quoted as Google's (rule 32)
+  | 'STREET_ADDRESS'; // the address the hotel's own page states (rule 24)
 
 export interface MotivatorEvidence {
   readonly text: string;
@@ -144,7 +146,52 @@ export interface MotivatorInput {
     readonly claim: string;
     readonly sourceUrl: string;
   }[];
+  /**
+   * Google's own description of the property (rule 32), on 2,214 of 3,223
+   * active hotels. The most varied per-hotel prose this system holds, and
+   * until now it informed the hotel-value card and nothing else.
+   *
+   * It is AREA evidence as much as hotel evidence — Google's summaries
+   * routinely place a property ("steps from the beach", "in the historic
+   * centre"), which is the class of fact our preference answers were most
+   * short of.
+   */
+  readonly editorialSummary?: string | null;
+  /** The street address the hotel's OWN page states (rule 24). */
+  readonly streetAddress?: string | null;
 }
+
+/**
+ * Words in Google's description that speak to a motivator.
+ *
+ * The same narrowness as AMENITY_SIGNALS and for the same reason: a loose
+ * match is worse than none. "Location" would hit every summary ever written;
+ * "steps from the beach" is a placement a reader can check against a map.
+ *
+ * What is matched is GOOGLE'S OWN SENTENCE, and what renders quotes it as
+ * Google's (rule 32). The inference is ours and is visible — a reader who
+ * disagrees that a beachfront mention means a beach holiday can say so.
+ */
+const EDITORIAL_SIGNALS: Partial<Record<Preference, readonly string[]>> = {
+  BEACH_RESORT: ['beach', 'oceanfront', 'seafront', 'waterfront', 'lagoon', 'shore'],
+  LOCATION: [
+    'steps from',
+    'minutes from',
+    'overlooking',
+    'historic centre',
+    'historic center',
+    'downtown',
+    'old town',
+    'city centre',
+    'city center',
+    'waterfront',
+  ],
+  NIGHTLIFE: ['nightlife', 'bars', 'rooftop bar', 'clubs', 'entertainment district'],
+  QUIET_RELAXATION: ['secluded', 'tranquil', 'serene', 'peaceful', 'retreat'],
+  LUXURY_EXPERIENCE: ['landmark', 'iconic', 'historic', 'grande dame'],
+  FAMILY: ['family-friendly', 'families'],
+  AMENITIES: ['spa', 'pool', 'fitness', 'restaurants'],
+};
 
 const ALL_MOTIVATORS: readonly Preference[] = [
   'GENERAL_VALUE',
@@ -255,6 +302,48 @@ export function assessMotivators(input: MotivatorInput): readonly MotivatorAsses
       evidence.push({
         text: `Rated ${input.rating}, above the ${input.comparableMedianRating} median of its comparables`,
         source: 'GOOGLE_RATING',
+      });
+    }
+
+    // ── AREA evidence ────────────────────────────────────────────────
+    //
+    // Added 2026-09-18 after reading the WhataHotel advisor's system prompt,
+    // which draws a line we did not have: its "never invent" rule covers
+    // HOTEL facts (rating, amenities, perks, price) while the surrounding
+    // AREA — attractions, restaurants, the nearest airport, getting around —
+    // may come from general knowledge.
+    //
+    // The line is right and the sourcing is where we differ. Theirs allows
+    // recall; ours cites two things we already hold and had never fed to a
+    // motivator: Google's own description of the property, and the street
+    // address the hotel's own page states. Both are quoted rather than
+    // interpreted, so a guest can check either.
+    //
+    // Measured the same day: asked whether W Aspen has a pool, their advisor
+    // asserted it — a HOTEL fact by their own rule, absent from their page's
+    // payload and from every curated file in their repository. It was true.
+    // Ten other probes obeyed the rule. A prompt is a rule the model follows
+    // most of the time; this is the reason ours stays evidence-backed even
+    // where theirs need not be.
+    const editorial = (input.editorialSummary ?? '').toLowerCase();
+    const editorialHits = (EDITORIAL_SIGNALS[motivator] ?? []).filter((w) => editorial.includes(w));
+    if (editorialHits.length > 0) {
+      evidence.push({
+        // Attributed in the sentence itself, never folded into our own voice
+        // (rule 32): a reader can weigh "Google says this" and cannot weigh
+        // an unattributed claim.
+        text: `Google's description of this property mentions ${editorialHits.slice(0, 2).join(' and ')}`,
+        source: 'GOOGLE_EDITORIAL',
+      });
+    }
+
+    // Where the property actually is, in the merchant's own words. Only for
+    // LOCATION: an address is an answer to "where is this", and padding the
+    // other nine motivators with it would be noise.
+    if (motivator === 'LOCATION' && input.streetAddress) {
+      evidence.push({
+        text: `The property's own page gives its address as ${input.streetAddress}`,
+        source: 'STREET_ADDRESS',
       });
     }
 

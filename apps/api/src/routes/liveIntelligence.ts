@@ -728,6 +728,11 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     comparableMedianRating: comparableMedianRating(comparableRatings),
     dealScoreOutOfTen: result.outOfTen,
     websiteClaims: subjectWebsiteClaims,
+    // Area evidence: Google's own description and the merchant's address.
+    // Both were already loaded for other purposes and neither reached a
+    // motivator, which is why LOCATION and BEACH_RESORT had so little to say.
+    editorialSummary: subjectEditorialSummary,
+    streetAddress: loaded.hotel.streetAddress,
   });
 
   const bundle = buildLiveExplanationBundle({
@@ -736,6 +741,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     hotelName: loaded.hotel.name,
     city: loaded.hotel.destination,
     roomTypeName: loaded.roomName,
+    streetAddress: loaded.hotel.streetAddress,
     roomClass:
       loaded.availableRooms.find((r) => r.roomTypeId === loaded.roomTypeId)?.roomClass ?? null,
     roomViewType: loaded.roomViewType,
@@ -1484,6 +1490,8 @@ async function hotelOnlyAnswer(
     comparableMedianRating: null,
     dealScoreOutOfTen: null,
     websiteClaims,
+    editorialSummary,
+    streetAddress: hotel.streetAddress,
   });
 
   const answered =

@@ -182,3 +182,71 @@ describe('renderMotivatorPivot', () => {
     expect(pivot).not.toMatch(/not |lacks|without|no |unsuitable|poor/i);
   });
 });
+
+/**
+ * Area evidence — the class of fact our preference answers were most short of.
+ *
+ * Added after reading the WhataHotel advisor's own system prompt, which draws
+ * a line we did not have: its "never invent" rule covers HOTEL facts (rating,
+ * amenities, perks, price) while the surrounding AREA may come from general
+ * knowledge. The line is right; the sourcing is where we differ. Ours cites
+ * two things already held and never fed to a motivator — Google's own
+ * description (rule 32) and the address the hotel's page states (rule 24).
+ */
+describe('area evidence', () => {
+  const withArea = (over: Record<string, unknown> = {}) =>
+    assessMotivators({
+      roomAmenities: [],
+      reviewThemes: [],
+      perks: [],
+      rating: null,
+      comparableMedianRating: null,
+      dealScoreOutOfTen: null,
+      editorialSummary: 'A landmark hotel steps from the beach, with a spa and two restaurants.',
+      streetAddress: '2259 Kalakaua Ave, Honolulu, HI 96815',
+      ...over,
+    });
+
+  const evidenceFor = (all: ReturnType<typeof assessMotivators>, m: string) =>
+    all.find((x) => x.motivator === m)?.evidence ?? [];
+
+  it("quotes Google's description as Google's, never as our own measurement", () => {
+    const beach = evidenceFor(withArea(), 'BEACH_RESORT');
+    const line = beach.find((e) => e.source === 'GOOGLE_EDITORIAL');
+    expect(line).toBeDefined();
+    // Rule 32: a reader can weigh "Google says this" and cannot weigh an
+    // unattributed claim.
+    expect(line?.text).toMatch(/^Google's description/);
+    expect(line?.text).toContain('beach');
+  });
+
+  it('answers LOCATION with the address the property itself states', () => {
+    const loc = evidenceFor(withArea(), 'LOCATION');
+    const addr = loc.find((e) => e.source === 'STREET_ADDRESS');
+    expect(addr?.text).toContain('Kalakaua Ave');
+  });
+
+  it('puts the address on LOCATION only', () => {
+    // An address answers "where is this". Padding the other nine motivators
+    // with it would be noise, which is rule 9's failure in a new place.
+    for (const m of ['BEACH_RESORT', 'FAMILY', 'AMENITIES', 'NIGHTLIFE']) {
+      expect(evidenceFor(withArea(), m).some((e) => e.source === 'STREET_ADDRESS')).toBe(false);
+    }
+  });
+
+  it('matches a placement, not the word "location"', () => {
+    // "Location" hits every summary ever written; "steps from" is a placement
+    // a reader can check against a map.
+    const vague = withArea({ editorialSummary: 'A hotel with a great location.' });
+    expect(evidenceFor(vague, 'LOCATION').some((e) => e.source === 'GOOGLE_EDITORIAL')).toBe(false);
+  });
+
+  it('says nothing when we hold neither', () => {
+    const bare = withArea({ editorialSummary: null, streetAddress: null });
+    for (const m of ['LOCATION', 'BEACH_RESORT']) {
+      const srcs = evidenceFor(bare, m).map((e) => e.source);
+      expect(srcs).not.toContain('GOOGLE_EDITORIAL');
+      expect(srcs).not.toContain('STREET_ADDRESS');
+    }
+  });
+});

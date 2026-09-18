@@ -34,6 +34,15 @@ export interface HotelRow {
    */
   readonly latitude: number | null;
   readonly longitude: number | null;
+  /**
+   * The street address the hotel's OWN page states (rule 24, migration 0016).
+   *
+   * Read here because it is the one piece of area fact this system holds that
+   * comes from the merchant rather than from Google — which is what made it
+   * load-bearing for Places matching, and what makes it citable to a guest
+   * asking where a property actually is.
+   */
+  readonly streetAddress: string | null;
 }
 
 export interface RoomTypeRow {
@@ -50,7 +59,7 @@ export interface RoomTypeRow {
 const HOTEL_COLUMNS = `
     h.id, h.wah_hotel_id, h.name, h.brand, h.destination_id, d.name AS destination,
     h.luxury_tier, h.star_rating, h.base_currency, h.collection_tier, h.bookable_online,
-    h.latitude, h.longitude`;
+    h.latitude, h.longitude, h.street_address`;
 
 function toHotel(row: Record<string, unknown>): HotelRow {
   return {
@@ -67,6 +76,7 @@ function toHotel(row: Record<string, unknown>): HotelRow {
     bookableOnline: (row.bookable_online as boolean | null) ?? null,
     latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
     longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+    streetAddress: (row.street_address as string | null) ?? null,
   };
 }
 

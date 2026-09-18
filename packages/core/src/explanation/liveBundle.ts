@@ -72,6 +72,8 @@ export interface LiveExplanationBundle {
     /** The destination, for location context. Null when uncatalogued. */
     readonly city: string | null;
     readonly room_type_name: string;
+    /** The address the hotel's own page states (rule 24). Null is common. */
+    readonly street_address: string | null;
     readonly room_class: string | null;
     /**
      * The view category of the selected room ('OCEAN', 'CITY', …), when the
@@ -280,6 +282,7 @@ export interface LiveBundleInput {
   readonly hotelName: string;
   readonly city?: string | null;
   readonly roomTypeName: string;
+  readonly streetAddress?: string | null;
   readonly roomClass?: string | null;
   readonly roomViewType?: string | null;
   readonly checkIn: string;
@@ -528,6 +531,7 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
       hotel_name: input.hotelName,
       city: input.city ?? null,
       room_type_name: input.roomTypeName,
+      street_address: input.streetAddress ?? null,
       room_class: input.roomClass ?? null,
       room_view: input.roomViewType ?? null,
       check_in: input.checkIn,
