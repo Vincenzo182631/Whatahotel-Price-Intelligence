@@ -247,6 +247,28 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   // would be reading a personalization that was never made.
   const preferenceParam = url.searchParams.get('preference');
   const parsedPreference = parsePreference(preferenceParam);
+
+  /**
+   * `voice=defer` — answer with the deterministic sentences NOW and let the
+   * caller ask again for the model's wording.
+   *
+   * The facts are decided before any model runs (rule 4), so the answer a
+   * guest needs is computable with no network at all. What the model adds is
+   * phrasing, and waiting up to `timeoutMs` for phrasing is the one cost in
+   * this request that can be removed without removing a fact.
+   *
+   * It exists for the preference chips. Clicking "Family" asks a question
+   * this system can already answer from stored evidence; making the guest
+   * wait on an external service before they see it is the enhancement
+   * behaving like a regression, which is exactly what the reasoner's own
+   * short timeout was written to prevent.
+   *
+   * The deferred answer is not a lesser one. It is the same sentences the
+   * template path ships on every failure, and the response says plainly that
+   * a model wording was not attempted, so a client can ask for one and a
+   * reader is never misled about what wrote the text.
+   */
+  const deferVoice = url.searchParams.get('voice') === 'defer';
   if (preferenceParam !== null && preferenceParam !== '' && parsedPreference === null) {
     throw new ApiError('INVALID_PARAMETER', 'preference is not recognised', {
       value: preferenceParam,
@@ -765,7 +787,11 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
   // stay is warm now, so the next request takes the model path and the
   // explanation cache keeps what it writes.
   const coldRequest = Boolean(onDemand?.performed || compTopUp?.performed);
-  const explanation = await explainLive(coldRequest ? null : liveReasoner(), bundle);
+  // Two ways to reach the template path deliberately rather than by failure:
+  // a cold request has already spent the guest's patience upstream, and a
+  // deferred voice is the caller saying it will ask for the wording itself.
+  const skipModel = coldRequest || deferVoice;
+  const explanation = await explainLive(skipModel ? null : liveReasoner(), bundle);
   if (explanation.source === 'TEMPLATE' && (explanation.failure || explanation.violations.length)) {
     // Server log only — the violations name specific numbers and belong to
     // our validator, not to the customer's stay. The response carries the
@@ -1224,6 +1250,18 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
         explanation.source === 'TEMPLATE'
           ? (explanation.failure ?? (explanation.violations.length > 0 ? 'draft_rejected' : null))
           : null,
+      /**
+       * True when the caller asked for `voice=defer` and a model wording was
+       * therefore never attempted. It is the signal to ask again without the
+       * parameter — and the reason a client can render instantly without
+       * pretending the template is all there is.
+       *
+       * False is the honest answer in every other case, INCLUDING a model
+       * that failed: "we did not try" and "we tried and it did not pass" are
+       * different facts, and `fallback_reason` above is where the second one
+       * is named.
+       */
+      voice_deferred: deferVoice,
     },
 
     signals: {

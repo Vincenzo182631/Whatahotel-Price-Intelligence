@@ -26,10 +26,12 @@ on:
       reject_host:
         description: >-
           Record a human judgement that this host is not any property's own
-          site, e.g. com-miami.com. Needs reject_reason, and confirm "apply"
-          to write. Matches the host exactly or as a dotted suffix, so
-          rejecting a directory covers every subdomain it hands out.
-          Overrides confirm.
+          site, e.g. com-miami.com. A COMMA-SEPARATED LIST is accepted and
+          every host in it is stored with the SAME reason, so hosts that
+          differ in kind belong in separate runs. Needs reject_reason, and
+          confirm "apply" to write. Matches each host exactly or as a dotted
+          suffix, so rejecting a directory covers every subdomain it hands
+          out. Overrides confirm.
         required: false
         default: ''
       reject_reason:
@@ -112,8 +114,10 @@ jobs:
             # A hostname and nothing else. This value reaches a stored
             # judgement that clears hotels, and workflow inputs are
             # user-typed strings.
-            if ! echo "$REJECT_HOST" | grep -Eq '^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$'; then
-              echo '::error::reject_host must be a bare hostname, e.g. com-miami.com'
+            # One or more bare hostnames, comma-separated. Spaces are
+            # tolerated around the commas and nothing else is.
+            if ! echo "$REJECT_HOST" | grep -Eq '^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+( *, *[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+)*$'; then
+              echo '::error::reject_host must be one or more bare hostnames, comma-separated, e.g. com-miami.com,hotel-nyc.com'
               exit 1
             fi
             if [ -z "$REJECT_REASON" ]; then

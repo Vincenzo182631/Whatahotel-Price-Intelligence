@@ -2168,11 +2168,67 @@
     if (live && options.preference && options.preference !== 'GENERAL_VALUE') {
       params.set('preference', options.preference);
     }
+    // Answer now, phrase later. The facts are decided server-side before any
+    // model runs, so the sentences a guest needs exist without one; asking
+    // for them without the model wording is what makes a preference chip
+    // feel instant. The wording is fetched straight afterwards and swapped
+    // in if it arrives (see upgradeVoice).
+    if (live && options.deferVoice) params.set('voice', 'defer');
     return (
       base +
       (live ? '/api/v1/live-intelligence?' : '/api/v1/price-intelligence?') +
       params.toString()
     );
+  }
+
+  /**
+   * Fetch the model's wording for an answer already on screen, and swap it in.
+   *
+   * The second half of `voice=defer`. The guest is reading the deterministic
+   * sentences — which are correct, validated and complete — while this asks
+   * the same question again and lets the server spend its model budget. If
+   * the wording arrives, the panel re-renders with it; if the model is
+   * disabled, times out, or writes a draft the validator rejects, the
+   * response comes back with the same template sentences and the re-render
+   * changes nothing a reader would notice.
+   *
+   * Three things it must not do. It never fires unless the server SAID it
+   * deferred, so a client cannot double the API's work by guessing. It
+   * respects the generation counter, so a guest who clicks another
+   * preference meanwhile is never painted over by the older question's
+   * answer. And it fails silently: an upgrade that cannot be fetched is not
+   * an error, because nothing is missing from what is already rendered.
+   */
+  function upgradeVoice(root, options, state, fresh, body) {
+    if (!body || !body.explanation || body.explanation.voice_deferred !== true) return;
+    if (!options.deferVoice) return;
+
+    var plain = {};
+    for (var key in options) {
+      if (Object.prototype.hasOwnProperty.call(options, key)) plain[key] = options[key];
+    }
+    plain.deferVoice = false;
+
+    try {
+      fetch(buildUrl(plain, true), { headers: { accept: 'application/json' } })
+        .then(function (response) {
+          return response.status === 200 ? response.json() : null;
+        })
+        .then(function (fuller) {
+          if (!fuller || !fresh()) return;
+          // Only when a model actually wrote it. Re-rendering the same
+          // template sentences would be a repaint for nothing, and on a slow
+          // device that flicker is a cost with no benefit behind it.
+          if (!fuller.explanation || fuller.explanation.source !== 'MODEL') return;
+          if (fuller.intelligence_mode === 'HOTEL_ONLY') renderHotelOnly(root, fuller);
+          else renderLive(root, fuller, state);
+        })
+        .catch(function () {
+          /* the answer on screen is already complete */
+        });
+    } catch (e) {
+      /* the answer on screen is already complete */
+    }
   }
 
   /**
@@ -2303,6 +2359,9 @@
         if (Object.prototype.hasOwnProperty.call(options, key)) next[key] = options[key];
       }
       next.preference = preference;
+      // The one place this is on by default: the guest has just clicked a
+      // question they expect answered, and the answer does not need a model.
+      next.deferVoice = true;
       next.expanded = state.expanded;
       next.seeMore = state.seeMore;
       root.__wahpiPref = preference;
@@ -2399,6 +2458,7 @@
             renderHotelOnly(root, result.body);
           } else if (live) renderLive(root, result.body, state);
           else renderAnalysis(root, result.body, state);
+          upgradeVoice(root, options, state, fresh, result.body);
           return result.body;
         }
 
