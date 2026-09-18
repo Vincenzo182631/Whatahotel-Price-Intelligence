@@ -55,7 +55,9 @@ export type MotivatorEvidenceSource =
   | 'GOOGLE_RATING'
   | 'ROOM_CATEGORY' // class and view, normalized by us (rule 11)
   | 'DEAL_SCORE' // the comparison itself, for the value motivators
-  | 'WEBSITE'; // read from the property's own site (migration 0022)
+  | 'WEBSITE' // read from the property's own site (migration 0022)
+  | 'GOOGLE_EDITORIAL' // Google's own description, quoted as Google's (rule 32)
+  | 'STREET_ADDRESS'; // the address the hotel's own page states (rule 24)
 
 export interface MotivatorEvidence {
   readonly text: string;
@@ -144,7 +146,52 @@ export interface MotivatorInput {
     readonly claim: string;
     readonly sourceUrl: string;
   }[];
+  /**
+   * Google's own description of the property (rule 32), on 2,214 of 3,223
+   * active hotels. The most varied per-hotel prose this system holds, and
+   * until now it informed the hotel-value card and nothing else.
+   *
+   * It is AREA evidence as much as hotel evidence — Google's summaries
+   * routinely place a property ("steps from the beach", "in the historic
+   * centre"), which is the class of fact our preference answers were most
+   * short of.
+   */
+  readonly editorialSummary?: string | null;
+  /** The street address the hotel's OWN page states (rule 24). */
+  readonly streetAddress?: string | null;
 }
+
+/**
+ * Words in Google's description that speak to a motivator.
+ *
+ * The same narrowness as AMENITY_SIGNALS and for the same reason: a loose
+ * match is worse than none. "Location" would hit every summary ever written;
+ * "steps from the beach" is a placement a reader can check against a map.
+ *
+ * What is matched is GOOGLE'S OWN SENTENCE, and what renders quotes it as
+ * Google's (rule 32). The inference is ours and is visible — a reader who
+ * disagrees that a beachfront mention means a beach holiday can say so.
+ */
+const EDITORIAL_SIGNALS: Partial<Record<Preference, readonly string[]>> = {
+  BEACH_RESORT: ['beach', 'oceanfront', 'seafront', 'waterfront', 'lagoon', 'shore'],
+  LOCATION: [
+    'steps from',
+    'minutes from',
+    'overlooking',
+    'historic centre',
+    'historic center',
+    'downtown',
+    'old town',
+    'city centre',
+    'city center',
+    'waterfront',
+  ],
+  NIGHTLIFE: ['nightlife', 'bars', 'rooftop bar', 'clubs', 'entertainment district'],
+  QUIET_RELAXATION: ['secluded', 'tranquil', 'serene', 'peaceful', 'retreat'],
+  LUXURY_EXPERIENCE: ['landmark', 'iconic', 'historic', 'grande dame'],
+  FAMILY: ['family-friendly', 'families'],
+  AMENITIES: ['spa', 'pool', 'fitness', 'restaurants'],
+};
 
 const ALL_MOTIVATORS: readonly Preference[] = [
   'GENERAL_VALUE',
@@ -258,6 +305,48 @@ export function assessMotivators(input: MotivatorInput): readonly MotivatorAsses
       });
     }
 
+    // ── AREA evidence ────────────────────────────────────────────────
+    //
+    // Added 2026-09-18 after reading the WhataHotel advisor's system prompt,
+    // which draws a line we did not have: its "never invent" rule covers
+    // HOTEL facts (rating, amenities, perks, price) while the surrounding
+    // AREA — attractions, restaurants, the nearest airport, getting around —
+    // may come from general knowledge.
+    //
+    // The line is right and the sourcing is where we differ. Theirs allows
+    // recall; ours cites two things we already hold and had never fed to a
+    // motivator: Google's own description of the property, and the street
+    // address the hotel's own page states. Both are quoted rather than
+    // interpreted, so a guest can check either.
+    //
+    // Measured the same day: asked whether W Aspen has a pool, their advisor
+    // asserted it — a HOTEL fact by their own rule, absent from their page's
+    // payload and from every curated file in their repository. It was true.
+    // Ten other probes obeyed the rule. A prompt is a rule the model follows
+    // most of the time; this is the reason ours stays evidence-backed even
+    // where theirs need not be.
+    const editorial = (input.editorialSummary ?? '').toLowerCase();
+    const editorialHits = (EDITORIAL_SIGNALS[motivator] ?? []).filter((w) => editorial.includes(w));
+    if (editorialHits.length > 0) {
+      evidence.push({
+        // Attributed in the sentence itself, never folded into our own voice
+        // (rule 32): a reader can weigh "Google says this" and cannot weigh
+        // an unattributed claim.
+        text: `Google's description of this property mentions ${editorialHits.slice(0, 2).join(' and ')}`,
+        source: 'GOOGLE_EDITORIAL',
+      });
+    }
+
+    // Where the property actually is, in the merchant's own words. Only for
+    // LOCATION: an address is an answer to "where is this", and padding the
+    // other nine motivators with it would be noise.
+    if (motivator === 'LOCATION' && input.streetAddress) {
+      evidence.push({
+        text: `The property's own page gives its address as ${input.streetAddress}`,
+        source: 'STREET_ADDRESS',
+      });
+    }
+
     // What the property's own site says. Last in the list on purpose: our own
     // measured evidence leads, and the citation follows it. Each carries its
     // URL so a guest can open the page and look for the phrase — which is the
@@ -320,4 +409,59 @@ export function renderMotivatorAnswer(
       .slice(0, 3)
       .map((e) => (e.text.endsWith('.') ? e.text : `${e.text}.`)),
   };
+}
+
+/**
+ * What this property DOES show, when the preference the guest clicked shows
+ * nothing.
+ *
+ * Copied in SHAPE from the WhataHotel advisor, examined 2026-09-18. Asked
+ * whether W Aspen has a pool and a beach, it answered the literal question,
+ * said why ("Aspen is a mountain destination"), and pointed somewhere useful.
+ * Ours said "limited information is available" and stopped — a true sentence
+ * that leaves a guest with less than they arrived with.
+ *
+ * What is NOT copied is where its answer came from. "W Aspen has a pool" is
+ * absent from the data that page carries, so it is editorial or model recall:
+ * true in that instance, unverifiable in general, and the thing rules 4 and
+ * 34 exist to keep out. This pivot invents nothing. Every word of it is
+ * evidence already measured for this same hotel, for a different motivator,
+ * on the same request — nine of which were computed and thrown away whenever
+ * the tenth came back empty.
+ *
+ * The two VALUE motivators are excluded: they answer a question about the
+ * RATE, and a guest asking about the beach is not asking about the price.
+ *
+ * Says nothing about what the hotel lacks. "We hold no evidence" is a
+ * statement about our research (rule 33), the limited sentence beside this
+ * one already makes it, and a verdict on the property is what rule 28
+ * forbids outright.
+ */
+export function renderMotivatorPivot(
+  all: readonly MotivatorAssessment[],
+  selected: Preference,
+): string | null {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const m of all) {
+    if (m.motivator === selected) continue;
+    if (m.motivator === 'GENERAL_VALUE' || m.motivator === 'BEST_VALUE') continue;
+    if (m.verdict !== 'SUPPORTED') continue;
+    for (const e of m.evidence) {
+      const key = e.text.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(e.text.replace(/\.$/, ''));
+    }
+  }
+  if (lines.length === 0) return null;
+
+  // Two at most. A pivot is a pointer, not a second answer, and the full
+  // assessment for all ten rides in the response beside it.
+  const lower = (t: string): string => (t.length > 0 ? t[0]!.toLowerCase() + t.slice(1) : t);
+  const first = lower(lines[0] as string);
+  const second = lines.length > 1 ? lower(lines[1] as string) : null;
+  return second === null
+    ? `What this property does show: ${first}.`
+    : `What this property does show: ${first}, and ${second}.`;
 }

@@ -39,6 +39,7 @@ import {
   type ReputationFact,
   assessMotivators,
   renderMotivatorAnswer,
+  renderMotivatorPivot,
 } from '@wahpi/core';
 import {
   findBenefits,
@@ -727,6 +728,11 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     comparableMedianRating: comparableMedianRating(comparableRatings),
     dealScoreOutOfTen: result.outOfTen,
     websiteClaims: subjectWebsiteClaims,
+    // Area evidence: Google's own description and the merchant's address.
+    // Both were already loaded for other purposes and neither reached a
+    // motivator, which is why LOCATION and BEACH_RESORT had so little to say.
+    editorialSummary: subjectEditorialSummary,
+    streetAddress: loaded.hotel.streetAddress,
   });
 
   const bundle = buildLiveExplanationBundle({
@@ -735,6 +741,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     hotelName: loaded.hotel.name,
     city: loaded.hotel.destination,
     roomTypeName: loaded.roomName,
+    streetAddress: loaded.hotel.streetAddress,
     roomClass:
       loaded.availableRooms.find((r) => r.roomTypeId === loaded.roomTypeId)?.roomClass ?? null,
     roomViewType: loaded.roomViewType,
@@ -1483,12 +1490,22 @@ async function hotelOnlyAnswer(
     comparableMedianRating: null,
     dealScoreOutOfTen: null,
     websiteClaims,
+    editorialSummary,
+    streetAddress: hotel.streetAddress,
   });
 
   const answered =
     preference === 'GENERAL_VALUE'
       ? null
       : renderMotivatorAnswer(motivators.find((m) => m.motivator === preference));
+  // The clicked preference showed nothing, so say what this property DOES
+  // show rather than stopping at the absence. Shape copied from the
+  // WhataHotel advisor; content is this hotel's own measured evidence for
+  // the other motivators, computed on this request and otherwise discarded.
+  const pivot =
+    preference === 'GENERAL_VALUE' || answered
+      ? null
+      : renderMotivatorPivot(motivators, preference);
   const preferenceAnswer = answered
     ? {
         preference,
@@ -1503,7 +1520,20 @@ async function hotelOnlyAnswer(
         evidence_used: [],
         source: 'DETERMINISTIC',
       }
-    : null;
+    : pivot
+      ? {
+          preference,
+          // No price sentence here either: with no rate there is nothing to
+          // say about one, and the pivot carries only hotel-level evidence.
+          personalized_insight: `Limited ${preference.toLowerCase().replace(/_/g, '-')}-specific information is available for this property in our data. ${pivot}`,
+          why_this_hotel_may_fit: [],
+          what_to_consider: [],
+          alternative_reason: '',
+          confidence: 'LOW',
+          evidence_used: [],
+          source: 'DETERMINISTIC',
+        }
+      : null;
 
   return {
     generated_at: now.toISOString(),
