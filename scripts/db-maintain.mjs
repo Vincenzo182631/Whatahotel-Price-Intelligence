@@ -162,9 +162,11 @@ if (COVERAGE) {
       -- count below is what says whether a re-sweep is worth its Places bill.
       UNION ALL SELECT 'with editorial summary ' || count(*) FROM a
         WHERE google_editorial_summary IS NOT NULL
+      -- TEXT[], not jsonb (migration 0014), so cardinality rather than
+      -- jsonb_array_length. Guessing the type cost a failed run.
       UNION ALL SELECT 'with review themes     ' || count(*) FROM a
         WHERE google_review_themes IS NOT NULL
-          AND jsonb_array_length(google_review_themes) > 0
+          AND cardinality(google_review_themes) > 0
       -- Migration 0021. amadeus_property is the identity the amenity sync
       -- checks against, so hotels without one can never store amenities
       -- (outcome NO_STORED_CODE) however often the sweep runs.
