@@ -123,3 +123,62 @@ export async function findHotelsNeedingAmenities(
     city: r.city as string,
   }));
 }
+
+/**
+ * The amenities that actually distinguish this hotel, rarest first.
+ *
+ * Naming an amenity to a guest is only worth doing when it separates this
+ * property from the others. Measured across the catalogue on 2026-09-18
+ * (`npm run ops -- ...` / db-maintain `--amenity-spread`, 1,078 hotels,
+ * 28,465 rows, 184 distinct codes):
+ *
+ *     924  86%  Hairdryer
+ *     833  77%  Air conditioning
+ *     792  73%  Minibar
+ *     759  70%  Color television
+ *     457  42%  Direct dial phone number      ← the field drops off here
+ *     ...
+ *     240  22%  ESPN available
+ *
+ * Nothing is universal (no code exceeds 90%), so there is no single constant
+ * to strip. But those top four sit at 70% and above and then the distribution
+ * falls to 42% with nothing in between, and telling a guest that a luxury
+ * hotel has a hairdryer is rule 9's failure wearing a label: a value carried
+ * by most of the sample says nothing about any member of it. `maxShare`
+ * defaults into that measured gap rather than onto a round number.
+ *
+ * The share is computed HERE, per query, against the live corpus — not frozen
+ * into a list. A hardcoded exclusion would be correct today and wrong after
+ * the next sweep, and it would be a claim about the catalogue rather than a
+ * reading of it.
+ *
+ * Returns FEWER than `limit` freely, and returns nothing at all rather than
+ * padding: the median hotel holds six amenities, so a short list is the
+ * normal case and a full one is the exception.
+ */
+export async function findDistinctiveAmenities(
+  hotelId: number,
+  limit = 5,
+  maxShare = 0.6,
+  q?: Queryable,
+): Promise<readonly HotelAmenity[]> {
+  const { rows } = await db(q).query(
+    `WITH carriers AS (
+       SELECT count(DISTINCT hotel_id)::numeric AS n FROM hotel_amenity
+     ),
+     shares AS (
+       SELECT code, count(*)::numeric / NULLIF((SELECT n FROM carriers), 0) AS share
+         FROM hotel_amenity
+        GROUP BY code
+     )
+     SELECT a.code, a.label
+       FROM hotel_amenity a
+       JOIN shares s ON s.code = a.code
+      WHERE a.hotel_id = $1
+        AND s.share <= $3
+      ORDER BY s.share ASC, a.label ASC
+      LIMIT $2`,
+    [hotelId, limit, maxShare],
+  );
+  return rows.map((r) => ({ code: r.code as string, label: r.label as string }));
+}

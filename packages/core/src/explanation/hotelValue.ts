@@ -61,6 +61,7 @@ export const HOTEL_VALUE_EVIDENCE = [
   'google_review_themes',
   'google_editorial_summary',
   'hotel_perks',
+  'hotel_room_amenities',
   'hotel_location',
   'room_category',
   'availability',
@@ -93,6 +94,14 @@ export interface HotelValueFacts {
     readonly perks: readonly string[];
     readonly editorial_summary: string | null;
     readonly review_themes: readonly string[];
+    /**
+     * What the source states this hotel's rooms include, already filtered to
+     * the labels that distinguish it (`findDistinctiveAmenities`). Named
+     * verbatim and never interpreted: "Sofa bed" is a fact, "good for
+     * families" is a conclusion nothing here measures, and rule 30 is the
+     * cost of confusing the two.
+     */
+    readonly room_amenities: readonly string[];
     readonly supporting_signals: readonly string[];
   };
   readonly reputation: { readonly subject: ReputationFact | null };
@@ -119,6 +128,7 @@ export function hotelOnlyFacts(input: {
   readonly perks?: readonly string[];
   readonly editorialSummary?: string | null;
   readonly reviewThemes?: readonly string[];
+  readonly roomAmenities?: readonly string[];
 }): HotelValueFacts {
   const perks = (input.perks ?? []).slice(0, 6);
   const themes = (input.reviewThemes ?? []).slice(0, 5);
@@ -129,6 +139,7 @@ export function hotelOnlyFacts(input: {
       perks,
       editorial_summary: input.editorialSummary ?? null,
       review_themes: themes,
+      room_amenities: (input.roomAmenities ?? []).slice(0, 5),
       supporting_signals: buildSupportingSignals(input),
     },
     reputation: { subject: input.reputation ?? null },
@@ -151,6 +162,19 @@ export interface HotelValue {
   readonly summary: string;
   /** Verbatim members of supportingSignals(bundle). Never model-invented. */
   readonly supporting_facts: readonly string[];
+  /**
+   * Google's own description of the property, carried SEPARATELY and named
+   * as theirs rather than folded into `summary`.
+   *
+   * It is the most varied per-hotel prose we hold — measured 19 distinct
+   * values across 19 hotels (rule 30) — and it is somebody else's writing
+   * about somebody else's business. Blending it into our sentences would
+   * present Google's characterisation as our measurement, which is the same
+   * confusion rule 22 prevents for the rating: a reader can weigh "Google
+   * says this" and cannot weigh an unattributed claim. Null when we hold
+   * none; never synthesised.
+   */
+  readonly editorial: { readonly text: string; readonly attribution: 'GOOGLE' } | null;
   readonly confidence: AssessmentConfidence;
   readonly evidence_used: readonly HotelValueEvidence[];
   readonly source: 'MODEL' | 'DETERMINISTIC';
@@ -215,7 +239,10 @@ export function deterministicHotelValue(bundle: HotelValueFacts): HotelValue | n
   const rep = bundle.reputation.subject;
   const { perks, review_themes: themes } = bundle.hotel_facts;
   const statedView = bundle.subject.room_view ? VIEW_PROSE[bundle.subject.room_view] : undefined;
-  if (!rep && perks.length === 0 && themes.length === 0 && !statedView) return null;
+  const amenityCount = bundle.hotel_facts.room_amenities.length;
+  if (!rep && perks.length === 0 && themes.length === 0 && !statedView && amenityCount === 0) {
+    return null;
+  }
 
   const evidence = new Set<HotelValueEvidence>();
   const sentences: string[] = [];
@@ -274,16 +301,37 @@ export function deterministicHotelValue(bundle: HotelValueFacts): HotelValue | n
     evidence.add('availability');
   }
 
+  // What the rooms include, NAMED and not interpreted. The list arriving here
+  // is already filtered to the labels that distinguish this hotel
+  // (findDistinctiveAmenities), so there is no judgement left to make at this
+  // point beyond reading them out. "Sofa bed" is a fact about the room;
+  // "good for families" is a conclusion nothing in this system measures, and
+  // rule 30 is what that conclusion costs when the underlying field turns out
+  // to be a constant.
+  //
+  // Never padded and never apologised for: the median hotel holds six
+  // amenities, so two is an ordinary answer and zero simply says nothing.
+  const amenities = bundle.hotel_facts.room_amenities;
+  if (amenities.length > 0) {
+    const named = amenities.slice(0, 3).map((a) => a.toLowerCase());
+    sentences.push(`Rooms here list ${listOut(named)}.`);
+    evidence.add('hotel_room_amenities');
+  }
+
   const headline = rep
     ? themeProse.length > 0
       ? 'Highly regarded by recent guests'
       : 'A well-rated property'
     : 'What this stay includes';
 
+  const editorialText = bundle.hotel_facts.editorial_summary?.trim();
+  if (editorialText) evidence.add('google_editorial_summary');
+
   return {
     headline,
     summary: sentences.slice(0, 3).join(' '),
     supporting_facts: supportingSignals(bundle).slice(0, MAX_DISPLAY_SIGNALS),
+    editorial: editorialText ? { text: editorialText, attribution: 'GOOGLE' } : null,
     confidence: hotelValueConfidence(bundle),
     evidence_used: [...evidence],
     source: 'DETERMINISTIC',
@@ -383,6 +431,12 @@ export function validateHotelValue(
       headline: (v.headline as string).trim(),
       summary: (v.summary as string).trim(),
       supporting_facts: v.supporting_facts as string[],
+      // Attached from the bundle, never taken from the draft. The model may
+      // not paraphrase Google's description, because an attributed quote
+      // that has been reworded is no longer the thing it is attributed to.
+      editorial: bundle.hotel_facts.editorial_summary?.trim()
+        ? { text: bundle.hotel_facts.editorial_summary.trim(), attribution: 'GOOGLE' as const }
+        : null,
       confidence: hotelValueConfidence(bundle),
       evidence_used: v.evidence_used as HotelValueEvidence[],
       source: 'MODEL',

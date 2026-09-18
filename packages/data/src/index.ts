@@ -14,6 +14,7 @@ export {
 } from './repositories/hotels.js';
 export {
   findAmadeusProperty,
+  findDistinctiveAmenities,
   findHotelAmenities,
   findHotelsNeedingAmenities,
   setAmadeusProperty,

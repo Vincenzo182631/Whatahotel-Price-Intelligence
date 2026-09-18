@@ -1378,6 +1378,28 @@
       });
       box.appendChild(chips);
     }
+
+    // Google's description of the property, rendered as THEIRS.
+    //
+    // It arrives in its own field for exactly this reason, and the label is
+    // the point rather than decoration: a reader can weigh "Google says
+    // this" and cannot weigh an unattributed sentence sitting among ours.
+    // Same principle as the rating's "context only" note (rule 22), applied
+    // to prose. The server sends null when it holds none, and nothing here
+    // paraphrases or trims it into a claim.
+    if (hv.editorial && hv.editorial.text) {
+      var ed = el('div', 'wahpi__why-editorial');
+      ed.appendChild(
+        el(
+          'span',
+          'wahpi__why-editorial-label',
+          hv.editorial.attribution === 'GOOGLE' ? 'From Google' : 'Quoted',
+        ),
+      );
+      ed.appendChild(el('span', 'wahpi__why-editorial-text', hv.editorial.text));
+      box.appendChild(ed);
+    }
+
     wrap.appendChild(box);
     return wrap;
   }
