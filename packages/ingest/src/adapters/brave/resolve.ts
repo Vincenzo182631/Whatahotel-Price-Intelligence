@@ -100,29 +100,83 @@ const AGGREGATORS = [
  * Public suffixes that are two labels long, so the registrable domain is the
  * last THREE.
  *
- * Deliberately a short list rather than the full Public Suffix List. This is
- * used to decide whether two hotels sit under one domain, and being wrong
- * costs a missed collision or a spurious one — both visible in the review —
- * rather than a wrong claim in front of a guest. A dependency that ships
- * thousands of entries and needs updating is not worth that. Extend it when
- * the review surfaces a case it got wrong.
+ * Deliberately a short list rather than the full Public Suffix List, but NOT
+ * an arbitrarily short one, because the two directions of error are not
+ * equal.
+ *
+ * A suffix present here that should not be costs a missed collision, which
+ * the review surfaces. A suffix MISSING costs something worse: two unrelated
+ * hotels under one country suffix both reduce to that suffix, collide with
+ * each other, and have their research cleared for a shared domain they never
+ * shared. `casadecampo.com.do` and any other `*.com.do` would have done
+ * exactly that.
+ *
+ * Measured 2026-09-18: `com.do` was missing and the review reported Casa de
+ * Campo as sitting on a "third-party subdomain (com.do)" — the visible half
+ * of a fault whose invisible half clears hotels. The list below therefore
+ * covers the country second-levels a worldwide luxury catalogue actually
+ * reaches, rather than only the ones a case has already been filed against.
+ * Extend it whenever a host appears whose registrable domain reads as a
+ * suffix.
  */
 const TWO_LABEL_SUFFIXES = new Set([
+  // United Kingdom and Ireland
   'co.uk',
   'org.uk',
   'ac.uk',
+  // Asia-Pacific
   'co.jp',
   'com.au',
   'net.au',
-  'com.br',
-  'com.mx',
   'co.nz',
-  'co.za',
   'com.sg',
   'com.hk',
-  'com.tr',
-  'co.in',
   'com.cn',
+  'com.tw',
+  'co.th',
+  'co.kr',
+  'co.id',
+  'com.my',
+  'com.ph',
+  'com.vn',
+  'co.in',
+  'com.pk',
+  'com.bd',
+  'com.lk',
+  'com.np',
+  'com.fj',
+  // Americas
+  'com.br',
+  'com.mx',
+  'com.ar',
+  'com.co',
+  'com.pe',
+  'com.uy',
+  'com.ve',
+  'com.ec',
+  'com.pa',
+  'com.gt',
+  'com.do', // measured: Casa de Campo Resort & Villas, La Romana
+  'com.pr',
+  // Middle East and Africa
+  'com.tr',
+  'co.za',
+  'co.il',
+  'com.sa',
+  'com.qa',
+  'com.bh',
+  'com.kw',
+  'com.om',
+  'com.jo',
+  'com.lb',
+  'com.eg',
+  'com.ng',
+  'com.gh',
+  // Europe
+  'com.pl',
+  'com.ua',
+  'com.cy',
+  'com.mt',
 ]);
 
 /**

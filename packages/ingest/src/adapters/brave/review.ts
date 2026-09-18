@@ -14,6 +14,7 @@
  * resolution than reject one silently, because a wrong rejection is invisible
  * and a flagged-but-fine resolution costs somebody five seconds.
  */
+import { registrableDomain } from './resolve.js';
 
 /** Words that identify a category, not a property. */
 const GENERIC = new Set([
@@ -104,12 +105,21 @@ export function reviewResolution(input: {
     reasons.push(`the name's most distinctive word ("${longest}") is not in the host`);
   }
 
-  // A subdomain of somebody else's platform: the property's booking engine or
-  // a franchise page, not its own site.
-  const labels = host.split('.');
-  if (labels.length > 2) {
+  // A subdomain of somebody else's domain: a directory's per-hotel page, a
+  // booking engine, or a brand's property page.
+  //
+  // Compared against the REGISTRABLE domain, not against a label count.
+  // Measured 2026-09-18 over 170 resolutions: `claridges.co.uk`,
+  // `the-connaught.co.uk`, `treetops.co.nz` and `casadecampo.com.do` are
+  // three-label hosts that ARE the property's own site, and a naive
+  // labels.length > 2 flagged all of them with "third-party subdomain
+  // (co.uk)" — reporting a public suffix as somebody's platform. Flagging a
+  // correct resolution is the cheap failure this scorer accepts, but only
+  // when something real prompted it; noise teaches a reviewer to skim.
+  const registrable = registrableDomain(host);
+  if (host !== registrable) {
     score += 10;
-    reasons.push(`third-party subdomain (${labels.slice(1).join('.')})`);
+    reasons.push(`third-party subdomain (${registrable})`);
   }
 
   // A page that answers to far more of our phrases than a hotel page does is
