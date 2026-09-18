@@ -66,6 +66,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+
+      # Most of this workflow shells out to psql and needs no dependencies,
+      # which is why it ran without either step for fifty runs. The research
+      # review is the exception: it imports the compiled packages, because
+      # the suspicion scoring belongs beside the resolver it judges rather
+      # than duplicated in SQL. Cheap enough at a few seconds, and it keeps
+      # one definition of what makes a resolution doubtful.
+      - run: npm ci
+      - run: npm run build
 
       - name: Maintain
         env:
