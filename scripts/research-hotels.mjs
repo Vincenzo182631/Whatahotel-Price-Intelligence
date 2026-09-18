@@ -76,6 +76,12 @@ const counts = new Map();
 let claimsWritten = 0;
 const sites = [];
 
+// Domains that collided DURING this run. A collision clears both sides, so a
+// later hotel resolving to the same domain stands alone and the batch purge —
+// which needs two holders — cannot see it. Collecting them here is what makes
+// the outcome independent of the order the hotels happened to be researched in.
+const collidedDomains = new Set();
+
 for (const target of targets) {
   const result = await researchHotel(target, {
     client,
@@ -87,6 +93,7 @@ for (const target of targets) {
     rejectedHosts,
   });
   counts.set(result.outcome, (counts.get(result.outcome) ?? 0) + 1);
+  if (result.sharedDomain) collidedDomains.add(result.sharedDomain);
   claimsWritten += result.claims.length;
   if (result.outcome === 'STORED') {
     sites.push(`${target.hotelId} ${target.name}: ${result.claims.length} claim(s) from ${result.websiteUrl}`);
@@ -102,7 +109,10 @@ for (const target of targets) {
 // 22 then resolved the same domain into the empty slot and stood. Two
 // Ritz-Carltons survived on one brand domain, and which two was an accident
 // of sequence. Asked of the finished state, the question has no such hole.
-const purged = await purgeSharedWebsites({ findAllHotelWebsites, clearResearchForHotels });
+const purged = await purgeSharedWebsites(
+  { findAllHotelWebsites, clearResearchForHotels },
+  [...collidedDomains],
+);
 for (const p of purged) {
   console.log(`  shared domain dropped: ${p.domain} was claimed by ${p.hotelIds.join(', ')}`);
 }

@@ -26,7 +26,7 @@ import { purgeSharedWebsites } from '../../packages/ingest/src/pipeline/research
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const suite = HAS_DB ? describe : describe.skip;
 
-const IDS = ['RC-ONE', 'RC-TWO', 'SOLO', 'DIR-ONE', 'DIR-TWO'];
+const IDS = ['RC-ONE', 'RC-TWO', 'SOLO', 'DIR-ONE', 'DIR-TWO', 'SOLE-SURVIVOR'];
 const BRAND = 'https://reconcile-brand.example/';
 const OWN = 'https://reconcile-solo.example/';
 // One directory, two subdomains, two hotels. Measured 2026-09-18 as
@@ -121,5 +121,43 @@ suite('integration · purgeSharedWebsites', () => {
 
   it('is idempotent, so a sweep can end with it every time', async () => {
     expect(await purgeSharedWebsites(deps)).toEqual([]);
+  });
+
+  it('clears the lone survivor of a domain that collided during the run', async () => {
+    // The hole the batch purge cannot see. A collision clears BOTH sides, so
+    // a later hotel resolving to the same domain stands alone and the "held
+    // by two or more" test finds nothing. Which page survives is then decided
+    // by the order the hotels were researched in.
+    //
+    // Measured 2026-09-18 over 300 hotels: the Doha InterContinental was
+    // cleared from doha.intercontinental.com and the Madrid one stood on
+    // madrid.intercontinental.com. Both may be legitimate per-property pages;
+    // nothing about them chose, only sequence.
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `INSERT INTO hotel (wah_hotel_id,name,luxury_tier,base_currency,website_url)
+       VALUES ('SOLE-SURVIVOR','SOLE-SURVIVOR',3,'USD','https://madrid.reconcile-brandco.example/')
+       RETURNING id`,
+    );
+    const survivor = rows[0].id as number;
+    try {
+      // Only one hotel holds it, so the ordinary rule is silent...
+      expect(await purgeSharedWebsites(deps)).toEqual([]);
+
+      // ...until the run reports that this domain collided earlier.
+      const purged = await purgeSharedWebsites(deps, ['reconcile-brandco.example']);
+      expect(purged).toHaveLength(1);
+      expect(purged[0]?.hotelIds).toEqual([survivor]);
+      expect(await findResearchClaims(survivor)).toEqual([]);
+    } finally {
+      await pool.query(`DELETE FROM hotel WHERE wah_hotel_id = 'SOLE-SURVIVOR'`);
+    }
+  });
+
+  it('leaves an unrelated domain alone however many collided', async () => {
+    // The reconcile is scoped to what actually collided, not to everything
+    // resolved in the same run.
+    await purgeSharedWebsites(deps, ['somewhere-else.example']);
+    expect(await findResearchClaims(solo)).toHaveLength(1);
   });
 });

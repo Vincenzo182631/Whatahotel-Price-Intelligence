@@ -27,6 +27,17 @@ export interface ResearchResult {
   readonly outcome: ResearchOutcome;
   readonly websiteUrl: string | null;
   readonly claims: readonly { motivator: string; claim: string; sourceUrl: string }[];
+  /**
+   * On SHARED_HOST, the registrable domain that collided.
+   *
+   * Published so a sweep can reconcile it afterwards. A collision clears
+   * BOTH sides, and a later hotel resolving to the same domain then stands
+   * alone — invisible to `purgeSharedWebsites`, which needs two holders to
+   * see anything. Which of several equally-plausible pages survives is then
+   * decided by run order, and that is the same arbitrariness the batch purge
+   * was written to remove, one level down.
+   */
+  readonly sharedDomain?: string;
 }
 
 export interface ResearchDeps {
@@ -139,7 +150,33 @@ export interface PurgeDeps {
  *
  * Returns what it purged so a run can report it rather than silently tidying.
  */
-export async function purgeSharedWebsites(deps: PurgeDeps): Promise<readonly PurgedWebsite[]> {
+export async function purgeSharedWebsites(
+  deps: PurgeDeps,
+  /**
+   * Domains that COLLIDED during the run that is now ending
+   * (`ResearchResult.sharedDomain`).
+   *
+   * A domain in this set has already proved it is held by more than one
+   * hotel, so a single hotel left on it is a survivor of run order rather
+   * than a property that owns its domain. Measured 2026-09-18 over 300
+   * hotels: the Doha InterContinental was cleared from
+   * `doha.intercontinental.com` and the Madrid one stood on
+   * `madrid.intercontinental.com`, and nothing about the two pages decided
+   * which — only the order they were researched in.
+   *
+   * Both may well be legitimate per-property pages on a brand domain. That
+   * is exactly why the survivor is not simply kept: we cannot tell a brand's
+   * property page from a directory's per-hotel page by its shape, the
+   * consequence of being wrong is a citation pointing at another business,
+   * and rule 34 spends a correct claim to avoid a wrong one. What this
+   * removes is the coin flip, not the caution.
+   *
+   * It is bounded to the run and never stored: a domain is not banned, it is
+   * reconciled. The next sweep re-resolves from scratch.
+   */
+  collidedDomains: readonly string[] = [],
+): Promise<readonly PurgedWebsite[]> {
+  const collided = new Set(collidedDomains.map((d) => d.toLowerCase()));
   const byDomain = new Map<string, number[]>();
   for (const row of await deps.findAllHotelWebsites()) {
     const host = hostOf(row.websiteUrl);
@@ -152,7 +189,7 @@ export async function purgeSharedWebsites(deps: PurgeDeps): Promise<readonly Pur
 
   const purged: PurgedWebsite[] = [];
   for (const [domain, hotelIds] of byDomain) {
-    if (hotelIds.length < 2) continue;
+    if (hotelIds.length < 2 && !collided.has(domain)) continue;
     purged.push({ domain, hotelIds: [...hotelIds].sort((a, b) => a - b) });
   }
   purged.sort((a, b) => a.domain.localeCompare(b.domain));
@@ -232,7 +269,13 @@ export async function researchHotel(
       await deps.clearHotelResearch(hotel.hotelId);
       for (const other of collisions) await deps.clearHotelResearch(other);
       await deps.saveHotelResearchTarget(hotel.hotelId, null);
-      return { hotelId: hotel.hotelId, outcome: 'SHARED_HOST', websiteUrl: null, claims: [] };
+      return {
+        hotelId: hotel.hotelId,
+        outcome: 'SHARED_HOST',
+        websiteUrl: null,
+        claims: [],
+        sharedDomain: registrableDomain(host),
+      };
     }
 
     const html = await fetchPage(website);
