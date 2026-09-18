@@ -848,10 +848,49 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     researched earliest. That check needs the catalogue, so it lives in the
     pipeline rather than the adapter, and `SHARED_HOST` is its own outcome.
 
+    **Asking that question per hotel depends on run ORDER, so the sweep asks
+    it again of the finished state.** Measured on the second real run: hotel
+    3 resolved `ritzcarlton.com` with nothing to collide against, hotel 7
+    collided and cleared both, and hotel 22 then resolved the same domain
+    into the now-empty slot and stood. Two Ritz-Carltons survived on one
+    brand domain, and WHICH two was an accident of sequence.
+    `purgeSharedWebsites` runs after the sweep and drops every host held by
+    more than one hotel, which has no such hole because a finished state has
+    no order. The in-flight check stays for on-demand research, where a
+    single hotel has no batch to reconcile. It leaves `researched_at` SET:
+    the hotel WAS researched and the answer was wrong, so re-resolving
+    immediately would spend a search to reach the same brand domain
+    (rule 16).
+
+    **What does NOT generalise goes to a human** (migration 0023). The
+    automated checks caught the brand domains and the newsrooms and missed
+    `coconutgrove.com` for "Mr. C Miami - Coconut Grove", where the hotel's
+    name contains its own neighbourhood: one hotel, one domain, nothing to
+    collide with and no pattern to fire. Rather than grow a blocklist by
+    guesswork, `--research-review` ranks every resolution by how weakly the
+    name explains the host and a person looks at the worst. The score is a
+    PROMPT, never an automatic rejection: it would sooner flag a correct
+    resolution than reject one silently, because a wrong rejection is
+    invisible while a flagged-but-fine one costs five seconds.
+    `--reject-host <host> --reason "..."` records the judgement in
+    `research_rejected_host`, clears what it invalidates, and the resolver
+    consults it ahead of every other check. `reason` is required: a bare host
+    teaches the next reader nothing, and the table outlives the memory of why
+    a row is in it.
+
+    **The scorer must not punish a sub-brand for naming its parent.**
+    Measured: "Halepuna Waikiki by Halekulani" resolves correctly to
+    `halepuna.com`, and its longest distinctive word is the PARENT brand,
+    which its own domain rightly lacks. An earlier version flagged it, which
+    would have surfaced exactly the hotels whose domains are most clearly
+    their own. The longest-word rule now fires only when nothing substantial
+    matched instead.
+
     The lesson is the sample size, not the blocklist: 25 hotels cost 25
     searches and surfaced a false-attribution rate of nearly half. The same
     logic let loose on 3,223 would have been a database full of confident
-    citations to the wrong businesses.
+    citations to the wrong businesses. Two rounds of 25 also cost less than
+    one wrong claim in front of a guest.
 
 ## Adding or changing a factor
 

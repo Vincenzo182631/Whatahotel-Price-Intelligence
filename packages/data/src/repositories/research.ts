@@ -135,13 +135,36 @@ export async function findHotelsNeedingResearch(
 }
 
 /**
- * Other hotels already pointing at this website.
+ * The stored URL's host, as SQL.
  *
- * The check that generalises. A host claimed by more than one hotel is a
- * BRAND domain by definition — no property's own site is shared — and that
- * is how four separate Ritz-Carltons all came to resolve to ritzcarlton.com
- * on 2026-09-18, each passing a name check that "ritzcarlton" satisfies for
- * every Ritz-Carlton on earth.
+ * Every stored URL is `https://<host>/` (see `resolveHotelWebsite`), so this
+ * is a strip rather than a parse: drop the scheme and a leading `www.`, then
+ * take everything before the first slash. Kept in one constant because three
+ * queries below have to agree on what a host is, and a copy that disagreed
+ * would silently match a different set of hotels than the check beside it.
+ */
+const HOST_SQL = `split_part(regexp_replace(lower(website_url), '^https?://(www\\.)?', ''), '/', 1)`;
+
+/**
+ * Other hotels already sitting under this DOMAIN.
+ *
+ * The check that generalises. A domain claimed by more than one hotel is a
+ * BRAND or DIRECTORY domain by definition — no property's own site is shared
+ * — and that is how four separate Ritz-Carltons all came to resolve to
+ * ritzcarlton.com on 2026-09-18, each passing a name check that
+ * "ritzcarlton" satisfies for every Ritz-Carlton on earth.
+ *
+ * It compares the registrable DOMAIN, not the URL. Measured 2026-09-18,
+ * third run: `com-miami.com` served three hotels as `w.com-miami.com`,
+ * `east.com-miami.com` and `ebhotelairport.com-miami.com`. Three distinct
+ * strings never collided, so a directory holding three of our hotels was
+ * invisible to a check comparing full URLs — and all three stored zero
+ * claims, which is why no report showed them and only the human review did.
+ *
+ * The caller supplies the domain because the rule for computing it lives
+ * with the resolver (`registrableDomain`); matching a host against a given
+ * domain needs no such rule, only an exact match or a dotted suffix, which
+ * is what the predicate below is.
  *
  * Returns the other hotels' ids so the caller can clear THEIRS too: if two
  * hotels claim one domain, neither claim is right, and leaving the first one
@@ -149,14 +172,49 @@ export async function findHotelsNeedingResearch(
  */
 export async function findOtherHotelsWithWebsite(
   hotelId: number,
-  websiteUrl: string,
+  domain: string,
   q?: Queryable,
 ): Promise<readonly number[]> {
-  const { rows } = await db(q).query('SELECT id FROM hotel WHERE website_url = $2 AND id <> $1', [
-    hotelId,
-    websiteUrl,
-  ]);
+  const { rows } = await db(q).query(
+    `SELECT id FROM hotel
+      WHERE website_url IS NOT NULL
+        AND id <> $1
+        AND (${HOST_SQL} = $2 OR ${HOST_SQL} LIKE '%.' || $2)`,
+    [hotelId, domain.toLowerCase()],
+  );
   return rows.map((r) => r.id as number);
+}
+
+export interface HotelWebsite {
+  readonly hotelId: number;
+  readonly websiteUrl: string;
+}
+
+/** Every resolution we currently hold, for a caller that reconciles them. */
+export async function findAllHotelWebsites(q?: Queryable): Promise<readonly HotelWebsite[]> {
+  const { rows } = await db(q).query(
+    'SELECT id, website_url FROM hotel WHERE website_url IS NOT NULL ORDER BY id',
+  );
+  return rows.map((r) => ({ hotelId: r.id as number, websiteUrl: r.website_url as string }));
+}
+
+/**
+ * Forget resolved sites and everything read from them, in bulk.
+ *
+ * `researched_at` is deliberately LEFT SET: the hotel was researched, the
+ * answer was wrong, and re-resolving it on the next run would spend a search
+ * to reach the same brand domain. It backs off until the interval expires,
+ * which is rule 16's principle.
+ */
+export async function clearResearchForHotels(
+  hotelIds: readonly number[],
+  q?: Queryable,
+): Promise<void> {
+  if (hotelIds.length === 0) return;
+  const runner = db(q);
+  const ids = [...hotelIds];
+  await runner.query('DELETE FROM hotel_research_claim WHERE hotel_id = ANY($1::int[])', [ids]);
+  await runner.query('UPDATE hotel SET website_url = NULL WHERE id = ANY($1::int[])', [ids]);
 }
 
 /** Forget a resolved site and everything read from it. */
@@ -164,4 +222,79 @@ export async function clearHotelResearch(hotelId: number, q?: Queryable): Promis
   const runner = db(q);
   await runner.query('DELETE FROM hotel_research_claim WHERE hotel_id = $1', [hotelId]);
   await runner.query('UPDATE hotel SET website_url = NULL WHERE id = $1', [hotelId]);
+}
+
+/** Hosts a human has judged not to be any property's own site (migration 0023). */
+export async function findRejectedHosts(q?: Queryable): Promise<ReadonlySet<string>> {
+  const { rows } = await db(q).query('SELECT host FROM research_rejected_host');
+  return new Set(rows.map((r) => (r.host as string).toLowerCase()));
+}
+
+/**
+ * Record a human's judgement and clear what it invalidates.
+ *
+ * Never called automatically. The automated checks handle what generalises;
+ * this is for the cases that do not, and a row here is evidence that somebody
+ * looked rather than that a pattern fired.
+ */
+export async function rejectResearchHost(
+  host: string,
+  reason: string,
+  q?: Queryable,
+): Promise<readonly number[]> {
+  const runner = db(q);
+  const clean = host
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, '');
+  await runner.query(
+    `INSERT INTO research_rejected_host (host, reason) VALUES ($1, $2)
+     ON CONFLICT (host) DO UPDATE SET reason = EXCLUDED.reason, rejected_at = now()`,
+    [clean, reason],
+  );
+  // Everything already read from it goes, and researched_at stays SET so the
+  // affected hotels back off rather than re-resolving immediately (rule 16).
+  //
+  // Matched on the HOST, exactly or as a dotted suffix — never as a substring
+  // of the URL. `ILIKE '%ipoolside.com%'` also rejects `notipoolside.com`,
+  // and a rejection is a human's judgement about ONE domain; widening it
+  // silently would clear hotels nobody looked at.
+  const { rows } = await runner.query(
+    `SELECT id FROM hotel
+      WHERE website_url IS NOT NULL
+        AND (${HOST_SQL} = $1 OR ${HOST_SQL} LIKE '%.' || $1)`,
+    [clean],
+  );
+  const ids = rows.map((r) => r.id as number);
+  await clearResearchForHotels(ids, runner);
+  return ids;
+}
+
+export interface ResolutionForReview {
+  readonly hotelId: number;
+  readonly name: string;
+  readonly city: string | null;
+  readonly websiteUrl: string;
+  readonly claims: number;
+}
+
+/** Every current resolution, for a human to rank and judge. */
+export async function findResolutionsForReview(
+  q?: Queryable,
+): Promise<readonly ResolutionForReview[]> {
+  const { rows } = await db(q).query(
+    `SELECT h.id, h.name, d.name AS city, h.website_url,
+            (SELECT count(*) FROM hotel_research_claim c WHERE c.hotel_id = h.id) AS claims
+       FROM hotel h
+       LEFT JOIN destination d ON d.id = h.destination_id
+      WHERE h.website_url IS NOT NULL
+      ORDER BY h.id`,
+  );
+  return rows.map((r) => ({
+    hotelId: r.id as number,
+    name: r.name as string,
+    city: (r.city as string | null) ?? null,
+    websiteUrl: r.website_url as string,
+    claims: Number(r.claims),
+  }));
 }

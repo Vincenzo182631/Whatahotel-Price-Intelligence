@@ -23,14 +23,23 @@ export {
 export type { HotelAmenity } from './repositories/amenities.js';
 export {
   clearHotelResearch,
+  clearResearchForHotels,
+  findAllHotelWebsites,
   findHotelWebsite,
   findOtherHotelsWithWebsite,
+  findRejectedHosts,
+  findResolutionsForReview,
+  rejectResearchHost,
   findHotelsNeedingResearch,
   findResearchClaims,
   replaceResearchClaims,
   saveHotelResearchTarget,
 } from './repositories/research.js';
-export type { ResearchClaimRow } from './repositories/research.js';
+export type {
+  HotelWebsite,
+  ResearchClaimRow,
+  ResolutionForReview,
+} from './repositories/research.js';
 export type {
   HotelPageFacts,
   HotelRow,

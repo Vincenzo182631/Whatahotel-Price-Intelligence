@@ -96,6 +96,55 @@ const AGGREGATORS = [
   'whatahotel.com',
 ];
 
+/**
+ * Public suffixes that are two labels long, so the registrable domain is the
+ * last THREE.
+ *
+ * Deliberately a short list rather than the full Public Suffix List. This is
+ * used to decide whether two hotels sit under one domain, and being wrong
+ * costs a missed collision or a spurious one — both visible in the review —
+ * rather than a wrong claim in front of a guest. A dependency that ships
+ * thousands of entries and needs updating is not worth that. Extend it when
+ * the review surfaces a case it got wrong.
+ */
+const TWO_LABEL_SUFFIXES = new Set([
+  'co.uk',
+  'org.uk',
+  'ac.uk',
+  'co.jp',
+  'com.au',
+  'net.au',
+  'com.br',
+  'com.mx',
+  'co.nz',
+  'co.za',
+  'com.sg',
+  'com.hk',
+  'com.tr',
+  'co.in',
+  'com.cn',
+]);
+
+/**
+ * The domain two hosts must share to be considered the same site.
+ *
+ * Measured 2026-09-18, third run: `com-miami.com` resolved for three
+ * different hotels as `w.com-miami.com`, `east.com-miami.com` and
+ * `ebhotelairport.com-miami.com`. The collision check compared full URLs, so
+ * three distinct strings never collided and a directory serving three hotels
+ * was invisible. All three stored zero claims, which is why no earlier report
+ * showed them — only the review did.
+ */
+export function registrableDomain(host: string): string {
+  const labels = host
+    .toLowerCase()
+    .replace(/^www\./, '')
+    .split('.');
+  if (labels.length <= 2) return labels.join('.');
+  const lastTwo = labels.slice(-2).join('.');
+  return TWO_LABEL_SUFFIXES.has(lastTwo) ? labels.slice(-3).join('.') : lastTwo;
+}
+
 function hostOf(url: string): string | null {
   try {
     return new URL(url).hostname.replace(/^www\./, '').toLowerCase();
