@@ -286,11 +286,11 @@ async function persistHotels(
       const { rows: hotelRows } = await runner.query(
         `INSERT INTO hotel (wah_hotel_id, name, destination_id, latitude, longitude,
                             coordinate_source,
-                            base_currency, collection_tier, city_rank)
+                            base_currency, collection_tier, city_rank, amadeus_property)
          VALUES ($1,$2,$3,$4,$5,
                  CASE WHEN $4::numeric IS NOT NULL AND $5::numeric IS NOT NULL
                       THEN 'SOURCE'::hotel_coordinate_source_t END,
-                 'USD',$6,$7)
+                 'USD',$6,$7,$8)
          ON CONFLICT (wah_hotel_id) DO UPDATE
            SET name = EXCLUDED.name,
                destination_id = COALESCE(EXCLUDED.destination_id, hotel.destination_id),
@@ -310,6 +310,13 @@ async function persistHotels(
                -- Only cityrates carries a rank, so COALESCE: a later sweep or
                -- hotel lookup must not erase what cityrates already told us.
                city_rank = COALESCE(EXCLUDED.city_rank, hotel.city_rank),
+               -- Same shape, for the same reason, and it carries more weight
+               -- here: ama-property is the ONLY identity method=info can be
+               -- checked against (it is keyed on name + city and returns no
+               -- hotel name), and only the by-id hotel lookup states it. A
+               -- cityrates row omits it, so an overwrite would disarm the
+               -- check and let one hotel's amenities land on another.
+               amadeus_property = COALESCE(EXCLUDED.amadeus_property, hotel.amadeus_property),
                updated_at = now()
          RETURNING id`,
         [
@@ -320,6 +327,7 @@ async function persistHotels(
           hotel.longitude,
           newHotelTier,
           hotel.cityRank,
+          hotel.amadeusProperty,
         ],
       );
       const hotelId = hotelRows[0]?.id as number;

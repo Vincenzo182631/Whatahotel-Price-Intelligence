@@ -37,6 +37,9 @@ WAH_API_KEY=... npm run collect -- --warm-share 0.3  # more of the run on guest-
 
 npm run pages                     # read hotel pages: street address + bookability
 npm run pages -- --dry-run        # show the queue, fetch nothing
+
+WAH_API_KEY=... npm run amenities            # fill hotel_amenity from method=info
+WAH_API_KEY=... npm run amenities -- --dry-run
 ```
 
 **Setting up a production database:** run the **Database setup** workflow with
@@ -372,7 +375,9 @@ engine.
     the raw CSI, because "priced above comparable hotels" is a fact about the
     price. **The quality signals the brief asks for do not exist in this
     source**: no endpoint returns a star rating or a guest rating, and
-    amenities live only behind `method=info`, which answers 500 for our key.
+    amenities live only behind `method=info`, which answered 500 for our key
+    until Matt fixed it on 2026-09-17 (see rule 29 — they are read now, and
+    they still do not enter the score).
     (Google Places supplies a guest rating — see rule 22 — but it is context
     beside the price, not a term in the score, so it does not change this.)
     Included value is the only validated quality evidence we hold, and when
@@ -594,6 +599,50 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     number (scores, indexes and stored analyses are calibration data), and
     the existing honest-caveat allowance survives (a fact about the PRODUCT,
     "the rates do not state what each includes", still passes V3/V5).
+
+29. **An amenity answer that cannot name its hotel is not evidence**
+    (migration 0021, 2026-09-17). `method=info` started answering for our key
+    on 2026-09-17 and it carries the one thing rule 21 said this source does
+    not hold: real per-room amenity CODES (`GUESTROOMS.ROOMRMA`, with
+    `RMACODE` and `RMAVAL`) plus restaurant names, varying genuinely per
+    property across 18 of 20 sampled hotels. The preference selector is what
+    this is for — four of its ten options today answer "limited information
+    is available" because we hold nothing to say.
+
+    **The difficulty is identity, and it decides the whole design.** `info`
+    is keyed on hotelName plus hotelCity, not on the id every other part of
+    this system uses, and its response contains NO hotel name. The only
+    name-shaped field is `session.sessionName`, the constant string "Guest"
+    — the first probe matched exactly that and reported a mismatch on all 18
+    answers, which was the probe's fault, not the source's. So an answer
+    cannot say which property it describes, and attaching one hotel's
+    amenities to another would be silent and permanent: rule 22's failure,
+    where "Four Seasons Hotel Miami" and "Four Seasons Resort Palm Beach"
+    share most of their words. `amadeus.codes` is the way out — one per
+    hotel, distinct across all 18, and the same identity the by-id `hotel`
+    lookup returns as `ama-property`. `syncHotelAmenities` writes ONLY when
+    the two match, and every other outcome is named rather than written
+    (`NO_STORED_CODE`, `NO_RESPONSE_CODE`, `CODE_MISMATCH`, `DEGRADED`,
+    `EMPTY`, `FAILED`). That deliberately includes holding no stored code
+    yet: an unverifiable answer is not a cheap answer, it is a coin flip on
+    which hotel's amenities a guest reads, and the cost of skipping is one
+    hotel's amenities arriving a day later. The catalogue upsert therefore
+    COALESCEs `amadeus_property` — a `cityrates` row omits it, and an
+    overwrite would disarm the check for that hotel without saying so.
+
+    Three more limits. **It never enters the score**: nothing under
+    `packages/core/src/scoring` reads `hotel_amenity`, for rule 21's reason
+    — it would be an uncalibrated term nobody reviewed. **The store is
+    additive**: an amenity the source stops reporting is not deleted, because
+    a thin response and a removed amenity are indistinguishable, and a
+    customer-facing list that flickers with upstream noise is worse than one
+    that is occasionally stale. And **the prose blocks are not read at all**
+    (HOTELINFO, AREAINFO, ATTRACTIONINFO, POLICYINFO): they vary, but they
+    are marketing copy and fee schedules, and nothing downstream should
+    reword an early-departure charge into a reason to book. A non-ASCII name
+    is rejected upstream with a 400 and is skipped rather than
+    transliterated — an altered name is a different name, which is this
+    method's whole risk. `npm run amenities`.
 
 ## Adding or changing a factor
 

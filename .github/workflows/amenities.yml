@@ -1,0 +1,142 @@
+# Fill hotel_amenity from method=info (migration 0021).
+#
+# Rule 21 recorded that this source states no amenities, because info answered
+# 500 for our key. Matt fixed that on 2026-09-17 and it now answers for 18 of
+# 20 sampled hotels with real per-room amenity codes. This sweep is how that
+# reaches the preference selector, which today tells four of its ten options
+# that "limited information is available".
+#
+# Required repository secrets:
+#   DATABASE_URL   the same Postgres collection writes to
+#   WAH_API_KEY    the rate source's credential; environment only, redacted
+#                  from every log line by redact()
+#
+# ── What this writes, and what it must never write ────────────────────────
+#
+# Amenities are NOT a score. Nothing under packages/core/src/scoring reads
+# hotel_amenity, for rule 21's reason: it would be an uncalibrated term
+# nobody reviewed.
+#
+# And nothing is written for a hotel we cannot identify. info is keyed on
+# name plus city and its answer names no hotel, so the run writes only when
+# the response's amadeus.codes matches the ama-property the by-id lookup
+# stored. Every other outcome is counted and named in the summary. See rule
+# 29 — an unverifiable answer is a coin flip on which hotel's amenities a
+# guest reads, not a cheap win.
+
+name: Sync hotel amenities
+
+on:
+  # Weekly. Amenities are a property's fixtures, not its prices: a bathrobe
+  # does not become a different bathrobe overnight, and every call spends the
+  # rate source's unknown rate limit (U15).
+  schedule:
+    - cron: '25 5 * * 2'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Max hotels to ask about in this run'
+        required: false
+        default: '400'
+      dry_run:
+        description: 'Show the queue only — call the source for nothing'
+        type: boolean
+        required: false
+        default: false
+      concurrency:
+        description: 'Parallel requests (1-4). Gentle on purpose.'
+        required: false
+        default: '2'
+
+# One sweep at a time. Two overlapping runs would pay twice for the same
+# lookups and race on the same hotel rows.
+concurrency:
+  group: amenity-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      WAH_API_KEY: ${{ secrets.WAH_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Which secrets are present
+        # Booleans per named secret, never a dump of the whole secret store —
+        # enumerating it is the shape of an exfiltration attack and GitHub's
+        # detector is right to flag it. See db-setup.yml for the incident.
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+          HAS_WAH_API_KEY: ${{ secrets.WAH_API_KEY != '' }}
+        run: |
+          echo "DATABASE_URL present: $HAS_DATABASE_URL"
+          echo "WAH_API_KEY present:  $HAS_WAH_API_KEY"
+
+      - name: Fail early if a credential is missing
+        run: |
+          # Both are load-bearing here, unlike the reputation sweep where a
+          # missing Google key is a supported configuration. Without either
+          # of these the run would write nothing and report a healthy pass.
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Missing repository secret: DATABASE_URL"
+            exit 1
+          fi
+          if [ -z "$WAH_API_KEY" ]; then
+            echo "::error::Missing repository secret: WAH_API_KEY"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Sweep
+        run: |
+          set -o pipefail
+          npm run amenities -- \
+            --limit "${{ inputs.limit || 400 }}" \
+            --concurrency "${{ inputs.concurrency || 2 }}" \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            2>&1 | tee amenities.log
+
+      - name: Summarise the run
+        if: always()
+        run: |
+          {
+            echo '### Amenity sweep'
+            echo
+            echo '```'
+            tail -40 amenities.log 2>/dev/null || echo 'no output captured'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # A mismatch is a finding, not a failure: either our stored code is
+          # stale or the source answered about a different property for that
+          # name and city. Both are worth a human's eye, and both are exactly
+          # why nothing was written.
+          if grep -q 'mismatch:' amenities.log 2>/dev/null; then
+            echo "::warning::At least one hotel's Amadeus code disagreed with the info response. Nothing was written for those hotels."
+          fi
+          # A run that stored nothing at all is what a withdrawn key and a
+          # regressed info endpoint both look like from the outside.
+          if grep -qE 'amenities: 0 row' amenities.log 2>/dev/null; then
+            echo "::notice::No amenities were stored. Check the outcome split above before assuming the endpoint is at fault."
+          fi
+
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amenities-log-${{ github.run_id }}
+          path: amenities.log
+          retention-days: 14
