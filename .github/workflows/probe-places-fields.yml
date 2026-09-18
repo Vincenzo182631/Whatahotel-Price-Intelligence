@@ -1,0 +1,112 @@
+# Measure which Places hotel-attribute fields Google actually populates for
+# our catalogue, before any of them reaches a customer surface.
+#
+# The sweep's mask already stores rating, userRatingCount, editorialSummary and
+# reviews. This asks for a WIDER set (goodForChildren, allowsDogs,
+# servesBreakfast, parkingOptions, accessibilityOptions and friends) to find
+# out whether Google holds values for luxury hotels at all.
+#
+# Why measure rather than read the docs: the docs say a field EXISTS, never
+# that it has a value for a resort in Seychelles. Rule 24's schema.org block
+# was documented too, and it was 5 stars and "$$$$" for every property. A
+# constant that reads as a quality signal is worse than no signal.
+#
+# Required repository secrets:
+#   DATABASE_URL             to read stored place ids (read-only, no writes)
+#   GOOGLE_PLACES_API_KEY    to call Places
+#
+# COST. Places (New) bills per field group and this mask is wider than the
+# sweep's, so the sample is small by default. Rule 22: the refresh interval is
+# the entire ongoing bill. Do not loop this.
+
+name: Probe Places fields
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'How many VERIFIED hotels to sample (keep small — wider mask, billed per field)'
+        required: false
+        default: '20'
+      dump:
+        description: 'Print one field verbatim for each hotel, e.g. parkingOptions'
+        required: false
+        default: ''
+
+concurrency:
+  group: probe-places-fields
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Which secrets are present
+        # Named explicitly, never enumerated — enumerating the secret store is
+        # what tripped GitHub's malicious-workflow detector on db-setup.yml.
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+          HAS_GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY != '' }}
+        run: |
+          echo "DATABASE_URL present:          $HAS_DATABASE_URL"
+          echo "GOOGLE_PLACES_API_KEY present: $HAS_GOOGLE_PLACES_API_KEY"
+
+      - name: Fail early if a credential is missing
+        run: |
+          # Both are load-bearing: without the database there are no place ids
+          # to ask about, and without the key there is nothing to ask.
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Missing repository secret: DATABASE_URL"
+            exit 1
+          fi
+          if [ -z "$GOOGLE_PLACES_API_KEY" ]; then
+            echo "::error::Missing repository secret: GOOGLE_PLACES_API_KEY"
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Probe
+        run: |
+          set -o pipefail
+          if [ -n "${{ inputs.dump }}" ]; then
+            set -- --dump "${{ inputs.dump }}"
+          fi
+          node scripts/probe-places-fields.mjs \
+            --limit "${{ inputs.limit || 20 }}" \
+            "$@" \
+            --out places-fields.json 2>&1 | tee places-fields.log
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo '### Places field probe'
+            echo
+            echo '```'
+            tail -60 places-fields.log 2>/dev/null || echo 'no output captured'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: places-fields-${{ github.run_id }}
+          path: |
+            places-fields.json
+            places-fields.log
+          retention-days: 14
