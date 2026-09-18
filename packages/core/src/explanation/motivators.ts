@@ -321,3 +321,58 @@ export function renderMotivatorAnswer(
       .map((e) => (e.text.endsWith('.') ? e.text : `${e.text}.`)),
   };
 }
+
+/**
+ * What this property DOES show, when the preference the guest clicked shows
+ * nothing.
+ *
+ * Copied in SHAPE from the WhataHotel advisor, examined 2026-09-18. Asked
+ * whether W Aspen has a pool and a beach, it answered the literal question,
+ * said why ("Aspen is a mountain destination"), and pointed somewhere useful.
+ * Ours said "limited information is available" and stopped — a true sentence
+ * that leaves a guest with less than they arrived with.
+ *
+ * What is NOT copied is where its answer came from. "W Aspen has a pool" is
+ * absent from the data that page carries, so it is editorial or model recall:
+ * true in that instance, unverifiable in general, and the thing rules 4 and
+ * 34 exist to keep out. This pivot invents nothing. Every word of it is
+ * evidence already measured for this same hotel, for a different motivator,
+ * on the same request — nine of which were computed and thrown away whenever
+ * the tenth came back empty.
+ *
+ * The two VALUE motivators are excluded: they answer a question about the
+ * RATE, and a guest asking about the beach is not asking about the price.
+ *
+ * Says nothing about what the hotel lacks. "We hold no evidence" is a
+ * statement about our research (rule 33), the limited sentence beside this
+ * one already makes it, and a verdict on the property is what rule 28
+ * forbids outright.
+ */
+export function renderMotivatorPivot(
+  all: readonly MotivatorAssessment[],
+  selected: Preference,
+): string | null {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const m of all) {
+    if (m.motivator === selected) continue;
+    if (m.motivator === 'GENERAL_VALUE' || m.motivator === 'BEST_VALUE') continue;
+    if (m.verdict !== 'SUPPORTED') continue;
+    for (const e of m.evidence) {
+      const key = e.text.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(e.text.replace(/\.$/, ''));
+    }
+  }
+  if (lines.length === 0) return null;
+
+  // Two at most. A pivot is a pointer, not a second answer, and the full
+  // assessment for all ten rides in the response beside it.
+  const lower = (t: string): string => (t.length > 0 ? t[0]!.toLowerCase() + t.slice(1) : t);
+  const first = lower(lines[0] as string);
+  const second = lines.length > 1 ? lower(lines[1] as string) : null;
+  return second === null
+    ? `What this property does show: ${first}.`
+    : `What this property does show: ${first}, and ${second}.`;
+}

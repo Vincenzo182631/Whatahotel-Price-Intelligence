@@ -7,7 +7,10 @@
  * quiet no.
  */
 import { describe, expect, it } from 'vitest';
-import { assessMotivators } from '../../packages/core/src/explanation/motivators.js';
+import {
+  assessMotivators,
+  renderMotivatorPivot,
+} from '../../packages/core/src/explanation/motivators.js';
 
 const empty = {
   roomAmenities: [],
@@ -110,5 +113,72 @@ describe('assessMotivators', () => {
 
     const real = find({ ...empty, roomAmenities: ['Large desk'] }, 'BUSINESS_TRAVEL');
     expect(real?.verdict).toBe('SUPPORTED');
+  });
+});
+
+/**
+ * The pivot: what this property DOES show, when the clicked preference shows
+ * nothing.
+ *
+ * Shape copied from the WhataHotel advisor, examined 2026-09-18. Asked
+ * whether W Aspen has a pool and a beach it answered the literal question,
+ * gave the reason, and pointed somewhere useful. Ours said "limited
+ * information is available" and stopped, which is true and leaves a guest
+ * with less than they arrived with.
+ *
+ * The content is not copied. Every word here is evidence measured for the
+ * same hotel on the same request, for the other nine motivators — which were
+ * computed and thrown away whenever the tenth came back empty.
+ */
+describe('renderMotivatorPivot', () => {
+  const beachy = assessMotivators({
+    roomAmenities: ['Bathrobe', 'Slippers'],
+    reviewThemes: ['beach', 'service'],
+    perks: ['Breakfast for two'],
+    rating: null,
+    comparableMedianRating: null,
+    dealScoreOutOfTen: 7,
+  });
+
+  it('names what the property does show when the asked-about one is thin', () => {
+    const pivot = renderMotivatorPivot(beachy, 'FAMILY');
+    expect(pivot).not.toBeNull();
+    expect(pivot).toMatch(/What this property does show/);
+    expect(pivot?.toLowerCase()).toMatch(/beach|service|bathrobe/);
+  });
+
+  it('never points at the preference that was actually asked about', () => {
+    // It is the answer to "we hold nothing for X", so citing X would be a
+    // contradiction in one sentence.
+    const pivot = renderMotivatorPivot(beachy, 'BEACH_RESORT');
+    expect(pivot ?? '').not.toMatch(/the beach/);
+  });
+
+  it('never pivots to the rate', () => {
+    // The two VALUE motivators answer a question about the price, and a
+    // guest asking about the beach is not asking about the price.
+    const pivot = renderMotivatorPivot(beachy, 'FAMILY') ?? '';
+    expect(pivot).not.toMatch(/out of 10|score|rate/i);
+  });
+
+  it('says nothing at all when nothing else is supported either', () => {
+    // Silence beats padding. The limited sentence stands alone, as before.
+    const bare = assessMotivators({
+      roomAmenities: [],
+      reviewThemes: [],
+      perks: [],
+      rating: null,
+      comparableMedianRating: null,
+      dealScoreOutOfTen: null,
+    });
+    expect(renderMotivatorPivot(bare, 'FAMILY')).toBeNull();
+  });
+
+  it('states no shortcoming of the hotel', () => {
+    // Rule 33: "we hold no evidence" is a statement about our research, and
+    // the limited sentence beside this one already makes it. Rule 28 forbids
+    // a verdict on the property outright.
+    const pivot = renderMotivatorPivot(beachy, 'FAMILY') ?? '';
+    expect(pivot).not.toMatch(/not |lacks|without|no |unsuitable|poor/i);
   });
 });

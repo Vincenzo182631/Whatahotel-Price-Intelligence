@@ -250,6 +250,12 @@ export interface LiveExplanationBundle {
    * and cannot disagree with "good for families".
    */
   readonly motivator: MotivatorAssessment | null;
+  /**
+   * Every motivator, so a thin answer can say what the property DOES show
+   * (`renderMotivatorPivot`). Nine of these were computed and discarded
+   * whenever the tenth came back empty.
+   */
+  readonly motivators_all: readonly MotivatorAssessment[];
   readonly reputation: {
     /** Null when unmatched, doubtfully matched, or unrated. Never zero. */
     readonly subject: ReputationFact | null;
@@ -637,6 +643,7 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
       preference === 'GENERAL_VALUE'
         ? null
         : ((input.motivators ?? []).find((m) => m.motivator === preference) ?? null),
+    motivators_all: input.motivators ?? [],
     reputation: {
       subject: input.reputation ?? null,
       comparable_median_rating: compMedian,

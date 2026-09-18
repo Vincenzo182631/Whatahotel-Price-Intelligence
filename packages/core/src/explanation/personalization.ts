@@ -35,7 +35,7 @@
 
 import type { LiveExplanationBundle } from './liveBundle.js';
 import type { Preference } from './preference.js';
-import { renderMotivatorAnswer } from './motivators.js';
+import { renderMotivatorAnswer, renderMotivatorPivot } from './motivators.js';
 import {
   evidenceConfidence,
   evidencePresent,
@@ -105,6 +105,20 @@ const OCEAN_VIEWS = new Set(['OCEAN', 'PARTIAL_OCEAN']);
 
 const limitedInfoSentence = (aspect: string): string =>
   `Limited ${aspect}-specific information is available for this property in our data, so this view reflects the price evidence for the stay.`;
+
+/**
+ * The honest sentence, and then what the property DOES show.
+ *
+ * Shape copied from the WhataHotel advisor (examined 2026-09-18): answer,
+ * reason, useful pointer. Its content is not copied — the pivot names only
+ * evidence measured for this hotel on this request, for the other
+ * motivators, which were being computed and discarded.
+ */
+function limitedWithPivot(bundle: LiveExplanationBundle, aspect: string): string {
+  const pivot = renderMotivatorPivot(bundle.motivators_all, bundle.preference);
+  const limited = limitedInfoSentence(aspect);
+  return pivot ? `${limited} ${pivot}` : limited;
+}
 
 interface FitCandidate {
   readonly text: string;
@@ -340,7 +354,7 @@ function deterministicInsight(
           evidence: ['live_rate', 'room_match'],
         };
       }
-      return { text: limitedInfoSentence('beach- and resort'), evidence: ['live_rate'] };
+      return { text: limitedWithPivot(bundle, 'beach- and resort'), evidence: ['live_rate'] };
     }
     case 'LOCATION': {
       if (bundle.subject.city) {
@@ -349,13 +363,13 @@ function deterministicInsight(
           evidence: ['live_rate'],
         };
       }
-      return { text: limitedInfoSentence('location'), evidence: ['live_rate'] };
+      return { text: limitedWithPivot(bundle, 'location'), evidence: ['live_rate'] };
     }
     default:
       // Reached only when the motivator measurement came back thin for THIS
       // hotel. Before 2026-09-18 five preferences reached it unconditionally.
       return {
-        text: limitedInfoSentence(ASPECT_WORD[preference]),
+        text: limitedWithPivot(bundle, ASPECT_WORD[preference]),
         evidence: ['live_rate'],
       };
   }
