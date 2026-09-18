@@ -52,6 +52,8 @@ export type {
   OnDemandStay,
 } from './pipeline/onDemand.js';
 export { syncHotelAmenities } from './pipeline/amenities.js';
+export { researchHotel } from './pipeline/research.js';
+export type { ResearchDeps, ResearchOutcome, ResearchResult } from './pipeline/research.js';
 export type {
   AmenitySyncDeps,
   AmenitySyncOutcome,

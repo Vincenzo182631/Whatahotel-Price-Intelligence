@@ -778,6 +778,56 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     score rather than hunting for a "value" attribute that does not exist.
     With no rate they read `LIMITED_EVIDENCE` rather than borrowing a number.
 
+34. **Search FINDS the page; we FETCH it; the page is the evidence.**
+    Owner decision (2026-09-18, Brave chosen as provider), migration 0022.
+    `researchHotel` resolves a hotel to its own website with ONE Brave search,
+    fetches that page itself, extracts claims from the visible text, and
+    stores each with `source_url` and `fetched_at`. `hotel_research_claim`
+    makes the citation NOT NULL, because a claim without one is the exact
+    thing this layer exists to prevent.
+
+    Three reasons it is built this way and not as "search and store the
+    results". **Terms**: Brave restricts retaining API results — storing them
+    needs a plan that grants storage rights — while a row here is our own
+    reading of a page at a URL, which is what rule 24 already does with
+    whatahotel.com's pages. **Evidence**: the merchant's own site beats an
+    aggregator's snippet, and when the widget says a property has a spa the
+    citation should be the property saying so. **Cost**: one search per hotel
+    instead of one per motivator is the difference between 125 and 1,000
+    hotels inside Brave's $5 monthly credit, and a resolved site is stored so
+    the second run spends nothing.
+
+    **A model is deliberately absent from the extraction.** It would write
+    better sentences and would occasionally write a confident sentence about
+    a spa the page never mentioned, which is the failure this whole layer
+    guards against — so the layer does not contain it. Matching is substring
+    over visible text: script, style and attribute content are stripped
+    first, because `alt="beachfront"` is not the page saying it and a guest
+    opening the link would not find it. Phrases are specific nouns, never
+    topic words: "business" matches "business hours" and would fire Business
+    Travel on the whole catalogue, which is rule 9's failure and the same
+    shape as `goodForChildren` (rule 30). Model rewording may sit ON TOP of
+    the finished bundle later, exactly as rule 4 already allows everywhere
+    else.
+
+    **No outcome ever becomes a claim of absence.** `NO_WEBSITE`,
+    `UNREADABLE`, `NOTHING_STATED` and `FAILED` each store nothing and are
+    named separately, because a cookie wall, a timeout and a page that
+    genuinely says little are different facts and none of them is a property
+    lacking a spa (rule 28, and rule 33's reason for having no negative
+    verdict). `researched_at` is stamped on every path INCLUDING the
+    failures, so an unresolvable hotel backs off instead of costing a search
+    on every page view (rule 16's principle).
+
+    **Claims REPLACE rather than accumulate** — the opposite of
+    `hotel_amenity` (rule 29), on purpose. An amenity list is the source
+    stating its own inventory, where a thin response and a removal are
+    indistinguishable. A website is a live document: a property that closes
+    its spa takes the word off the page, and a claim we keep citing after
+    that is one a guest can open the link and disprove. Freshness beats
+    completeness when the citation is checkable. Nothing under
+    `packages/core/src/scoring` reads any of it (rule 21).
+
 ## Adding or changing a factor
 
 1. Update `docs/mvp/02-deal-score.md` with the rationale first.

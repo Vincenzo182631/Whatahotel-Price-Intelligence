@@ -21,6 +21,14 @@ export {
   upsertHotelAmenities,
 } from './repositories/amenities.js';
 export type { HotelAmenity } from './repositories/amenities.js';
+export {
+  findHotelWebsite,
+  findHotelsNeedingResearch,
+  findResearchClaims,
+  replaceResearchClaims,
+  saveHotelResearchTarget,
+} from './repositories/research.js';
+export type { ResearchClaimRow } from './repositories/research.js';
 export type {
   HotelPageFacts,
   HotelRow,

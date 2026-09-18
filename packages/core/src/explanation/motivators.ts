@@ -54,11 +54,18 @@ export type MotivatorEvidenceSource =
   | 'REVIEW_THEME' // measured over Google's positive reviews
   | 'GOOGLE_RATING'
   | 'ROOM_CATEGORY' // class and view, normalized by us (rule 11)
-  | 'DEAL_SCORE'; // the comparison itself, for the value motivators
+  | 'DEAL_SCORE' // the comparison itself, for the value motivators
+  | 'WEBSITE'; // read from the property's own site (migration 0022)
 
 export interface MotivatorEvidence {
   readonly text: string;
   readonly source: MotivatorEvidenceSource;
+  /**
+   * Where this can be checked, for WEBSITE evidence. A researched claim
+   * without a citation is the thing the research layer exists to prevent, so
+   * the type carries the URL rather than trusting a renderer to find it.
+   */
+  readonly sourceUrl?: string;
 }
 
 export interface MotivatorAssessment {
@@ -127,6 +134,16 @@ export interface MotivatorInput {
   readonly comparableMedianRating: number | null;
   /** The live Deal Score, already floored for display, or null. */
   readonly dealScoreOutOfTen: number | null;
+  /**
+   * Claims read from the property's own website (migration 0022), each with
+   * the URL it came from. Empty when the hotel has not been researched, which
+   * is not a statement about the hotel.
+   */
+  readonly websiteClaims?: readonly {
+    readonly motivator: string;
+    readonly claim: string;
+    readonly sourceUrl: string;
+  }[];
 }
 
 const ALL_MOTIVATORS: readonly Preference[] = [
@@ -239,6 +256,15 @@ export function assessMotivators(input: MotivatorInput): readonly MotivatorAsses
         text: `Rated ${input.rating}, above the ${input.comparableMedianRating} median of its comparables`,
         source: 'GOOGLE_RATING',
       });
+    }
+
+    // What the property's own site says. Last in the list on purpose: our own
+    // measured evidence leads, and the citation follows it. Each carries its
+    // URL so a guest can open the page and look for the phrase — which is the
+    // whole reason this is evidence and a model's recollection is not.
+    for (const w of input.websiteClaims ?? []) {
+      if (w.motivator !== motivator) continue;
+      evidence.push({ text: w.claim, source: 'WEBSITE', sourceUrl: w.sourceUrl });
     }
 
     out.push({

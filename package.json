@@ -34,6 +34,7 @@
     "probe:brave": "node --env-file-if-exists=.env scripts/probe-brave.mjs",
     "pages": "node --env-file-if-exists=.env scripts/sync-pages.mjs",
     "amenities": "node --env-file-if-exists=.env scripts/sync-amenities.mjs",
+    "research": "node --env-file-if-exists=.env scripts/research-hotels.mjs",
     "smoke": "node --env-file-if-exists=.env scripts/smoke-api.mjs",
     "probe": "node --env-file-if-exists=.env scripts/live-probe.mjs",
     "diagnose:compset": "node --env-file-if-exists=.env scripts/compset-diagnose.mjs",
