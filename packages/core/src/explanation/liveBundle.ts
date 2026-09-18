@@ -42,8 +42,9 @@ import type { LiveScoreResult } from '../scoring/liveScore.js';
 import { liveBandLabel, liveVerdictLabel } from '../scoring/liveScore.js';
 import { numeralsIn } from './bundle.js';
 import type { Preference } from './preference.js';
+import type { MotivatorAssessment } from './motivators.js';
 
-export const LIVE_BUNDLE_VERSION = 5;
+export const LIVE_BUNDLE_VERSION = 6;
 
 /** A rating that survived matching. Rating and count travel together. */
 export interface ReputationFact {
@@ -231,6 +232,24 @@ export interface LiveExplanationBundle {
      */
     readonly supporting_signals: readonly string[];
   };
+  /**
+   * What the guest's SELECTED preference is supported by, and the evidence
+   * for it (rule 33). Null for GENERAL_VALUE, which produces no
+   * personalization at all.
+   *
+   * This is what lets a preference be ANSWERED rather than deflected. Before
+   * it, personalization carried a hardcoded list of preferences the system
+   * "holds no data for" — written when `info` answered nothing — so a hotel
+   * whose rooms genuinely list cribs and connecting rooms still told a guest
+   * that family information was limited. The verdict is now measured per
+   * hotel, and the limited-evidence sentence is what the measurement returns
+   * rather than a property of the button.
+   *
+   * It carries EVIDENCE, not a conclusion, for the same reason the API
+   * publishes it: a reader can disagree with "cribs and connecting rooms"
+   * and cannot disagree with "good for families".
+   */
+  readonly motivator: MotivatorAssessment | null;
   readonly reputation: {
     /** Null when unmatched, doubtfully matched, or unrated. Never zero. */
     readonly subject: ReputationFact | null;
@@ -281,6 +300,13 @@ export interface LiveBundleInput {
   /** Distinctive room amenities (findDistinctiveAmenities), named verbatim. */
   readonly roomAmenities?: readonly string[];
   readonly comparableRatings?: readonly number[];
+  /**
+   * The motivator assessment for all ten preferences (assessMotivators). The
+   * bundle keeps only the one the guest selected — the other nine are the
+   * API's to publish, and a model handed all ten would be reading evidence
+   * about a question nobody asked.
+   */
+  readonly motivators?: readonly MotivatorAssessment[];
   readonly availability?: {
     readonly position: 'ENTRY' | 'MID' | 'TOP' | null;
     readonly availableCategories: number;
@@ -390,6 +416,23 @@ function addMoney(set: Set<number>, minor: number | null | undefined): void {
   addNumber(set, Math.round(minor / 100));
 }
 
+/**
+ * The comparables' median rating, under the rule the bundle has always
+ * applied: ratings inside 0..5, and at least three of them.
+ *
+ * Exported because `assessMotivators` needs the same number and runs BEFORE
+ * the bundle now (it is an input to it). Two copies of "what counts as a
+ * comparables' median" would be two rules, and the one a guest reads would
+ * be whichever ran last.
+ */
+export function comparableMedianRating(ratings: readonly number[] | undefined): number | null {
+  const clean = (ratings ?? []).filter((r) => Number.isFinite(r) && r > 0 && r <= 5);
+  // Two ratings is not a market. Below three the "comparables average" is one
+  // hotel wearing a plural, so it is omitted rather than reported thinly.
+  const m = clean.length >= 3 ? median(clean) : null;
+  return m === null ? null : round1(m);
+}
+
 /** The median of a numeric list, or null when empty. */
 function median(values: readonly number[]): number | null {
   if (values.length === 0) return null;
@@ -402,6 +445,7 @@ function median(values: readonly number[]): number | null {
 
 export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanationBundle {
   const { result, compSet, calendar, compression, premium } = input;
+  const preference = input.preference ?? 'GENERAL_VALUE';
 
   const priceDiffMinor =
     compSet.medianCompetitorNightlyMinor === null
@@ -411,9 +455,7 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
   const compRatings = (input.comparableRatings ?? []).filter(
     (r) => Number.isFinite(r) && r > 0 && r <= 5,
   );
-  // Two ratings is not a market. Below that the "comparables average" is one
-  // hotel wearing a plural, so it is omitted rather than reported thinly.
-  const compMedian = compRatings.length >= 3 ? median(compRatings) : null;
+  const compMedian = comparableMedianRating(input.comparableRatings);
 
   const soldOutPct =
     compression.soldOutShare === null ? null : round1(compression.soldOutShare * 100);
@@ -475,7 +517,7 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
     bundle_version: LIVE_BUNDLE_VERSION,
     config_version: input.configVersion,
     model: 'LIVE_MARKET',
-    preference: input.preference ?? 'GENERAL_VALUE',
+    preference,
     subject: {
       hotel_name: input.hotelName,
       city: input.city ?? null,
@@ -591,9 +633,13 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
         supporting_signals: buildSupportingSignals(input),
       };
     })(),
+    motivator:
+      preference === 'GENERAL_VALUE'
+        ? null
+        : ((input.motivators ?? []).find((m) => m.motivator === preference) ?? null),
     reputation: {
       subject: input.reputation ?? null,
-      comparable_median_rating: compMedian === null ? null : round1(compMedian),
+      comparable_median_rating: compMedian,
       comparables_with_rating: compMedian === null ? 0 : compRatings.length,
     },
     constraints: {

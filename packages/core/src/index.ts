@@ -151,7 +151,11 @@ export {
 } from './explanation/predictive.js';
 export { renderTemplate } from './explanation/template.js';
 export type { RenderedExplanation } from './explanation/template.js';
-export { LIVE_BUNDLE_VERSION, buildLiveExplanationBundle } from './explanation/liveBundle.js';
+export {
+  LIVE_BUNDLE_VERSION,
+  buildLiveExplanationBundle,
+  comparableMedianRating,
+} from './explanation/liveBundle.js';
 export type {
   LiveBundleInput,
   LiveExplanationBundle,

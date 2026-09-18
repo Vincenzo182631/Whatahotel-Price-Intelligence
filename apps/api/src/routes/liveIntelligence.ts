@@ -24,6 +24,7 @@ import {
   THEME_PROSE,
   applyScoreDisplayFloor,
   buildLiveExplanationBundle,
+  comparableMedianRating,
   chooseAlternative,
   chooseRoomUpgrade,
   chooseSuperiorAlternative,
@@ -685,6 +686,26 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     loaded.hotel.name,
   );
 
+  /**
+   * Assessed BEFORE the bundle, because the bundle now carries the selected
+   * one (rule 33): it is what lets a clicked preference be answered from
+   * this hotel's own evidence instead of a hardcoded "we hold no data for
+   * that" list. The same array is published in the response, so a guest
+   * reads exactly what the personalization was built from.
+   *
+   * The comparables' median comes from the shared rule rather than from the
+   * bundle, which would be circular now. One definition, used twice.
+   */
+  const motivators = assessMotivators({
+    roomAmenities: subjectRoomAmenities,
+    reviewThemes: subjectReviewThemes,
+    perks: loaded.benefitNames,
+    rating: subjectReputation?.rating ?? null,
+    comparableMedianRating: comparableMedianRating(comparableRatings),
+    dealScoreOutOfTen: result.outOfTen,
+    websiteClaims: subjectWebsiteClaims,
+  });
+
   const bundle = buildLiveExplanationBundle({
     configVersion: config.version,
     preference,
@@ -716,6 +737,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     reviewThemes: subjectReviewThemes,
     roomAmenities: subjectRoomAmenities,
     comparableRatings,
+    motivators,
     availability: loaded.availability,
     alternative: alternative
       ? {
@@ -1171,15 +1193,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
      * false negative. MEASURED_ABSENT is reserved for absence we can compute,
      * and nothing emits it yet.
      */
-    motivators: assessMotivators({
-      roomAmenities: subjectRoomAmenities,
-      reviewThemes: subjectReviewThemes,
-      perks: loaded.benefitNames,
-      rating: subjectReputation?.rating ?? null,
-      comparableMedianRating: bundle.reputation.comparable_median_rating,
-      dealScoreOutOfTen: result.outOfTen,
-      websiteClaims: subjectWebsiteClaims,
-    }),
+    motivators,
 
     /**
      * The customer-facing sentences, and where they came from.

@@ -9,13 +9,23 @@
  * is enforced structurally: personalization is built FROM the finished
  * bundle, after every number in it is already decided.
  *
- * The honesty constraint that shapes everything here: this system holds no
- * amenity, family, nightlife, quietness or business-facility data — the
- * source's `info` endpoint does not answer. A preference for which the
- * bundle carries no specific evidence gets a plain statement that the
+ * The honesty constraint that shapes everything here: a preference for which
+ * the bundle carries no specific evidence gets a plain statement that the
  * information is limited, never a fabricated fit. "Fewer reasons" is always
  * the right answer to thin evidence; padding a fit list is inventing a
  * hotel.
+ *
+ * What CHANGED on 2026-09-18 is who decides that a preference has no
+ * evidence. This file used to carry a fixed list — amenities, family,
+ * nightlife, quiet, business — because the source's `info` endpoint answered
+ * nothing when Phase 6 was written. Matt fixed `info` on 2026-09-17 (rule
+ * 29) and the research layer landed the day after (rule 34), so those five
+ * buttons went on saying "limited information is available" while the bundle
+ * in front of them held cribs, connecting rooms and a citation to the
+ * property's own page. A hardcoded list is a claim about the CATALOGUE;
+ * `bundle.motivator` is a reading of THIS hotel, and rule 31's lesson is
+ * that the difference is the whole point. The limited-evidence sentence is
+ * now what the measurement returns, not a property of the button.
  *
  * Same guard architecture as the assessment: the deterministic path below
  * works with the model disabled, and a model-written personalization passes
@@ -31,6 +41,10 @@ import {
   type AssessmentConfidence,
   type AssessmentEvidence,
   ASSESSMENT_EVIDENCE,
+  // One mapping from a motivator's evidence source to a citable key, shared
+  // with evidencePresent. Two copies would be two rules, and the one a guest
+  // reads would be whichever ran last.
+  MOTIVATOR_EVIDENCE_KEY,
 } from './assessment.js';
 import { validateNarrative } from './validate.js';
 
@@ -50,14 +64,44 @@ export interface Personalization {
   readonly source: 'MODEL' | 'DETERMINISTIC';
 }
 
-/** The preferences for which the bundle can carry NO specific evidence. */
-const NO_DATA_ASPECT: Partial<Record<Preference, string>> = {
+/**
+ * How each preference is NAMED when the measurement comes back thin.
+ *
+ * A vocabulary, not a verdict. Every preference has an entry, because any of
+ * them can land on a hotel we hold nothing specific about — and none of them
+ * is condemned to it in advance.
+ */
+const ASPECT_WORD: Record<Preference, string> = {
+  GENERAL_VALUE: 'value',
+  BEST_VALUE: 'value',
+  LUXURY_EXPERIENCE: 'luxury-experience',
+  LOCATION: 'location',
   AMENITIES: 'amenity',
+  BEACH_RESORT: 'beach- and resort',
   FAMILY: 'family-travel',
   NIGHTLIFE: 'nightlife',
   QUIET_RELAXATION: 'quiet-stay',
   BUSINESS_TRAVEL: 'business-travel',
 };
+
+/** Lower-case the first letter so an evidence line can be sewn into prose. */
+const uncap = (t: string): string => (t.length > 0 ? t[0]!.toLowerCase() + t.slice(1) : t);
+
+/**
+ * The evidence the SELECTED motivator is supported by, as citable keys.
+ * Empty when the verdict is LIMITED_EVIDENCE, which is what makes the
+ * limited-information sentence honest rather than habitual.
+ */
+function motivatorEvidenceKeys(bundle: LiveExplanationBundle): AssessmentEvidence[] {
+  const m = bundle.motivator;
+  if (!m || m.verdict !== 'SUPPORTED') return [];
+  const keys = new Set<AssessmentEvidence>();
+  for (const e of m.evidence) {
+    const key = MOTIVATOR_EVIDENCE_KEY[e.source];
+    if (key) keys.add(key);
+  }
+  return [...keys];
+}
 
 const OCEAN_VIEWS = new Set(['OCEAN', 'PARTIAL_OCEAN']);
 
@@ -79,6 +123,24 @@ interface FitCandidate {
 function fitCandidates(bundle: LiveExplanationBundle): FitCandidate[] {
   const out: FitCandidate[] = [];
   const rep = bundle.reputation.subject;
+
+  // What the guest asked about, first and in its own words. `pick` orders
+  // focused candidates ahead of general ones, and these are focused on the
+  // selected preference by construction, so a clicked preference leads with
+  // the evidence for itself rather than with the rating it shares with every
+  // other preference.
+  const m = bundle.motivator;
+  if (m && m.verdict === 'SUPPORTED') {
+    for (const e of m.evidence) {
+      const key = MOTIVATOR_EVIDENCE_KEY[e.source];
+      if (!key) continue;
+      out.push({
+        text: e.text.endsWith('.') ? e.text : `${e.text}.`,
+        focus: [m.motivator],
+        evidence: [key],
+      });
+    }
+  }
 
   if (rep) {
     out.push({
@@ -188,6 +250,35 @@ function pick(
   return [...focused, ...general].slice(0, cap);
 }
 
+/**
+ * The answer the SELECTED motivator's own evidence supports, in the advisor's
+ * register — the sentence a guest gets for clicking that button.
+ *
+ * It states the evidence and stops. "Rooms list cribs, connecting rooms" is
+ * a fact a guest can check against the page and reject; "well suited to
+ * families" is a conclusion with a hidden rule behind it, which is rule 30's
+ * `goodForChildren` wearing better clothes. The verdict word is never
+ * rendered here for the same reason — the evidence IS the answer.
+ *
+ * Null when the motivator is thin or absent, which hands the caller back to
+ * the price evidence it has always used.
+ */
+function motivatorInsight(
+  bundle: LiveExplanationBundle,
+): { text: string; evidence: AssessmentEvidence[] } | null {
+  const m = bundle.motivator;
+  if (!m || m.verdict !== 'SUPPORTED' || m.evidence.length === 0) return null;
+
+  // At most two: the answer is a lead, and the rest of the evidence is
+  // already published beside it as fit reasons and in the motivators block.
+  const lines = m.evidence.slice(0, 2).map((e) => uncap(e.text));
+  const text =
+    lines.length === 1
+      ? `For this stay, ${lines[0]}.`
+      : `For this stay, ${lines[0]}, and ${lines[1]}.`;
+  return { text, evidence: motivatorEvidenceKeys(bundle) };
+}
+
 /** The insight sentence(s) the system can stand behind with no model. */
 function deterministicInsight(
   bundle: LiveExplanationBundle,
@@ -195,6 +286,15 @@ function deterministicInsight(
 ): { text: string; evidence: AssessmentEvidence[] } {
   const rep = bundle.reputation.subject;
   const comps = bundle.market.comp_set;
+
+  // Measured evidence about the thing the guest actually asked about leads.
+  // The two VALUE motivators are deliberately NOT routed here: their answer
+  // is the comparison itself, which the cases below already state with the
+  // alternative and the comp count in it.
+  if (preference !== 'BEST_VALUE' && preference !== 'GENERAL_VALUE') {
+    const answered = motivatorInsight(bundle);
+    if (answered) return answered;
+  }
 
   switch (preference) {
     case 'BEST_VALUE': {
@@ -245,7 +345,7 @@ function deterministicInsight(
       if (bundle.subject.room_view !== null && OCEAN_VIEWS.has(bundle.subject.room_view)) {
         return {
           text: "The selected room is an ocean-view category. Beyond the room's view, limited beach- and resort-specific information is available in our data.",
-          evidence: ['live_rate'],
+          evidence: ['live_rate', 'room_match'],
         };
       }
       return { text: limitedInfoSentence('beach- and resort'), evidence: ['live_rate'] };
@@ -260,8 +360,10 @@ function deterministicInsight(
       return { text: limitedInfoSentence('location'), evidence: ['live_rate'] };
     }
     default:
+      // Reached only when the motivator measurement came back thin for THIS
+      // hotel. Before 2026-09-18 five preferences reached it unconditionally.
       return {
-        text: limitedInfoSentence(NO_DATA_ASPECT[preference] ?? 'preference'),
+        text: limitedInfoSentence(ASPECT_WORD[preference]),
         evidence: ['live_rate'],
       };
   }

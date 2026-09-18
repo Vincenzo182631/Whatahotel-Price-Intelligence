@@ -65,6 +65,13 @@ export const ASSESSMENT_EVIDENCE = [
   'google_review_themes',
   'google_editorial_summary',
   'room_match',
+  // Migration 0021 and 0022. Both were already facts in the bundle and
+  // neither was citable, so a personalization built on them had no honest
+  // key to name and the validator would have rejected it for citing absent
+  // evidence — the gate working correctly against a list that had not caught
+  // up with the data.
+  'room_amenity',
+  'website_claim',
   'calendar_position',
   'market_availability',
   'availability_position',
@@ -121,6 +128,24 @@ export function evidenceConfidence(
   return minConf(byComps, minConf(byRoom, byReputation));
 }
 
+/**
+ * The evidence key each motivator evidence source stands on (rule 33).
+ *
+ * Kept here beside `evidencePresent` because presence and citation have to
+ * agree: a renderer that names an amenity and a gate that says the bundle
+ * holds none would reject every draft built from the thing the guest asked
+ * about.
+ */
+export const MOTIVATOR_EVIDENCE_KEY: Readonly<Record<string, AssessmentEvidence>> = {
+  ROOM_AMENITY: 'room_amenity',
+  HOTEL_PERK: 'included_value',
+  REVIEW_THEME: 'google_review_themes',
+  GOOGLE_RATING: 'google_rating',
+  ROOM_CATEGORY: 'room_match',
+  DEAL_SCORE: 'comparable_rates',
+  WEBSITE: 'website_claim',
+};
+
 /** Which evidence the bundle actually carries, key by key. */
 export function evidencePresent(bundle: LiveExplanationBundle): Set<AssessmentEvidence> {
   const present = new Set<AssessmentEvidence>(['live_rate']);
@@ -140,6 +165,15 @@ export function evidencePresent(bundle: LiveExplanationBundle): Set<AssessmentEv
   if (bundle.hotel_facts.review_themes.length > 0) present.add('google_review_themes');
   if (bundle.hotel_facts.editorial_summary) present.add('google_editorial_summary');
   if (comps.room_match !== null) present.add('room_match');
+  if (bundle.hotel_facts.room_amenities.length > 0) present.add('room_amenity');
+  // The selected motivator's own evidence is bundle content too, and the
+  // only place a WEBSITE claim appears at all. Presence follows what the
+  // bundle CARRIES rather than which field it arrived in — a line the guest
+  // is about to read cannot be absent evidence.
+  for (const e of bundle.motivator?.evidence ?? []) {
+    const key = MOTIVATOR_EVIDENCE_KEY[e.source];
+    if (key) present.add(key);
+  }
   if (bundle.market.calendar.available) present.add('calendar_position');
   if (bundle.market.compression.available) present.add('market_availability');
   if (bundle.availability.available_categories > 0) present.add('availability_position');

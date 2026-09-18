@@ -6,12 +6,18 @@
  * directly by building the same stay under every preference and comparing
  * the objective blocks byte for byte.
  *
- * Rule two: no evidence, no claim. A preference the data cannot speak to —
- * amenities, family, nightlife, quiet, business — gets a plain "limited
- * information" statement, and the fit list is short or empty rather than
- * padded. Model drafts pass the same allowlist/prediction/absent-evidence
- * gate as the assessment, and rejection falls back to the deterministic
- * reading, never to silence.
+ * Rule two: no evidence, no claim. A preference the data cannot speak to
+ * gets a plain "limited information" statement, and the fit list is short or
+ * empty rather than padded. Model drafts pass the same allowlist/prediction/
+ * absent-evidence gate as the assessment, and rejection falls back to the
+ * deterministic reading, never to silence.
+ *
+ * WHICH preferences those are is measured per hotel, not fixed in advance —
+ * the change of 2026-09-18. Five of them used to be hardcoded as dataless,
+ * which stopped being true when `info` started answering (rule 29) and the
+ * research layer landed (rule 34). The cases below pin both directions: a
+ * hotel whose rooms genuinely list cribs gets told so, and one with nothing
+ * behind the button still gets the honest sentence.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -30,6 +36,7 @@ import {
   deterministicPersonalization,
   validatePersonalization,
 } from '../../packages/core/src/explanation/personalization.js';
+import { assessMotivators } from '../../packages/core/src/explanation/motivators.js';
 import {
   computeCalendarDelta,
   computeCompression,
@@ -330,5 +337,99 @@ describe('every deterministic sentence passes its own bundle allowlist', () => {
         }
       }
     }
+  });
+});
+
+describe("a clicked preference is answered from this hotel's own evidence", () => {
+  /** The motivator assessment a family-friendly property actually produces. */
+  const familyEvidence = assessMotivators({
+    roomAmenities: ['Crib available', 'Connecting rooms', 'Sofa bed'],
+    reviewThemes: ['family'],
+    perks: [],
+    rating: null,
+    comparableMedianRating: null,
+    dealScoreOutOfTen: 6,
+    websiteClaims: [
+      {
+        motivator: 'FAMILY',
+        claim: "The property's own site mentions a kids club",
+        sourceUrl: 'https://example-resort.test/',
+      },
+    ],
+  });
+
+  it('names the evidence instead of saying the information is limited', () => {
+    // The exact regression: before 2026-09-18 this hotel — cribs, connecting
+    // rooms, a review theme and a cited page — still answered "Limited
+    // family-travel-specific information is available".
+    const p = deterministicPersonalization(
+      bundle({ preference: 'FAMILY', motivators: familyEvidence }),
+    );
+    expect(p).not.toBeNull();
+    expect(p?.personalized_insight.toLowerCase()).toContain('crib');
+    expect(p?.personalized_insight).not.toContain('Limited family-travel');
+    // The evidence is citable, which is what lets the model rewrite pass the
+    // absent-evidence gate rather than being rejected for naming it.
+    expect(p?.evidence_used).toContain('room_amenity');
+  });
+
+  it('leads the fit list with the evidence for the preference that was clicked', () => {
+    const p = deterministicPersonalization(
+      bundle({ preference: 'FAMILY', motivators: familyEvidence }),
+    );
+    expect(p?.why_this_hotel_may_fit[0]?.toLowerCase()).toContain('crib');
+  });
+
+  it('never renders the verdict word, only what it rests on', () => {
+    // "SUPPORTED" is a conclusion with a hidden rule behind it — rule 30's
+    // goodForChildren in better clothes. The evidence is the answer.
+    const p = deterministicPersonalization(
+      bundle({ preference: 'FAMILY', motivators: familyEvidence }),
+    );
+    const all = [p?.personalized_insight, ...(p?.why_this_hotel_may_fit ?? [])].join(' ');
+    expect(all).not.toMatch(/SUPPORTED|well suited|good for families/i);
+  });
+
+  it('still says the information is limited when this hotel has none', () => {
+    // The honest sentence has to survive, or the fix has simply moved the
+    // fabrication from a hardcoded list to a hardcoded optimism.
+    const thin = assessMotivators({
+      roomAmenities: ['Hairdryer'],
+      reviewThemes: [],
+      perks: [],
+      rating: null,
+      comparableMedianRating: null,
+      dealScoreOutOfTen: 6,
+    });
+    const p = deterministicPersonalization(bundle({ preference: 'FAMILY', motivators: thin }));
+    expect(p?.personalized_insight).toContain('Limited family-travel');
+    expect(p?.evidence_used).not.toContain('website_claim');
+  });
+
+  it('answers with no motivators supplied exactly as it did before', () => {
+    // An older caller that never passes motivators must be unchanged: the
+    // field is optional and its absence is not evidence of anything.
+    const p = deterministicPersonalization(bundle({ preference: 'FAMILY' }));
+    expect(p?.personalized_insight).toContain('Limited family-travel');
+  });
+
+  it('leaves the two VALUE preferences on the comparison that answers them', () => {
+    // BEST_VALUE is a question about the RATE. Routing it through the
+    // motivator would replace a sentence naming the alternative and the
+    // saving with one restating the score it already carries.
+    const p = deterministicPersonalization(
+      bundle({
+        preference: 'BEST_VALUE',
+        motivators: assessMotivators({
+          roomAmenities: [],
+          reviewThemes: [],
+          perks: ['Breakfast'],
+          rating: null,
+          comparableMedianRating: null,
+          dealScoreOutOfTen: 6,
+        }),
+      }),
+    );
+    expect(p?.personalized_insight).toContain('Seaside Palms');
   });
 });
