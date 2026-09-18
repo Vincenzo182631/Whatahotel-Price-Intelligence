@@ -27,6 +27,7 @@ import {
   closePool,
   findHotelWebsite,
   findOtherHotelsWithWebsite,
+  purgeSharedWebsites,
   findHotelsNeedingResearch,
   replaceResearchClaims,
   saveHotelResearchTarget,
@@ -83,12 +84,26 @@ for (const target of targets) {
   await sleep(pauseMs);
 }
 
+// Reconcile the FINISHED state, which the per-hotel check cannot.
+//
+// That check asks "does another hotel already hold this URL" and so depends
+// on run order. Measured 2026-09-18: hotel 3 resolved ritzcarlton.com with
+// nothing to collide against, hotel 7 collided and cleared both, hotel 22
+// then resolved the same domain into the empty slot and stood. Two
+// Ritz-Carltons survived on one brand domain, and which two was an accident
+// of sequence. Asked of the finished state, the question has no such hole.
+const purged = await purgeSharedWebsites();
+for (const p of purged) {
+  console.log(`  shared domain dropped: ${p.websiteUrl} was claimed by ${p.hotelIds.join(', ')}`);
+}
+
 const summary = [...counts.entries()]
   .sort((a, b) => b[1] - a[1])
   .map(([o, n]) => `${o} ${n}`)
   .join(', ');
 console.log(
-  `research: ${claimsWritten} claim(s) across ${targets.length} hotel(s) — ${summary || 'nothing queued'}`,
+  `research: ${claimsWritten} claim(s) across ${targets.length} hotel(s) — ${summary || 'nothing queued'}` +
+    (purged.length > 0 ? `, ${purged.length} shared domain(s) purged after` : ''),
 );
 for (const line of sites.slice(0, 25)) console.log(`  ${line}`);
 if (sites.length > 25) console.log(`  … and ${sites.length - 25} more`);

@@ -165,3 +165,54 @@ export async function clearHotelResearch(hotelId: number, q?: Queryable): Promis
   await runner.query('DELETE FROM hotel_research_claim WHERE hotel_id = $1', [hotelId]);
   await runner.query('UPDATE hotel SET website_url = NULL WHERE id = $1', [hotelId]);
 }
+
+export interface PurgedWebsite {
+  readonly websiteUrl: string;
+  readonly hotelIds: readonly number[];
+}
+
+/**
+ * Reconcile the whole catalogue: drop every website claimed by more than one
+ * hotel, and everything read from it.
+ *
+ * The per-hotel check in `researchHotel` asks "does another hotel already
+ * hold this URL", and that question depends on run ORDER. Measured
+ * 2026-09-18, second run: hotel 3 resolved ritzcarlton.com with nothing to
+ * collide against, hotel 7 collided and cleared both, and hotel 22 then
+ * resolved the same domain into the empty slot and stood. Two Ritz-Carltons
+ * survived on one brand domain, and which two was an accident of sequence.
+ *
+ * Asking the question of the FINISHED state has no such hole: a host held by
+ * two hotels is a brand domain whatever order they were researched in. Run
+ * this after a sweep.
+ *
+ * The in-flight check stays, because on-demand research for a single hotel
+ * has no batch to reconcile and still needs to catch a domain the catalogue
+ * already holds.
+ *
+ * Returns what it purged so a run can report it rather than silently tidying.
+ */
+export async function purgeSharedWebsites(q?: Queryable): Promise<readonly PurgedWebsite[]> {
+  const runner = db(q);
+  const { rows } = await runner.query(
+    `SELECT website_url, array_agg(id ORDER BY id) AS ids
+       FROM hotel
+      WHERE website_url IS NOT NULL
+      GROUP BY website_url
+     HAVING count(*) > 1`,
+  );
+  if (rows.length === 0) return [];
+
+  const ids = rows.flatMap((r) => r.ids as number[]);
+  await runner.query('DELETE FROM hotel_research_claim WHERE hotel_id = ANY($1::int[])', [ids]);
+  // researched_at is deliberately LEFT SET: the hotel was researched, the
+  // answer was wrong, and re-resolving it on the next run would just spend a
+  // search to reach the same brand domain. It backs off until the interval
+  // expires, which is rule 16's principle.
+  await runner.query('UPDATE hotel SET website_url = NULL WHERE id = ANY($1::int[])', [ids]);
+
+  return rows.map((r) => ({
+    websiteUrl: r.website_url as string,
+    hotelIds: r.ids as number[],
+  }));
+}

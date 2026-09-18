@@ -848,10 +848,25 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     researched earliest. That check needs the catalogue, so it lives in the
     pipeline rather than the adapter, and `SHARED_HOST` is its own outcome.
 
+    **Asking that question per hotel depends on run ORDER, so the sweep asks
+    it again of the finished state.** Measured on the second real run: hotel
+    3 resolved `ritzcarlton.com` with nothing to collide against, hotel 7
+    collided and cleared both, and hotel 22 then resolved the same domain
+    into the now-empty slot and stood. Two Ritz-Carltons survived on one
+    brand domain, and WHICH two was an accident of sequence.
+    `purgeSharedWebsites` runs after the sweep and drops every host held by
+    more than one hotel, which has no such hole because a finished state has
+    no order. The in-flight check stays for on-demand research, where a
+    single hotel has no batch to reconcile. It leaves `researched_at` SET:
+    the hotel WAS researched and the answer was wrong, so re-resolving
+    immediately would spend a search to reach the same brand domain
+    (rule 16).
+
     The lesson is the sample size, not the blocklist: 25 hotels cost 25
     searches and surfaced a false-attribution rate of nearly half. The same
     logic let loose on 3,223 would have been a database full of confident
-    citations to the wrong businesses.
+    citations to the wrong businesses. Two rounds of 25 also cost less than
+    one wrong claim in front of a guest.
 
 ## Adding or changing a factor
 
