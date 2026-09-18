@@ -1,6 +1,7 @@
 export type { RateQuery, RateSourceAdapter, RawRateRecord } from './adapters/RateSourceAdapter.js';
 
 export * from './adapters/whatahotel/index.js';
+export * from './adapters/brave/index.js';
 
 export {
   DEFAULT_SYNTHETIC_OPTIONS,
