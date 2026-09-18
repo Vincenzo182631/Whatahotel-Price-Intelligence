@@ -50,6 +50,14 @@ export type {
   OnDemandSkipReason,
   OnDemandStay,
 } from './pipeline/onDemand.js';
+export { syncHotelAmenities } from './pipeline/amenities.js';
+export type {
+  AmenitySyncDeps,
+  AmenitySyncOutcome,
+  AmenitySyncResult,
+} from './pipeline/amenities.js';
+export { parseInfo, fetchHotelInfo } from './adapters/whatahotel/info.js';
+export type { InfoAmenity, ParsedInfo } from './adapters/whatahotel/info.js';
 
 export { sweepPlaces } from './pipeline/resolvePlaces.js';
 export type { PlaceSweepOptions, PlaceSweepResult } from './pipeline/resolvePlaces.js';

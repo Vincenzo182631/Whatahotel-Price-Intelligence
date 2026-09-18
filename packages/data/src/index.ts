@@ -12,6 +12,14 @@ export {
   saveHotelPageFacts,
   searchHotels,
 } from './repositories/hotels.js';
+export {
+  findAmadeusProperty,
+  findHotelAmenities,
+  findHotelsNeedingAmenities,
+  setAmadeusProperty,
+  upsertHotelAmenities,
+} from './repositories/amenities.js';
+export type { HotelAmenity } from './repositories/amenities.js';
 export type {
   HotelPageFacts,
   HotelRow,
