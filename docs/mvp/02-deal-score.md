@@ -550,11 +550,22 @@ source sells.
   produce a comparison here, so a wider, disclosed comparison is the only
   alternative to permanent silence.
 
-`findComparableIdentities` answers that question directly, because it reads
-`hotel` and never joins a rate: a zero means the market is genuinely empty
-rather than merely unfetched. The rung also requires coordinates — without
-them that function matches on the destination label instead, which would
-return the whole of Honolulu and make an isolated resort look surrounded.
+`countNearbyHotels` answers that question and nothing else: it reads `hotel`,
+joins no rate, respects no curation and applies no collection tier, so a zero
+means the market is genuinely empty rather than merely unfetched. It requires
+coordinates on both sides with no destination-label fallback, because a label
+match would return the whole of Honolulu and make an isolated resort look
+surrounded.
+
+**Ask the geographic question of a geographic function.** The first version
+counted with `findComparableIdentities`, which answers "who should this hotel
+be compared against" and prefers the CURATED peer list — bound at the ladder's
+outer rung, not at the radius it is handed. A geographic question therefore
+got a curated answer. Measured on Four Seasons Oahu at Ko Olina, 2026-09-17:
+it reported three "neighbours within five miles" that were Waikiki hotels 30
+km away, the isolation test declined by exactly one hotel, and the rung never
+ran on the property it was written for. The nearest catalogued hotel there is
+30.18 km off; nothing lies inside five miles.
 
 **It climbs on the same terms as every other rung**, taking the wider ring
 only when that ring actually carried or found more, never merely to gather

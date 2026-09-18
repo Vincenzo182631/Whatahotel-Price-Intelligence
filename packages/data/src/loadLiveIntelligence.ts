@@ -38,7 +38,7 @@ import {
 import type { Queryable } from './client.js';
 import { findBenefits } from './repositories/context.js';
 import {
-  findComparableIdentities,
+  countNearbyHotels,
   findHotelByWahId,
   hasCuratedComparables,
   listRoomTypes,
@@ -730,15 +730,25 @@ export async function loadLiveIntelligence(
    * against distant ones is worse than saying nothing, and the on-demand
    * top-up is what fixes it.
    *
-   * `findComparableIdentities` answers the catalogue question directly: it
-   * reads `hotel` and never joins a rate, so a zero here means the market is
-   * genuinely empty rather than merely unfetched.
+   * `countNearbyHotels` answers that geographically and nothing else: it
+   * reads `hotel`, joins no rate, respects no curation and applies no
+   * collection tier, so a zero means the market is genuinely empty rather
+   * than merely unfetched.
    *
-   * Requires coordinates. Without them that function falls back to matching
-   * the destination label, which would return the whole of Honolulu and make
-   * an isolated resort look surrounded. We cannot establish isolation for a
-   * hotel we cannot place, and guessing is how a resort ends up compared
-   * against a city.
+   * The first version asked `findComparableIdentities` instead, which was
+   * wrong in a way worth recording. That function answers "who should this
+   * hotel be compared against", and to do so it prefers the CURATED peer
+   * list, bound at the ladder's outer rung rather than at the radius it is
+   * handed. A geographic question therefore got a curated answer: on Four
+   * Seasons Oahu at Ko Olina it returned three "neighbours within five miles"
+   * that were Waikiki hotels 30 km away, the test declined by exactly one
+   * hotel, and the rung never ran on the property it was written for. The
+   * nearest catalogued hotel there is 30.18 km off and nothing lies inside
+   * five miles.
+   *
+   * Requires coordinates on both sides, with no destination-label fallback.
+   * A label match is exactly what makes an isolated resort look surrounded,
+   * and guessing is how a resort ends up compared against a city.
    */
   let isolatedMarket = false;
   const isolatedMiles = live.csi.isolatedRadiusMiles ?? 0;
@@ -754,16 +764,20 @@ export async function loadLiveIntelligence(
       `hasCoords=${hotel.latitude !== null && hotel.longitude !== null}`,
   );
   if (isolationEligible) {
-    const cataloguedNearby = await findComparableIdentities(
-      hotel.id,
-      live.csi.minComps,
-      outerRungMiles * MILES_TO_KM,
-    );
+    // countNearbyHotels, NOT findComparableIdentities. The latter answers
+    // "who should this hotel be compared against" and prefers the CURATED
+    // peer list, which is bound at the ladder's outer rung rather than at the
+    // radius it is handed — so a geographic question gets a curated answer.
+    // Measured on Ko Olina (2026-09-17): it reported three "neighbours within
+    // five miles" that were Waikiki hotels 30 km away, the isolation test
+    // declined by exactly one hotel, and an isolated resort stayed unscoreable
+    // in a market where the nearest catalogued hotel is 30.18 km off.
+    const cataloguedNearby = await countNearbyHotels(hotel.id, outerRungMiles * MILES_TO_KM);
     trace(
-      `catalogued within ${outerRungMiles}mi = ${cataloguedNearby.length} ` +
+      `hotels within ${outerRungMiles}mi = ${cataloguedNearby} ` +
         `(isolated if < ${live.csi.minComps})`,
     );
-    if (cataloguedNearby.length < live.csi.minComps) {
+    if (cataloguedNearby < live.csi.minComps) {
       const far = await selectAtRadius(isolatedMiles * MILES_TO_KM);
       // Same test the ordinary rungs use: climb only when the wider ring
       // actually improved the evidence, never merely to gather more.

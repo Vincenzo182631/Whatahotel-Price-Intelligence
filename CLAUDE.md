@@ -535,16 +535,28 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     source sells, and Greg found this by opening the widget on one.
     `live.csi.isolatedRadiusMiles` (30) is the reach allowed in that case.
     **What makes it safe is the test, not the distance.** The rung asks why
-    the near rings were empty, by counting CATALOGUED hotels in range
-    (`findComparableIdentities`, which reads `hotel` and never joins a rate):
-    neighbours exist but hold no usable rate is a COVERAGE problem, and
-    reaching past real peers to compare against distant ones is strictly
-    worse than waiting for the on-demand top-up, so the rung must not fire;
-    no neighbours exist at all means nothing we ever collect can produce a
-    comparison, and a wider disclosed comparison is the only alternative to
-    silence. It also requires COORDINATES — without them
-    `findComparableIdentities` matches on the destination label, which would
-    return the whole of Honolulu and make an isolated resort look surrounded.
+    the near rings were empty, by counting hotels PHYSICALLY in range
+    (`countNearbyHotels`): neighbours exist but hold no usable rate is a
+    COVERAGE problem, and reaching past real peers to compare against distant
+    ones is strictly worse than waiting for the on-demand top-up, so the rung
+    must not fire; no neighbours exist at all means nothing we ever collect
+    can produce a comparison, and a wider disclosed comparison is the only
+    alternative to silence. It requires COORDINATES on both sides with no
+    destination-label fallback, because a label match would return the whole
+    of Honolulu and make an isolated resort look surrounded.
+
+    **Ask the geographic question of a geographic function.** The first
+    version counted with `findComparableIdentities`, and that was wrong in a
+    way worth keeping: it answers "who should this hotel be compared
+    against", and to do so it prefers the CURATED peer list, bound at the
+    ladder's outer rung rather than at the radius it is handed. So a
+    geographic question got a curated answer — on Ko Olina it reported three
+    "neighbours within five miles" that were Waikiki hotels 30 km away, the
+    test declined by exactly one hotel, and the rung never ran on the
+    property it was written for. The nearest catalogued hotel there is 30.18
+    km off and nothing lies inside five miles. `countNearbyHotels` joins no
+    rate, respects no curation and applies no collection tier (rule 19), so a
+    zero means the market is genuinely empty rather than merely unfetched.
     It forces `radiusExpanded` (so confidence caps below HIGH), publishes
     `isolated_market`, and marks the selection method with `!`. A comparison
     drawn from 30 miles away is real evidence about a PRICE and never a
