@@ -984,3 +984,25 @@
   padding: 8px 14px;
   font-size: 0.85rem;
 }
+
+/* Google's own description of the property.
+   Set apart from our sentences on purpose: the label and the rule are what
+   tell a reader whose words these are. Quiet rather than decorative — this
+   is a citation, not a pull quote. */
+.wahpi__why-editorial {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--wahpi-rule, rgba(0, 0, 0, 0.08));
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--wahpi-muted, #5b6472);
+}
+.wahpi__why-editorial-label {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--wahpi-muted, #8a929e);
+}

@@ -40,6 +40,7 @@ import {
 import {
   findBenefits,
   findHotelByWahId,
+  findDistinctiveAmenities,
   findVerifiedReputations,
   findVerifiedReputationsByWahIds,
   isLiveLoadFailure,
@@ -578,12 +579,19 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       reviewThemes: readonly string[];
     }
   >();
+  let subjectRoomAmenities: readonly string[] = [];
   try {
-    const [subject, comps] = await Promise.all([
+    // Amenities ride with the reputation lookup: both are hotel-level,
+    // indexed, and independent of the stay, so this adds a query rather than
+    // a round trip. It is also optional in the same way — a failure here
+    // thins the card and never breaks the answer.
+    const [subject, comps, amenities] = await Promise.all([
       findVerifiedReputations([loaded.hotel.id]),
       findVerifiedReputationsByWahIds(loaded.competitorWahIds),
+      findDistinctiveAmenities(loaded.hotel.id),
     ]);
     competitorReputations = comps;
+    subjectRoomAmenities = amenities.map((a) => a.label);
     const mine = subject.get(loaded.hotel.id);
     if (mine && mine.rating !== null) {
       subjectReputation = {
@@ -701,6 +709,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     perks: loaded.benefitNames,
     editorialSummary: subjectEditorialSummary,
     reviewThemes: subjectReviewThemes,
+    roomAmenities: subjectRoomAmenities,
     comparableRatings,
     availability: loaded.availability,
     alternative: alternative
@@ -931,6 +940,11 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
           supporting_signals: explanation.hotelValue.supporting_facts.slice(0, 4),
           confidence: explanation.hotelValue.confidence,
           evidence_used: explanation.hotelValue.evidence_used,
+          // Google's description, carried as THEIRS. Published beside the
+          // summary rather than inside it so a client can attribute it, and
+          // so a reader can weigh "Google says this" separately from what we
+          // measured (rule 22's principle, applied to prose).
+          editorial: explanation.hotelValue.editorial,
           source: explanation.hotelValue.source,
         }
       : null,
@@ -1329,15 +1343,18 @@ async function hotelOnlyAnswer(
   let reputation: ReputationFact | null = null;
   let editorialSummary: string | null = null;
   let reviewThemes: readonly string[] = [];
+  let roomAmenities: readonly string[] = [];
   let perks: string[] = [];
   try {
     // Both are hotel-level and indexed; neither depends on the stay. The
     // benefits query takes the check-in only to honour a perk's validity
     // window, never to price anything.
-    const [reps, benefits] = await Promise.all([
+    const [reps, benefits, amenities] = await Promise.all([
       findVerifiedReputations([hotel.id]),
       findBenefits(hotel.id, null, checkIn),
+      findDistinctiveAmenities(hotel.id),
     ]);
+    roomAmenities = amenities.map((a) => a.label);
     const mine = reps.get(hotel.id);
     if (mine && mine.rating !== null) {
       reputation = {
@@ -1365,6 +1382,7 @@ async function hotelOnlyAnswer(
     perks,
     editorialSummary,
     reviewThemes,
+    roomAmenities,
   });
   const value = deterministicHotelValue(facts);
   // Nothing measured, nothing said.
@@ -1402,6 +1420,7 @@ async function hotelOnlyAnswer(
       summary: value.summary,
       supporting_signals: value.supporting_facts,
       confidence: value.confidence,
+      editorial: value.editorial,
       source: value.source,
     },
     reputation: reputation

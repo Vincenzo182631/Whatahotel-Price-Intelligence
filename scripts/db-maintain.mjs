@@ -249,6 +249,51 @@ if (COVERAGE) {
 // distance. Read them as an UPPER BOUND on the payoff, never as a forecast.
 //
 // Read-only.
+/**
+ * What the amenity labels actually distinguish (migration 0021).
+ *
+ * The widget is about to NAME amenities to a guest, and the question of which
+ * ones is not a matter of taste: an amenity present at 95% of hotels carries
+ * no information about any of them. That is rule 9's principle and rule 30's
+ * measurement, one table over — `goodForChildren` was true for all 20 hotels
+ * sampled, and "Telephone" may well be the same thing wearing a different
+ * label.
+ *
+ * So this prints the distribution, commonest first, with the share of
+ * amenity-carrying hotels holding each. Read-only. Nothing selects on it yet;
+ * this is what decides where the line goes.
+ */
+const AMENITY_SPREAD = process.argv.includes('--amenity-spread');
+if (AMENITY_SPREAD) {
+  console.log('\n── amenity labels by share of hotels that carry any ──');
+  console.log(
+    await sql(`
+      WITH h AS (SELECT count(DISTINCT hotel_id) AS n FROM hotel_amenity)
+      SELECT lpad(count(*)::text, 5) || '  ' ||
+             lpad(round(100.0 * count(*) / NULLIF((SELECT n FROM h), 0))::text, 3) || '%  ' ||
+             lpad(code, 4) || '  ' || label
+        FROM hotel_amenity
+       GROUP BY code, label
+       ORDER BY count(*) DESC, label
+       LIMIT 60`),
+  );
+  console.log(
+    await sql(`
+      WITH h AS (SELECT count(DISTINCT hotel_id) AS n FROM hotel_amenity),
+           per AS (SELECT code, count(*) AS c FROM hotel_amenity GROUP BY code)
+      SELECT 'distinct amenity codes      ' || count(*) FROM per
+      UNION ALL SELECT 'held by >90% of hotels      ' || count(*) FROM per
+        WHERE c > 0.90 * (SELECT n FROM h)
+      UNION ALL SELECT 'held by 10-90%              ' || count(*) FROM per
+        WHERE c BETWEEN 0.10 * (SELECT n FROM h) AND 0.90 * (SELECT n FROM h)
+      UNION ALL SELECT 'held by <10% of hotels      ' || count(*) FROM per
+        WHERE c < 0.10 * (SELECT n FROM h)
+      UNION ALL SELECT 'median amenities per hotel  ' ||
+             (SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY k)
+                FROM (SELECT count(*) AS k FROM hotel_amenity GROUP BY hotel_id) t)`),
+  );
+}
+
 const GEO_GAP = process.argv.includes('--geo-gap');
 if (GEO_GAP) {
   console.log('\n── the coordinate gap across active hotels ──');

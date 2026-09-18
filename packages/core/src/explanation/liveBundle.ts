@@ -220,6 +220,8 @@ export interface LiveExplanationBundle {
     readonly perks: readonly string[];
     readonly editorial_summary: string | null;
     readonly review_themes: readonly string[];
+    /** Distinctive room amenities, already filtered by the data layer. */
+    readonly room_amenities: readonly string[];
     /**
      * The verified signal chips, built HERE so the model, the validator
      * and the renderer share one vocabulary. A model cites these strings
@@ -276,6 +278,8 @@ export interface LiveBundleInput {
   readonly perks?: readonly string[];
   readonly editorialSummary?: string | null;
   readonly reviewThemes?: readonly string[];
+  /** Distinctive room amenities (findDistinctiveAmenities), named verbatim. */
+  readonly roomAmenities?: readonly string[];
   readonly comparableRatings?: readonly number[];
   readonly availability?: {
     readonly position: 'ENTRY' | 'MID' | 'TOP' | null;
@@ -583,6 +587,7 @@ export function buildLiveExplanationBundle(input: LiveBundleInput): LiveExplanat
         perks,
         editorial_summary: input.editorialSummary ?? null,
         review_themes: themes,
+        room_amenities: (input.roomAmenities ?? []).slice(0, 5),
         supporting_signals: buildSupportingSignals(input),
       };
     })(),

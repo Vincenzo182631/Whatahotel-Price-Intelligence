@@ -696,6 +696,52 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     coverage, never against documentation — Places bills per field group and
     rule 22 records that this is the entire ongoing bill.
 
+31. **Name the amenity; never infer what it means.** Owner decision
+    (2026-09-18), and the resolution of rule 29's deferred question. A guest
+    reads "Rooms here list a walk-in closet, marble bathroom and turndown
+    service" — facts the source states, verbatim and lower-cased into the
+    sentence. What never renders is the conclusion drawn from them: a sofa
+    bed and a crib do not make a hotel "good for families", and rule 30 is
+    what that inference costs, since Places' own `goodForChildren` was true
+    for all 20 hotels sampled and would have printed the same claim on every
+    property in the catalogue.
+
+    **Which amenities is measured, not chosen.** `findDistinctiveAmenities`
+    ranks a hotel's amenities by how RARE the label is across the whole
+    corpus and drops anything above `maxShare`. Measured 2026-09-18 over
+    1,078 hotels and 28,465 rows: nothing exceeds 90%, so there is no single
+    constant to strip, but Hairdryer (86%), Air conditioning (77%), Minibar
+    (73%) and Color television (70%) sit above a gap that falls straight to
+    42%, and telling a guest a luxury hotel has a hairdryer is rule 9's
+    failure wearing a label. The default sits INSIDE that measured gap rather
+    than on a round number. The share is computed per query against the live
+    corpus, never frozen into a list: a hardcoded exclusion would be a claim
+    about the catalogue instead of a reading of it, and would rot on the next
+    sweep. The median hotel holds SIX amenities, so a short list is the
+    normal case — the renderer caps at three named and pads never, and no
+    amenities at all is silence rather than an apology (rule 3's principle
+    for prose).
+
+32. **Google's words are published as Google's.** Owner decision
+    (2026-09-18). `hotel_value.editorial` carries the Places editorial
+    summary in its own field with `attribution: 'GOOGLE'`, and the widget
+    renders it under a "From Google" label, set off by a rule from the
+    sentences we wrote. It is never folded into `summary`.
+
+    Two reasons, and the second is the load-bearing one. It is the most
+    varied per-hotel prose we hold — 19 distinct values across 19 hotels
+    (rule 30) — so it is worth showing. And it is somebody else's
+    characterisation of somebody else's business: blending it into our
+    sentences would present Google's writing as our measurement, which is
+    exactly the confusion rule 22 prevents for the rating. A reader can weigh
+    "Google says this"; nobody can weigh an unattributed claim.
+
+    The model may not touch it. On the MODEL path the block is attached from
+    the bundle rather than read out of the draft, because an attributed quote
+    that has been paraphrased is no longer the thing it is attributed to.
+    Null when we hold none — 2,214 of 3,223 active hotels carry one — and
+    never synthesised.
+
 ## Adding or changing a factor
 
 1. Update `docs/mvp/02-deal-score.md` with the rationale first.
