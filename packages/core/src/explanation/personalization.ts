@@ -35,6 +35,7 @@
 
 import type { LiveExplanationBundle } from './liveBundle.js';
 import type { Preference } from './preference.js';
+import { renderMotivatorAnswer } from './motivators.js';
 import {
   evidenceConfidence,
   evidencePresent,
@@ -83,9 +84,6 @@ const ASPECT_WORD: Record<Preference, string> = {
   QUIET_RELAXATION: 'quiet-stay',
   BUSINESS_TRAVEL: 'business-travel',
 };
-
-/** Lower-case the first letter so an evidence line can be sewn into prose. */
-const uncap = (t: string): string => (t.length > 0 ? t[0]!.toLowerCase() + t.slice(1) : t);
 
 /**
  * The evidence the SELECTED motivator is supported by, as citable keys.
@@ -266,17 +264,11 @@ function pick(
 function motivatorInsight(
   bundle: LiveExplanationBundle,
 ): { text: string; evidence: AssessmentEvidence[] } | null {
-  const m = bundle.motivator;
-  if (!m || m.verdict !== 'SUPPORTED' || m.evidence.length === 0) return null;
-
-  // At most two: the answer is a lead, and the rest of the evidence is
-  // already published beside it as fit reasons and in the motivators block.
-  const lines = m.evidence.slice(0, 2).map((e) => uncap(e.text));
-  const text =
-    lines.length === 1
-      ? `For this stay, ${lines[0]}.`
-      : `For this stay, ${lines[0]}, and ${lines[1]}.`;
-  return { text, evidence: motivatorEvidenceKeys(bundle) };
+  // One renderer, shared with the HOTEL_ONLY path, so a guest clicking
+  // "Family" reads the same sentence whichever mode answered them.
+  const answered = renderMotivatorAnswer(bundle.motivator);
+  if (!answered) return null;
+  return { text: answered.insight, evidence: motivatorEvidenceKeys(bundle) };
 }
 
 /** The insight sentence(s) the system can stand behind with no model. */

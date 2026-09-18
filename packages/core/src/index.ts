@@ -205,7 +205,7 @@ export {
   validatePersonalization,
 } from './explanation/personalization.js';
 export type { Personalization, PersonalizationValidation } from './explanation/personalization.js';
-export { assessMotivators } from './explanation/motivators.js';
+export { assessMotivators, renderMotivatorAnswer } from './explanation/motivators.js';
 export type {
   MotivatorAssessment,
   MotivatorEvidence,

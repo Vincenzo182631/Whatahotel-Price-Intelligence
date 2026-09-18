@@ -1801,7 +1801,7 @@
    * The advisor line appears only when the API states bookable_online:false —
    * the hotel's own page saying so, never inferred from a fetch that failed.
    */
-  function renderHotelOnly(root, data) {
+  function renderHotelOnly(root, data, state) {
     root.textContent = '';
     root.className = 'wahpi';
     root.setAttribute('aria-busy', 'false');
@@ -1814,6 +1814,23 @@
       head.appendChild(el('div', 'wahpi__subject-meta', data.subject.hotel.destination));
     }
     append(root, head);
+
+    // The preference chips belong here too.
+    //
+    // Measured against production 2026-09-18: this mode carried all ten
+    // motivator verdicts in the response and rendered no way to ask about
+    // any of them, because renderHotelOnly never received `state` and the
+    // picker needs its onPreferenceChange. So on exactly the stays with no
+    // price — the common outcome during the source outage — the guest had
+    // the fewest facts on screen AND the fewest ways to ask.
+    //
+    // What a preference answers here is hotel-level and needs no rate:
+    // amenities, review themes, perks, a researched page. `state` is
+    // optional so an older caller still renders the card unchanged.
+    if (state) {
+      append(root, renderPreferencePicker(data, state));
+      append(root, renderLivePersonalization(data));
+    }
 
     append(root, renderLiveWhyChoose(data));
     // The rating renders with the hotel-only note: the usual "not part of the
@@ -2220,7 +2237,7 @@
           // template sentences would be a repaint for nothing, and on a slow
           // device that flicker is a cost with no benefit behind it.
           if (!fuller.explanation || fuller.explanation.source !== 'MODEL') return;
-          if (fuller.intelligence_mode === 'HOTEL_ONLY') renderHotelOnly(root, fuller);
+          if (fuller.intelligence_mode === 'HOTEL_ONLY') renderHotelOnly(root, fuller, state);
           else renderLive(root, fuller, state);
         })
         .catch(function () {
@@ -2455,7 +2472,7 @@
           // does not go through the market renderer — every block there
           // describes a rate this body deliberately does not have.
           if (live && result.body.intelligence_mode === 'HOTEL_ONLY') {
-            renderHotelOnly(root, result.body);
+            renderHotelOnly(root, result.body, state);
           } else if (live) renderLive(root, result.body, state);
           else renderAnalysis(root, result.body, state);
           upgradeVoice(root, options, state, fresh, result.body);
