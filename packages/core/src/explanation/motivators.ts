@@ -367,6 +367,29 @@ export function assessMotivators(input: MotivatorInput): readonly MotivatorAsses
 }
 
 /**
+ * Lower-case an evidence line's first letter so it can be folded into a
+ * sentence, EXCEPT where the line opens on a proper noun.
+ *
+ * Measured against production 2026-09-18: the Beach & resort answer for The
+ * Royal Hawaiian read "and google's description of this property mentions
+ * beach". Rule 32 publishes Google's words AS Google's, and a lower-cased
+ * name reads as a typo rather than as an attribution.
+ *
+ * The exception list is the set of names THIS module emits, so it is a
+ * statement about the code below rather than a reading of the corpus — rule
+ * 31's objection to frozen lists is about claims made on data, not about our
+ * own vocabulary. A test pins that every line this module can emit is either
+ * covered here or safe to uncapitalize.
+ */
+const PROPER_NOUN_PREFIXES = ['Google'] as const;
+
+function uncapitalize(text: string): string {
+  if (text.length === 0) return text;
+  if (PROPER_NOUN_PREFIXES.some((name) => text.startsWith(name))) return text;
+  return text[0]!.toLowerCase() + text.slice(1);
+}
+
+/**
  * The advisor's answer to a clicked preference, written from the motivator's
  * own evidence and nothing else.
  *
@@ -396,10 +419,9 @@ export function renderMotivatorAnswer(
   if (!assessment || assessment.verdict !== 'SUPPORTED') return null;
   if (assessment.evidence.length === 0) return null;
 
-  const uncap = (t: string): string => (t.length > 0 ? t[0]!.toLowerCase() + t.slice(1) : t);
   // At most two lead the sentence: the rest are published beside it as
   // reasons and in the motivators block, so repeating them would pad.
-  const lead = assessment.evidence.slice(0, 2).map((e) => uncap(e.text));
+  const lead = assessment.evidence.slice(0, 2).map((e) => uncapitalize(e.text));
   const insight =
     lead.length === 1 ? `For this stay, ${lead[0]}.` : `For this stay, ${lead[0]}, and ${lead[1]}.`;
 
@@ -458,9 +480,8 @@ export function renderMotivatorPivot(
 
   // Two at most. A pivot is a pointer, not a second answer, and the full
   // assessment for all ten rides in the response beside it.
-  const lower = (t: string): string => (t.length > 0 ? t[0]!.toLowerCase() + t.slice(1) : t);
-  const first = lower(lines[0] as string);
-  const second = lines.length > 1 ? lower(lines[1] as string) : null;
+  const first = uncapitalize(lines[0] as string);
+  const second = lines.length > 1 ? uncapitalize(lines[1] as string) : null;
   return second === null
     ? `What this property does show: ${first}.`
     : `What this property does show: ${first}, and ${second}.`;

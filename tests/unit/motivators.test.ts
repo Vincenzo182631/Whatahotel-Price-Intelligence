@@ -9,8 +9,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   assessMotivators,
+  renderMotivatorAnswer,
   renderMotivatorPivot,
 } from '../../packages/core/src/explanation/motivators.js';
+
+import { readFileSync } from 'node:fs';
 
 const empty = {
   roomAmenities: [],
@@ -247,6 +250,61 @@ describe('area evidence', () => {
       const srcs = evidenceFor(bare, m).map((e) => e.source);
       expect(srcs).not.toContain('GOOGLE_EDITORIAL');
       expect(srcs).not.toContain('STREET_ADDRESS');
+    }
+  });
+});
+
+/**
+ * A name folded into a sentence is still a name.
+ *
+ * Measured against production 2026-09-18: the Beach & resort answer for The
+ * Royal Hawaiian read "and google's description of this property mentions
+ * beach". Rule 32 publishes Google's words AS Google's, and a lower-cased
+ * name reads as a typo rather than as an attribution — which is the one
+ * thing that block exists to carry.
+ */
+describe('folding evidence into a sentence', () => {
+  const editorial = {
+    ...empty,
+    reviewThemes: ['beach'],
+    editorialSummary: 'A beachfront landmark with a pool and a spa.',
+  };
+
+  it('keeps a proper noun capitalised mid-sentence', () => {
+    const beach = assessMotivators(editorial).find((m) => m.motivator === 'BEACH_RESORT');
+    const line = [
+      renderMotivatorAnswer(beach)?.insight,
+      renderMotivatorPivot(assessMotivators(editorial), 'FAMILY'),
+    ]
+      .filter(Boolean)
+      .join(' ');
+    expect(line).toContain('Google');
+    expect(line).not.toContain('google');
+  });
+
+  it('still lower-cases a line that opens on a common word', () => {
+    const beach = assessMotivators({ ...empty, reviewThemes: ['beach'] }).find(
+      (m) => m.motivator === 'BEACH_RESORT',
+    );
+    // "Recent reviewers mention…" reads as a fragment, so it is uncapitalized.
+    expect(renderMotivatorAnswer(beach)?.insight).toContain('recent reviewers mention');
+  });
+
+  it('covers every proper noun this module can emit', () => {
+    // The durable half. The exception list is a statement about the code, so
+    // it has to be checked against the code: any evidence line that opens on
+    // a capitalised word which is not a sentence-opening common word needs to
+    // be in PROPER_NOUN_PREFIXES, or it reaches a guest lower-cased.
+    const SOURCE = readFileSync(
+      new URL('../../packages/core/src/explanation/motivators.ts', import.meta.url),
+      'utf8',
+    );
+    const COMMON = ['The', 'Rooms', 'Recent', 'Rated', 'A', 'This', 'Its'];
+    const emitted = [...SOURCE.matchAll(/text: [`'"]([A-Z][a-zA-Z]*)/g)].map((m) => m[1] as string);
+    expect(emitted.length).toBeGreaterThan(4);
+    for (const word of emitted) {
+      if (COMMON.includes(word)) continue;
+      expect(SOURCE).toMatch(new RegExp(`PROPER_NOUN_PREFIXES[\\s\\S]{0,120}'${word}'`));
     }
   });
 });
