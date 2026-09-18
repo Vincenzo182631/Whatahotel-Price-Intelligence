@@ -742,6 +742,42 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     Null when we hold none — 2,214 of 3,223 active hotels carry one — and
     never synthesised.
 
+33. **A motivator verdict always ships with its evidence.** Owner
+    requirement (2026-09-18): for each of the ten motivators the preference
+    selector offers, say whether the property supports it, and let a guest
+    see WHY rather than a label. `assessMotivators`
+    (`packages/core/src/explanation/motivators.ts`) returns a verdict plus
+    citable evidence lines, each tagged with where it came from
+    (`ROOM_AMENITY`, `REVIEW_THEME`, `HOTEL_PERK`, `GOOGLE_RATING`,
+    `ROOM_CATEGORY`, `DEAL_SCORE`).
+
+    Mapping evidence to a motivator IS an inference, and rule 31 says name
+    the amenity rather than infer what it means. The two reconcile through
+    one constraint: **the evidence is published with the verdict, always, and
+    SUPPORTED without evidence is impossible.** "Family — rooms list cribs
+    and connecting rooms" is an inference a reader can check and reject.
+    "Good for families" over a hidden rule is what rule 30 caught in Places,
+    where `goodForChildren` was true for all 20 hotels sampled and printed
+    the same claim on every property. The signal sets are deliberately narrow
+    for the same reason: "Telephone" firing Business Travel would look like a
+    finding and tell a guest nothing (rule 9), so a test pins that it does
+    not.
+
+    **There is no general DOES NOT HAVE.** Owner decision, 2026-09-18, and it
+    is rule 28's line held in a new place. "We found no business centre" is a
+    statement about our research, not about the hotel: measured the same day,
+    2,012 of the hotels we asked returned an empty amenity list, which says
+    nothing whatever about what they offer. A red mark earned that way is a
+    false negative on a property the site sells. `MEASURED_ABSENT` exists in
+    the contract for absence we can COMPUTE — a distance, a count, a stated
+    term — is never produced by failing to find something, and nothing emits
+    it yet because the geography it needs is not data we hold.
+
+    **The two VALUE motivators are different in kind.** They are questions
+    about the RATE, which the Deal Score already answers, so they cite the
+    score rather than hunting for a "value" attribute that does not exist.
+    With no rate they read `LIMITED_EVIDENCE` rather than borrowing a number.
+
 ## Adding or changing a factor
 
 1. Update `docs/mvp/02-deal-score.md` with the rationale first.

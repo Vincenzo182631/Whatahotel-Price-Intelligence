@@ -201,6 +201,14 @@ export {
   validatePersonalization,
 } from './explanation/personalization.js';
 export type { Personalization, PersonalizationValidation } from './explanation/personalization.js';
+export { assessMotivators } from './explanation/motivators.js';
+export type {
+  MotivatorAssessment,
+  MotivatorEvidence,
+  MotivatorEvidenceSource,
+  MotivatorInput,
+  MotivatorVerdict,
+} from './explanation/motivators.js';
 export {
   assessAvailabilityPosition,
   chooseAlternative,

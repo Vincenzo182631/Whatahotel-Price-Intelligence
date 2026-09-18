@@ -36,6 +36,7 @@ import {
   premiumJustificationSummary,
   type Preference,
   type ReputationFact,
+  assessMotivators,
 } from '@wahpi/core';
 import {
   findBenefits,
@@ -1151,6 +1152,31 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       : null,
 
     /**
+     * Every travel motivator the selector offers, with the evidence for each.
+     *
+     * Owner requirement (2026-09-18). The evidence is published WITH the
+     * verdict and is the reason the inference is defensible at all: a guest
+     * reading "Family — cribs, connecting rooms" can weigh it and can
+     * disagree. A bare "Good for families" is what rule 30 caught in Places,
+     * where goodForChildren was true for all 20 hotels sampled and a reader
+     * had nothing to check.
+     *
+     * There is no general negative verdict. "We found no business centre" is
+     * a statement about our research — 2,012 hotels returned an empty amenity
+     * list — and rendering it as the property's shortcoming is rule 28's
+     * false negative. MEASURED_ABSENT is reserved for absence we can compute,
+     * and nothing emits it yet.
+     */
+    motivators: assessMotivators({
+      roomAmenities: subjectRoomAmenities,
+      reviewThemes: subjectReviewThemes,
+      perks: loaded.benefitNames,
+      rating: subjectReputation?.rating ?? null,
+      comparableMedianRating: bundle.reputation.comparable_median_rating,
+      dealScoreOutOfTen: result.outOfTen,
+    }),
+
+    /**
      * The customer-facing sentences, and where they came from.
      *
      * TEMPLATE  the deterministic renderer wrote them.
@@ -1415,6 +1441,17 @@ async function hotelOnlyAnswer(
     },
     deal_score: null,
     verdict: { out_of_ten: null, band: null, label: null },
+    // Same assessment, same shape, thinner inputs: with no rate there is no
+    // score, so the two VALUE motivators honestly read LIMITED_EVIDENCE
+    // rather than borrowing a number from somewhere else.
+    motivators: assessMotivators({
+      roomAmenities,
+      reviewThemes,
+      perks,
+      rating: reputation?.rating ?? null,
+      comparableMedianRating: null,
+      dealScoreOutOfTen: null,
+    }),
     hotel_value: {
       headline: value.headline,
       summary: value.summary,
