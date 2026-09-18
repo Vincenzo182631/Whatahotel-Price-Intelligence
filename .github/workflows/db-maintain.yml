@@ -22,7 +22,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', 'broken', 'coverage', 'amenity-spread', 'reset-research']
+        options: ['', 'broken', 'coverage', 'amenity-spread', 'reset-research', 'research-review']
       market_probe:
         description: 'Read-only comp-market probe: "<wahHotelId> <checkIn> <nights> <adults>", e.g. "6792 2026-08-30 1 2". Overrides confirm.'
         required: false
@@ -89,6 +89,8 @@ jobs:
             node scripts/db-maintain.mjs --coverage 2>&1 | tee maintain.log
           elif [ "${{ inputs.report }}" = "amenity-spread" ]; then
             node scripts/db-maintain.mjs --amenity-spread 2>&1 | tee maintain.log
+          elif [ "${{ inputs.report }}" = "research-review" ]; then
+            node scripts/db-maintain.mjs --research-review 2>&1 | tee maintain.log
           elif [ "${{ inputs.report }}" = "reset-research" ]; then
             # Destructive, so it honours confirm the same way every other
             # write here does: without it this reports and changes nothing.

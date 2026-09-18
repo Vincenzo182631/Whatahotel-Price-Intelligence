@@ -862,6 +862,30 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     immediately would spend a search to reach the same brand domain
     (rule 16).
 
+    **What does NOT generalise goes to a human** (migration 0023). The
+    automated checks caught the brand domains and the newsrooms and missed
+    `coconutgrove.com` for "Mr. C Miami - Coconut Grove", where the hotel's
+    name contains its own neighbourhood: one hotel, one domain, nothing to
+    collide with and no pattern to fire. Rather than grow a blocklist by
+    guesswork, `--research-review` ranks every resolution by how weakly the
+    name explains the host and a person looks at the worst. The score is a
+    PROMPT, never an automatic rejection: it would sooner flag a correct
+    resolution than reject one silently, because a wrong rejection is
+    invisible while a flagged-but-fine one costs five seconds.
+    `--reject-host <host> --reason "..."` records the judgement in
+    `research_rejected_host`, clears what it invalidates, and the resolver
+    consults it ahead of every other check. `reason` is required: a bare host
+    teaches the next reader nothing, and the table outlives the memory of why
+    a row is in it.
+
+    **The scorer must not punish a sub-brand for naming its parent.**
+    Measured: "Halepuna Waikiki by Halekulani" resolves correctly to
+    `halepuna.com`, and its longest distinctive word is the PARENT brand,
+    which its own domain rightly lacks. An earlier version flagged it, which
+    would have surfaced exactly the hotels whose domains are most clearly
+    their own. The longest-word rule now fires only when nothing substantial
+    matched instead.
+
     The lesson is the sample size, not the blocklist: 25 hotels cost 25
     searches and surfaced a false-attribution rate of nearly half. The same
     logic let loose on 3,223 would have been a database full of confident

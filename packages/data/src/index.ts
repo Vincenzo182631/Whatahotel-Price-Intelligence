@@ -25,13 +25,20 @@ export {
   clearHotelResearch,
   findHotelWebsite,
   findOtherHotelsWithWebsite,
+  findRejectedHosts,
+  findResolutionsForReview,
   purgeSharedWebsites,
+  rejectResearchHost,
   findHotelsNeedingResearch,
   findResearchClaims,
   replaceResearchClaims,
   saveHotelResearchTarget,
 } from './repositories/research.js';
-export type { PurgedWebsite, ResearchClaimRow } from './repositories/research.js';
+export type {
+  PurgedWebsite,
+  ResearchClaimRow,
+  ResolutionForReview,
+} from './repositories/research.js';
 export type {
   HotelPageFacts,
   HotelRow,

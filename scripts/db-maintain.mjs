@@ -357,6 +357,81 @@ if (RESET_RESEARCH) {
   process.exit(0);
 }
 
+/**
+ * Rank every resolved website by how weakly the hotel's name explains it, so
+ * a person can look at the worst (migration 0023).
+ *
+ * The automated checks handle what generalises — a domain claimed by more
+ * than one hotel is a brand domain, a press. subdomain is a newsroom. They
+ * miss the one-hotel, one-domain case: coconutgrove.com resolved for "Mr. C
+ * Miami - Coconut Grove" because the hotel's name contains its neighbourhood.
+ * Nothing collided and no pattern fired.
+ *
+ * Rather than grow a blocklist by guesswork, this asks a human. The score is
+ * a prompt for attention, never an automatic rejection: it would sooner flag
+ * a correct resolution than reject one silently, because a wrong rejection is
+ * invisible while a flagged-but-fine one costs five seconds.
+ *
+ *   --research-review              rank everything, worst first
+ *   --reject-host <host> --reason "..." --apply
+ */
+const RESEARCH_REVIEW = process.argv.includes('--research-review');
+if (RESEARCH_REVIEW) {
+  const { findResolutionsForReview } = await import('../packages/data/dist/index.js');
+  const { reviewResolution } = await import('../packages/ingest/dist/index.js');
+
+  const rows = await findResolutionsForReview();
+  if (rows.length === 0) {
+    console.log('\nNo resolved websites. Run the research sweep first.');
+  } else {
+    const scored = rows
+      .map((r) => ({ ...r, ...reviewResolution(r) }))
+      .sort((a, b) => b.score - a.score || a.hotelId - b.hotelId);
+
+    const flagged = scored.filter((r) => r.score > 0);
+    console.log(
+      `\n── ${rows.length} resolution(s), ${flagged.length} worth a look ──`,
+    );
+    for (const r of flagged) {
+      console.log(`\n  [${String(r.score).padStart(3)}]  ${r.name} — ${r.city ?? '?'}`);
+      console.log(`         ${r.websiteUrl}  (${r.claims} claim(s))`);
+      for (const why of r.reasons) console.log(`         · ${why}`);
+    }
+    if (flagged.length < scored.length) {
+      console.log(`\n  ${scored.length - flagged.length} resolution(s) raised nothing.`);
+    }
+    console.log(
+      '\nTo reject one:  --reject-host <host> --reason "why" --apply',
+    );
+  }
+  process.exit(0);
+}
+
+const REJECT_HOST = (() => {
+  const i = process.argv.indexOf('--reject-host');
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : null;
+})();
+if (REJECT_HOST) {
+  const i = process.argv.indexOf('--reason');
+  const reason = i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : '';
+  if (!reason) {
+    // A bare host teaches the next reader nothing, and this table outlives
+    // the memory of why any given row is in it.
+    console.error('--reject-host needs --reason "why this is not a property site".');
+    process.exit(1);
+  }
+  if (!APPLY) {
+    console.log(`\nWould reject ${REJECT_HOST} — "${reason}". Re-run with --apply.`);
+    process.exit(0);
+  }
+  const { rejectResearchHost } = await import('../packages/data/dist/index.js');
+  const cleared = await rejectResearchHost(REJECT_HOST, reason);
+  console.log(
+    `\nrejected ${REJECT_HOST}; cleared ${cleared.length} hotel(s): ${cleared.join(', ') || 'none'}`,
+  );
+  process.exit(0);
+}
+
 const GEO_GAP = process.argv.includes('--geo-gap');
 if (GEO_GAP) {
   console.log('\n── the coordinate gap across active hotels ──');

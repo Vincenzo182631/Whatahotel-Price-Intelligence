@@ -134,6 +134,16 @@ describe('researchHotel', () => {
     }
   });
 
+  it("honours a human's rejection above every automated check", async () => {
+    // The review loop's whole point: automated rules cover what generalises,
+    // a person covers the rest, and nobody has to invent a pattern for it.
+    const d = deps({ rejectedHosts: new Set(['pinkpalaceresort.com']) });
+    const result = await researchHotel(hotel, d);
+    expect(result.outcome).toBe('REJECTED_HOST');
+    expect(result.claims).toEqual([]);
+    expect(d.replaceResearchClaims).not.toHaveBeenCalled();
+  });
+
   it('reports a thrown search as FAILED rather than as an empty hotel', async () => {
     const d = deps({
       client: {

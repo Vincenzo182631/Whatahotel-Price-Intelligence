@@ -216,3 +216,74 @@ export async function purgeSharedWebsites(q?: Queryable): Promise<readonly Purge
     hotelIds: r.ids as number[],
   }));
 }
+
+/** Hosts a human has judged not to be any property's own site (migration 0023). */
+export async function findRejectedHosts(q?: Queryable): Promise<ReadonlySet<string>> {
+  const { rows } = await db(q).query('SELECT host FROM research_rejected_host');
+  return new Set(rows.map((r) => (r.host as string).toLowerCase()));
+}
+
+/**
+ * Record a human's judgement and clear what it invalidates.
+ *
+ * Never called automatically. The automated checks handle what generalises;
+ * this is for the cases that do not, and a row here is evidence that somebody
+ * looked rather than that a pattern fired.
+ */
+export async function rejectResearchHost(
+  host: string,
+  reason: string,
+  q?: Queryable,
+): Promise<readonly number[]> {
+  const runner = db(q);
+  const clean = host
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, '');
+  await runner.query(
+    `INSERT INTO research_rejected_host (host, reason) VALUES ($1, $2)
+     ON CONFLICT (host) DO UPDATE SET reason = EXCLUDED.reason, rejected_at = now()`,
+    [clean, reason],
+  );
+  // Everything already read from it goes, and researched_at stays SET so the
+  // affected hotels back off rather than re-resolving immediately (rule 16).
+  const { rows } = await runner.query(
+    "SELECT id FROM hotel WHERE website_url ILIKE '%' || $1 || '%'",
+    [clean],
+  );
+  const ids = rows.map((r) => r.id as number);
+  if (ids.length > 0) {
+    await runner.query('DELETE FROM hotel_research_claim WHERE hotel_id = ANY($1::int[])', [ids]);
+    await runner.query('UPDATE hotel SET website_url = NULL WHERE id = ANY($1::int[])', [ids]);
+  }
+  return ids;
+}
+
+export interface ResolutionForReview {
+  readonly hotelId: number;
+  readonly name: string;
+  readonly city: string | null;
+  readonly websiteUrl: string;
+  readonly claims: number;
+}
+
+/** Every current resolution, for a human to rank and judge. */
+export async function findResolutionsForReview(
+  q?: Queryable,
+): Promise<readonly ResolutionForReview[]> {
+  const { rows } = await db(q).query(
+    `SELECT h.id, h.name, d.name AS city, h.website_url,
+            (SELECT count(*) FROM hotel_research_claim c WHERE c.hotel_id = h.id) AS claims
+       FROM hotel h
+       LEFT JOIN destination d ON d.id = h.destination_id
+      WHERE h.website_url IS NOT NULL
+      ORDER BY h.id`,
+  );
+  return rows.map((r) => ({
+    hotelId: r.id as number,
+    name: r.name as string,
+    city: (r.city as string | null) ?? null,
+    websiteUrl: r.website_url as string,
+    claims: Number(r.claims),
+  }));
+}

@@ -17,6 +17,7 @@ export type ResearchOutcome =
   | 'STORED'
   | 'NO_WEBSITE' // search returned nothing we could corroborate
   | 'SHARED_HOST' // the domain belongs to a brand, not to this property
+  | 'REJECTED_HOST' // a human judged this domain not to be a property site
   | 'UNREADABLE' // the site would not give us a page
   | 'NOTHING_STATED' // we read it and it said nothing we recognise
   | 'FAILED';
@@ -47,6 +48,13 @@ export interface ResearchDeps {
   ) => Promise<readonly number[]>;
   /** Forget a resolved site and everything read from it. */
   readonly clearHotelResearch: (hotelId: number) => Promise<void>;
+  /**
+   * Hosts a human judged not to be any property's own site (migration 0023).
+   * Optional, so a caller that has not loaded them still works — an empty set
+   * means the automated checks alone, which is what ran before the review
+   * loop existed.
+   */
+  readonly rejectedHosts?: ReadonlySet<string>;
   /** Injected so the decision is testable without a network. */
   readonly fetchPage?: (url: string) => Promise<string | null>;
 }
@@ -110,6 +118,29 @@ export async function researchHotel(
     if (!website) {
       await deps.saveHotelResearchTarget(hotel.hotelId, null);
       return { hotelId: hotel.hotelId, outcome: 'NO_WEBSITE', websiteUrl: null, claims: [] };
+    }
+
+    // A human looked at this domain and said no. Their judgement outranks
+    // every check below it, which is the point of having the review loop:
+    // the automated rules cover what generalises, and a person covers the
+    // rest without anybody having to invent a pattern for it.
+    const rejected = deps.rejectedHosts;
+    if (rejected && rejected.size > 0) {
+      let host = '';
+      try {
+        host = new URL(website).hostname.replace(/^www\./, '').toLowerCase();
+      } catch {
+        host = '';
+      }
+      if (host && rejected.has(host)) {
+        await deps.saveHotelResearchTarget(hotel.hotelId, null);
+        return {
+          hotelId: hotel.hotelId,
+          outcome: 'REJECTED_HOST',
+          websiteUrl: null,
+          claims: [],
+        };
+      }
     }
 
     // A host claimed by another hotel is a BRAND domain, not this property's

@@ -27,6 +27,7 @@ import {
   closePool,
   findHotelWebsite,
   findOtherHotelsWithWebsite,
+  findRejectedHosts,
   purgeSharedWebsites,
   findHotelsNeedingResearch,
   replaceResearchClaims,
@@ -62,6 +63,13 @@ if (!client) {
   process.exit(1);
 }
 
+// Loaded once per run: a human's judgements outrank every automated check,
+// and re-reading them per hotel would be a query for nothing.
+const rejectedHosts = await findRejectedHosts();
+if (rejectedHosts.size > 0) {
+  console.log(`${rejectedHosts.size} host(s) previously rejected by review will be skipped.`);
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const counts = new Map();
 let claimsWritten = 0;
@@ -75,6 +83,7 @@ for (const target of targets) {
     replaceResearchClaims,
     findOtherHotelsWithWebsite,
     clearHotelResearch,
+    rejectedHosts,
   });
   counts.set(result.outcome, (counts.get(result.outcome) ?? 0) + 1);
   claimsWritten += result.claims.length;
