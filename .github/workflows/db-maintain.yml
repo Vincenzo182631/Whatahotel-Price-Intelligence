@@ -23,6 +23,19 @@ on:
         default: ''
         type: choice
         options: ['', 'broken', 'coverage', 'amenity-spread', 'reset-research', 'research-review']
+      reject_host:
+        description: >-
+          Record a human judgement that this host is not any property's own
+          site, e.g. com-miami.com. Needs reject_reason, and confirm "apply"
+          to write. Matches the host exactly or as a dotted suffix, so
+          rejecting a directory covers every subdomain it hands out.
+          Overrides confirm.
+        required: false
+        default: ''
+      reject_reason:
+        description: 'Why that host is not a property site. Required with reject_host; a bare host teaches the next reader nothing.'
+        required: false
+        default: ''
       market_probe:
         description: 'Read-only comp-market probe: "<wahHotelId> <checkIn> <nights> <adults>", e.g. "6792 2026-08-30 1 2". Overrides confirm.'
         required: false
@@ -83,6 +96,8 @@ jobs:
           # strict shape before use — workflow inputs are user-typed strings.
           MARKET_PROBE: ${{ inputs.market_probe }}
           DROP_PARTITION: ${{ inputs.drop_partition }}
+          REJECT_HOST: ${{ inputs.reject_host }}
+          REJECT_REASON: ${{ inputs.reject_reason }}
         run: |
           set -o pipefail
           if [ -n "$DROP_PARTITION" ]; then
@@ -93,6 +108,23 @@ jobs:
               exit 1
             fi
             node scripts/db-maintain.mjs --drop-partition "$DROP_PARTITION" 2>&1 | tee maintain.log
+          elif [ -n "$REJECT_HOST" ]; then
+            # A hostname and nothing else. This value reaches a stored
+            # judgement that clears hotels, and workflow inputs are
+            # user-typed strings.
+            if ! echo "$REJECT_HOST" | grep -Eq '^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$'; then
+              echo '::error::reject_host must be a bare hostname, e.g. com-miami.com'
+              exit 1
+            fi
+            if [ -z "$REJECT_REASON" ]; then
+              echo '::error::reject_host needs reject_reason. The table outlives anyone'"'"'s memory of why a row is in it.'
+              exit 1
+            fi
+            if [ "${{ inputs.confirm }}" = "apply" ]; then
+              node scripts/db-maintain.mjs --reject-host "$REJECT_HOST" --reason "$REJECT_REASON" --apply 2>&1 | tee maintain.log
+            else
+              node scripts/db-maintain.mjs --reject-host "$REJECT_HOST" --reason "$REJECT_REASON" 2>&1 | tee maintain.log
+            fi
           elif [ "${{ inputs.report }}" = "broken" ]; then
             node scripts/db-maintain.mjs --broken 2>&1 | tee maintain.log
           elif [ "${{ inputs.report }}" = "coverage" ]; then
