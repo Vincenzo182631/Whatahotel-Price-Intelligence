@@ -28,6 +28,16 @@ on:
         description: 'API base to read hotel names from'
         required: false
         default: 'https://whatahotel-price-intelligence-api.vercel.app'
+      dump:
+        description: >-
+          Print one branch of each response verbatim, e.g. hotel.GUESTROOMS.
+          The flattener terminates on arrays, so a whole subtree can arrive as
+          one serialized leaf and read as a scalar field. That is how the first
+          amenity parser came to look for GUESTROOMS.ROOMRMA on an array.
+          Restricted to hotel.* and amadeus.*, because the response also
+          carries session tokens (rule 10).
+        required: false
+        default: ''
 
 concurrency:
   group: probe-info
@@ -71,6 +81,9 @@ jobs:
             set -- --ids "${{ inputs.ids }}"
           else
             set -- --limit "${{ inputs.limit }}"
+          fi
+          if [ -n "${{ inputs.dump }}" ]; then
+            set -- "$@" --dump "${{ inputs.dump }}"
           fi
           node scripts/probe-info.mjs "$@" \
             --base "${{ inputs.base }}" \

@@ -42,6 +42,19 @@
  * environment and is redacted from every line this prints (rule 10).
  *
  *   node scripts/probe-info.mjs [--limit 20] [--ids 1198,2008] [--base URL] [--out file.json]
+ *   node scripts/probe-info.mjs --ids 1198 --dump hotel.GUESTROOMS
+ *
+ * --dump prints ONE branch of the response verbatim, which is the only way to
+ * learn a nested shape: the flattener above terminates on arrays, so a whole
+ * subtree can arrive as a single serialized leaf and look like a scalar field.
+ * That is exactly how the first amenity parser came to read
+ * GUESTROOMS.ROOMRMA off an object that is actually an array, and store
+ * nothing for 138 hotels while every test passed against an INVENTED fixture.
+ * Never write a parser against a guessed shape; dump the branch and read it.
+ *
+ * The dump is restricted to `hotel.*` and `amadeus.*` on purpose. The response
+ * also carries session.cfID and session.cfToken, which are credentials (rule
+ * 10) and must never reach a log.
  */
 import { writeFileSync } from 'node:fs';
 import { createWhataHotelAdapter } from '../packages/ingest/dist/index.js';
@@ -56,6 +69,7 @@ const value = (name, fallback) => {
 const BASE = value('--base', 'https://whatahotel-price-intelligence-api.vercel.app');
 const LIMIT = Number(value('--limit', '20'));
 const OUT = value('--out', null);
+const DUMP = value('--dump', null);
 const IDS = value('--ids', null)
   ? String(value('--ids')).split(',').map((s) => Number(s.trim()))
   : COHORT.slice(0, LIMIT);
@@ -67,6 +81,40 @@ async function hotelMeta(id) {
   const body = await res.json();
   const h = body.hotel ?? body;
   return h?.name ? { id, name: h.name, city: h.destination ?? null } : null;
+}
+
+/**
+ * Print one branch of a response verbatim, so a nested shape can be READ
+ * rather than inferred. Refuses any path outside hotel/amadeus: the payload
+ * carries session tokens and those are credentials (rule 10).
+ */
+function dumpBranch(payload, path) {
+  const root = String(path).split('.')[0];
+  if (root !== 'hotel' && root !== 'amadeus') {
+    console.log(`  refusing to dump "${path}" — only hotel.* and amadeus.* may be printed`);
+    return;
+  }
+  let node = payload;
+  for (const key of String(path).split('.')) {
+    if (node === null || typeof node !== 'object') {
+      node = undefined;
+      break;
+    }
+    node = node[key];
+  }
+  if (node === undefined) {
+    console.log(`  ${path}: ABSENT`);
+    return;
+  }
+  const kind = Array.isArray(node) ? `array[${node.length}]` : typeof node;
+  console.log(`  ${path}: ${kind}`);
+  console.log(
+    String(JSON.stringify(node, null, 2))
+      .split('\n')
+      .slice(0, 60)
+      .map((l) => `    ${l}`)
+      .join('\n'),
+  );
 }
 
 /**
@@ -132,6 +180,7 @@ for (const id of IDS) {
     });
     const flat = flatten(data);
     const code = amadeusCode(data);
+    if (DUMP) dumpBranch(data, DUMP);
     rows.push({
       id,
       name: meta.name,
