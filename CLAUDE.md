@@ -662,6 +662,40 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     writing the parser, and record in the fixture which run the bytes came
     from.
 
+30. **A documented field is not a populated one** (2026-09-18). Places (New)
+    documents hotel attributes that read exactly like the "what is this hotel
+    good for" evidence this product lacks, so before widening the mask they
+    were measured over 20 verified hotels
+    (`npm run probe:places-fields`, run 35302254899). All 20 answered, and
+    almost all of it is worthless:
+
+    - `goodForChildren` — present on 20 of 20, **1 distinct value**. True for
+      every hotel, from Trump National Doral to Halekulani. This is the exact
+      field a "best for families" line would have been built on, and it says
+      nothing. Shipping it would have put a Google-sourced, authoritative
+      looking claim in front of a guest with no measurement behind it.
+    - `businessStatus`, `accessibilityOptions.*`, `paymentOptions.*` — all
+      present, all 1 distinct value.
+    - `servesBreakfast`, `servesBrunch`, `servesDinner`, `parkingOptions`,
+      `priceLevel` — never returned at all for lodging.
+    - `allowsDogs` is the only survivor with real variation, and it covers
+      11 of 20.
+
+    None of them is read. This is rule 24's schema.org block a second time,
+    and rule 9's principle: a constant across the sample carries no
+    information about a hotel, whatever the field is called, and a constant
+    that reads as a quality signal is worse than no signal.
+
+    **What the probe DID find is that the best evidence is already ours.**
+    `editorialSummary.text` came back on 19 of 20 with **19 distinct
+    values** — Google's own per-hotel description, the most varied prose in
+    this dataset. It has been in `DETAILS_MASK` since Phase 6.X. The probe
+    keeps `rating` and `userRatingCount` in its mask deliberately, as a
+    known-good baseline: if those had come back empty the probe would be at
+    fault rather than the fields. Widen a mask only against measured
+    coverage, never against documentation — Places bills per field group and
+    rule 22 records that this is the entire ongoing bill.
+
 ## Adding or changing a factor
 
 1. Update `docs/mvp/02-deal-score.md` with the rationale first.
