@@ -139,6 +139,12 @@ export interface CompSetResult {
    * so it caps confidence below HIGH — see assessLiveConfidence.
    */
   readonly radiusExpanded: boolean;
+  /**
+   * The comparison reached past the ordinary ladder because nothing is
+   * catalogued near this hotel (rule 27). Carried here ONLY so the rendered
+   * summary can stop saying "nearby", which at 30 miles it cannot defend.
+   */
+  readonly isolatedMarket: boolean;
   /** Dimensions the source left unstated on both sides of the comparison. */
   readonly unknownDimensions: readonly string[];
   /** subject ÷ median competitor × 100. Null when unavailable. */
@@ -284,6 +290,13 @@ export function computeCompSetIndex(
      * statement about this location than one it could.
      */
     radiusExpanded?: boolean;
+    /**
+     * Defaults to false. True only on rule 27's isolation rung, and the only
+     * thing it changes is wording: a comparison drawn from 30 miles away is
+     * still real evidence about a price, but calling those rooms "nearby"
+     * asserts a proximity the rung explicitly does not have.
+     */
+    isolatedMarket?: boolean;
   } = {
     strength: 'RESOLVED',
     unknown: [],
@@ -308,6 +321,7 @@ export function computeCompSetIndex(
   const name = 'Comparable hotels';
   const termsBasis: CompTermsBasis = match.termsBasis ?? 'MATCHED';
   const radiusExpanded = match.radiusExpanded ?? false;
+  const isolatedMarket = match.isolatedMarket ?? false;
   const empty = {
     csi: null,
     band: null,
@@ -317,6 +331,7 @@ export function computeCompSetIndex(
     unknownDimensions: match.unknown,
     termsBasis,
     radiusExpanded,
+    isolatedMarket,
   } as const;
 
   if (!Number.isFinite(subjectNightlyMinor) || subjectNightlyMinor <= 0) {
@@ -383,6 +398,7 @@ export function computeCompSetIndex(
     unknownDimensions: match.unknown,
     termsBasis,
     radiusExpanded,
+    isolatedMarket,
     csi,
     band,
     pctBelowMedian,

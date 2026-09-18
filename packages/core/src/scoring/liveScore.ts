@@ -308,12 +308,23 @@ function buildReasons(
     // the property. The `explanation` sentence has always phrased it this way
     // ("the median for comparable rooms at 2 nearby hotels"); this is the
     // summary catching up with it.
+    //
+    // And "nearby" is itself a claim, so rule 27's isolation rung drops it.
+    // That rung only fires where NOTHING is catalogued within five miles, and
+    // reaches thirty: on Four Seasons Oahu at Ko Olina the nearest comparable
+    // rooms are in Waikiki, 30 km away. They are genuinely the nearest ones —
+    // that is why the rung chose them — but they are not nearby, and the
+    // summary must not say a word the comparison cannot defend. Same failure
+    // as "luxury hotels" above, one radius further out.
+    const where = compSet.isolatedMarket
+      ? 'the nearest comparable rooms'
+      : 'comparable rooms nearby';
     out.push(
       pct < NEGLIGIBLE_PCT
-        ? 'In line with comparable rooms nearby'
+        ? `In line with ${where}`
         : value > 0
-          ? `${pct}% below comparable rooms nearby`
-          : `${pct}% above comparable rooms nearby`,
+          ? `${pct}% below ${where}`
+          : `${pct}% above ${where}`,
     );
     // Say what the comparison could NOT hold fixed. Without this the bullet
     // above reads as like-for-like on cancellation terms, which the tolerant

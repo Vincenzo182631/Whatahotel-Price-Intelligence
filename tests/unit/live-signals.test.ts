@@ -289,6 +289,57 @@ describe('composing the live score', () => {
     }
   });
 
+  it('never says NEARBY about an isolated-market comparison', () => {
+    // Rule 27's isolation rung fires only where nothing is catalogued within
+    // five miles, and reaches thirty. On Four Seasons Oahu at Ko Olina the
+    // comparison it found is two Waikiki rooms 30 km away: genuinely the
+    // NEAREST comparable rooms, which is why the rung chose them, and
+    // emphatically not nearby.
+    //
+    // Same failure as "luxury hotels" one radius further out — a word in the
+    // summary asserting something the comparison never established.
+    for (const subject of [650_00, 1_400_00]) {
+      const result = composeLiveScore(
+        computeCompSetIndex(subject, strongComps, DEFAULT_CONFIG, NOW, {
+          strength: 'RESOLVED',
+          unknown: [],
+          radiusExpanded: true,
+          isolatedMarket: true,
+        }),
+        computeCalendarDelta(subject, cheapDates, DEFAULT_CONFIG),
+        computeCompression({ checked: 4, soldOut: 2 }, DEFAULT_CONFIG),
+        1,
+        DEFAULT_CONFIG,
+      );
+      const reasons = result.reasons.join(' | ');
+      // "nearby dates" is a different claim — about the calendar, not
+      // geography — and stays true however far the comp set reached.
+      const compLine = result.reasons.find((r) => /comparable rooms/.test(r)) ?? '';
+      expect(compLine, compLine).not.toMatch(/nearby/);
+      expect(compLine, compLine).toMatch(/the nearest comparable rooms/);
+      expect(reasons, reasons).not.toMatch(/luxury/i);
+    }
+  });
+
+  it('still says nearby on an ordinary climb, which it can defend', () => {
+    // radiusExpanded alone must NOT change the wording: climbing 2 → 3 → 5
+    // miles is still a neighbourhood, and the isolation rung is the only
+    // thing that reaches past one.
+    const result = composeLiveScore(
+      computeCompSetIndex(650_00, strongComps, DEFAULT_CONFIG, NOW, {
+        strength: 'RESOLVED',
+        unknown: [],
+        radiusExpanded: true,
+      }),
+      computeCalendarDelta(650_00, cheapDates, DEFAULT_CONFIG),
+      computeCompression({ checked: 4, soldOut: 2 }, DEFAULT_CONFIG),
+      1,
+      DEFAULT_CONFIG,
+    );
+    const compLine = result.reasons.find((r) => /comparable rooms/.test(r)) ?? '';
+    expect(compLine, compLine).toMatch(/comparable rooms nearby/);
+  });
+
   it('redistributes weight when compression is unavailable', () => {
     const result = composeLiveScore(
       computeCompSetIndex(650_00, strongComps, DEFAULT_CONFIG, NOW),
