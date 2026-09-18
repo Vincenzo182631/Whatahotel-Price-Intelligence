@@ -22,6 +22,8 @@ function deps(over: Partial<Parameters<typeof researchHotel>[1]> = {}) {
     findHotelWebsite: vi.fn(async () => null),
     saveHotelResearchTarget: vi.fn(async () => {}),
     replaceResearchClaims: vi.fn(async () => 0),
+    findOtherHotelsWithWebsite: vi.fn(async () => [] as readonly number[]),
+    clearHotelResearch: vi.fn(async () => {}),
     fetchPage: vi.fn(async () => '<html><body><p>Our private beach and spa.</p></body></html>'),
     ...over,
   };
@@ -95,6 +97,41 @@ describe('researchHotel', () => {
     });
     const result = await researchHotel(hotel, d);
     expect(result.websiteUrl).toBe('https://pinkpalaceresort.com/');
+  });
+
+  it('refuses a domain another hotel already claims, and clears both', async () => {
+    // Measured 2026-09-18: four separate Ritz-Carltons resolved to
+    // ritzcarlton.com and would have shown a guest identical "evidence" for
+    // Key Biscayne, Coconut Grove, Turtle Bay and Waikiki. A host claimed by
+    // more than one hotel is a brand domain, because no property's own site
+    // is shared.
+    const d = deps({
+      findOtherHotelsWithWebsite: vi.fn(async () => [41, 42] as readonly number[]),
+    });
+    const result = await researchHotel(hotel, d);
+    expect(result.outcome).toBe('SHARED_HOST');
+    expect(result.websiteUrl).toBeNull();
+    // Both sides go: keeping the first would just reward whichever hotel was
+    // researched earliest.
+    expect(d.clearHotelResearch).toHaveBeenCalledWith(7);
+    expect(d.clearHotelResearch).toHaveBeenCalledWith(41);
+    expect(d.clearHotelResearch).toHaveBeenCalledWith(42);
+    expect(d.replaceResearchClaims).not.toHaveBeenCalled();
+  });
+
+  it('refuses a brand newsroom and a destination marketing site', async () => {
+    // press.fourseasons.com is about the chain; miamiandbeaches.com is the
+    // Greater Miami tourism board, which stored 11 claims about a city
+    // against one hotel.
+    for (const url of [
+      'https://press.pinkpalaceresort.com/',
+      'https://pinkpalaceresortandbeaches.com/',
+    ]) {
+      const d = deps({
+        client: { search: vi.fn(async () => ({ web: { results: [{ url }] } })) } as never,
+      });
+      expect((await researchHotel(hotel, d)).outcome).toBe('NO_WEBSITE');
+    }
   });
 
   it('reports a thrown search as FAILED rather than as an empty hotel', async () => {

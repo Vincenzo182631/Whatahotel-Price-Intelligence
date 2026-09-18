@@ -22,7 +22,9 @@ export {
 } from './repositories/amenities.js';
 export type { HotelAmenity } from './repositories/amenities.js';
 export {
+  clearHotelResearch,
   findHotelWebsite,
+  findOtherHotelsWithWebsite,
   findHotelsNeedingResearch,
   findResearchClaims,
   replaceResearchClaims,

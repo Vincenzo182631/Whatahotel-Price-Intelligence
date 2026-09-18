@@ -828,6 +828,31 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     completeness when the citation is checkable. Nothing under
     `packages/core/src/scoring` reads any of it (rule 21).
 
+    **A domain claimed by two hotels is a BRAND domain** (measured
+    2026-09-18, the first real run). Seven of fifteen resolutions pointed at
+    the wrong entity: four separate Ritz-Carltons all resolved to
+    `ritzcarlton.com`, Four Seasons Ko Olina to `press.fourseasons.com`, EB
+    Hotel Miami to the Greater Miami tourism board (11 claims about a city,
+    stored against one hotel), Mr. C Coconut Grove to a neighbourhood site.
+    `nameEchoesHost` passed every one, because "ritzcarlton" contains
+    "carlton" and so does every Ritz-Carlton on earth.
+
+    A claim carrying a citation that points at the wrong entity is WORSE than
+    no claim: the citation is what makes a reader trust it. Three checks now
+    stand between a search result and a stored claim. Brand subdomains
+    (`press.`, `media.`, `newsroom.`) and destination-marketing patterns are
+    refused outright. And the one that generalises — no property's own site
+    is shared, so a host already claimed by another hotel is rejected and
+    BOTH sides are cleared, because if two hotels claim one domain neither
+    claim is right and keeping the first only rewards whichever was
+    researched earliest. That check needs the catalogue, so it lives in the
+    pipeline rather than the adapter, and `SHARED_HOST` is its own outcome.
+
+    The lesson is the sample size, not the blocklist: 25 hotels cost 25
+    searches and surfaced a false-attribution rate of nearly half. The same
+    logic let loose on 3,223 would have been a database full of confident
+    citations to the wrong businesses.
+
 ## Adding or changing a factor
 
 1. Update `docs/mvp/02-deal-score.md` with the rationale first.

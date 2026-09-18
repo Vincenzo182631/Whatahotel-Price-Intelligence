@@ -133,3 +133,35 @@ export async function findHotelsNeedingResearch(
     city: (r.city as string | null) ?? null,
   }));
 }
+
+/**
+ * Other hotels already pointing at this website.
+ *
+ * The check that generalises. A host claimed by more than one hotel is a
+ * BRAND domain by definition — no property's own site is shared — and that
+ * is how four separate Ritz-Carltons all came to resolve to ritzcarlton.com
+ * on 2026-09-18, each passing a name check that "ritzcarlton" satisfies for
+ * every Ritz-Carlton on earth.
+ *
+ * Returns the other hotels' ids so the caller can clear THEIRS too: if two
+ * hotels claim one domain, neither claim is right, and leaving the first one
+ * standing would keep whichever hotel happened to be researched first.
+ */
+export async function findOtherHotelsWithWebsite(
+  hotelId: number,
+  websiteUrl: string,
+  q?: Queryable,
+): Promise<readonly number[]> {
+  const { rows } = await db(q).query('SELECT id FROM hotel WHERE website_url = $2 AND id <> $1', [
+    hotelId,
+    websiteUrl,
+  ]);
+  return rows.map((r) => r.id as number);
+}
+
+/** Forget a resolved site and everything read from it. */
+export async function clearHotelResearch(hotelId: number, q?: Queryable): Promise<void> {
+  const runner = db(q);
+  await runner.query('DELETE FROM hotel_research_claim WHERE hotel_id = $1', [hotelId]);
+  await runner.query('UPDATE hotel SET website_url = NULL WHERE id = $1', [hotelId]);
+}
