@@ -20,6 +20,23 @@
  *
  * ── What this file refuses to do ─────────────────────────────────────────
  *
+ * ── What the first real run taught this file ─────────────────────────────
+ *
+ * Measured over 25 hotels on 2026-09-18, seven of fifteen resolutions pointed
+ * at the wrong entity: four separate Ritz-Carltons all resolved to
+ * ritzcarlton.com, Four Seasons Ko Olina to press.fourseasons.com, EB Hotel
+ * Miami to the Greater Miami tourism board, and Mr. C Coconut Grove to a
+ * neighbourhood site. `nameEchoesHost` passed every one of them, because
+ * "ritzcarlton" contains "carlton" and so does every Ritz-Carlton on earth.
+ *
+ * A claim carrying a citation that points at the wrong entity is worse than
+ * no claim: the citation is what makes a reader trust it. The blocklists
+ * below catch the brand newsrooms and the destination sites, and the caller
+ * applies the check that actually generalises — a host claimed by MORE THAN
+ * ONE hotel in our own catalogue is a brand domain by definition, because no
+ * property's own site is shared. That test needs the database, so it lives in
+ * the pipeline rather than here.
+ *
  * It never treats a search result as evidence. The result supplies a URL and
  * nothing else; if the fetch of that URL fails, the hotel simply has no
  * researched claims. An unfetched page is not a hotel that lacks a spa —
@@ -27,6 +44,35 @@
  * `assessMotivators` has no general negative verdict.
  */
 import type { BraveClient } from './client.js';
+
+/**
+ * Subdomains that belong to a brand rather than to a property.
+ *
+ * Measured 2026-09-18: Four Seasons Oahu at Ko Olina resolved to
+ * press.fourseasons.com, a corporate newsroom. Its pages are about the
+ * chain, so every claim read there would be attributed to one hotel and
+ * describe all of them.
+ */
+const BRAND_SUBDOMAINS = ['press.', 'media.', 'newsroom.', 'investor.', 'careers.', 'corporate.'];
+
+/**
+ * Destination marketing sites, which rank well for "<hotel> <city>" and are
+ * about the city.
+ *
+ * Measured 2026-09-18: EB Hotel Miami resolved to miamiandbeaches.com, the
+ * Greater Miami tourism board, and 11 claims about Miami were stored against
+ * one hotel. A claim with a citation that points at the wrong entity is
+ * worse than no claim, because the citation makes it look checked.
+ */
+const DESTINATION_SITES = [
+  'andbeaches.com',
+  'visit',
+  'tourism',
+  'gocity',
+  'cvb.',
+  'discover',
+  'thingstodo',
+];
 
 /** Hosts that are never the hotel's own site, however well they rank. */
 const AGGREGATORS = [
@@ -99,6 +145,8 @@ export async function resolveHotelWebsite(
     const host = hostOf(url);
     if (!host) continue;
     if (AGGREGATORS.some((a) => host.includes(a))) continue;
+    if (BRAND_SUBDOMAINS.some((b) => host.startsWith(b))) continue;
+    if (DESTINATION_SITES.some((d) => host.includes(d))) continue;
     if (!nameEchoesHost(name, host)) continue;
     return `https://${host}/`;
   }

@@ -294,6 +294,58 @@ if (AMENITY_SPREAD) {
   );
 }
 
+/**
+ * Forget every researched claim and every resolved website (migration 0022).
+ *
+ * Written for a specific incident and kept for the next one. The first real
+ * research run on 2026-09-18 resolved seven of fifteen hotels to the wrong
+ * entity — four Ritz-Carltons to ritzcarlton.com, Four Seasons Ko Olina to a
+ * corporate newsroom, EB Hotel Miami to the Greater Miami tourism board — and
+ * stored 63 claims carrying citations that point at somebody else.
+ *
+ * A wrong claim with a citation is worse than no claim, because the citation
+ * is what makes a reader trust it. So the whole set goes rather than the
+ * rows somebody eyeballed: the resolver changed, which means every earlier
+ * resolution was made by logic we no longer trust, including the ones that
+ * happened to be right.
+ *
+ * Nulling website_url is what makes the next run RE-RESOLVE rather than
+ * re-read the same wrong page. Destructive and deliberate, so it needs
+ * --apply like every other write here.
+ */
+const RESET_RESEARCH = process.argv.includes('--reset-research');
+if (RESET_RESEARCH) {
+  console.log('\n── researched claims, before ──');
+  console.log(
+    await sql(`
+      SELECT 'claims                ' || count(*) FROM hotel_research_claim
+      UNION ALL SELECT 'hotels with claims    ' || count(DISTINCT hotel_id) FROM hotel_research_claim
+      UNION ALL SELECT 'hotels with a website ' || count(*) FROM hotel WHERE website_url IS NOT NULL
+      UNION ALL SELECT 'distinct websites     ' || count(DISTINCT website_url) FROM hotel WHERE website_url IS NOT NULL`),
+  );
+
+  // The collision the new resolver refuses, shown before it is cleared so
+  // the log records what was actually wrong.
+  console.log('\n── domains claimed by more than one hotel ──');
+  console.log(
+    await sql(`
+      SELECT lpad(count(*)::text, 4) || '  ' || website_url
+        FROM hotel
+       WHERE website_url IS NOT NULL
+       GROUP BY website_url
+      HAVING count(*) > 1
+       ORDER BY count(*) DESC`),
+  );
+
+  if (!APPLY) {
+    console.log('\nMeasure-only run. Re-run with --apply to clear.');
+  } else {
+    await sql('DELETE FROM hotel_research_claim');
+    await sql('UPDATE hotel SET website_url = NULL, researched_at = NULL WHERE website_url IS NOT NULL OR researched_at IS NOT NULL');
+    console.log('\ncleared. The next research run re-resolves from scratch.');
+  }
+}
+
 const GEO_GAP = process.argv.includes('--geo-gap');
 if (GEO_GAP) {
   console.log('\n── the coordinate gap across active hotels ──');

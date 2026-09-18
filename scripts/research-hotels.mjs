@@ -23,8 +23,10 @@
  * would be rule 28's false negative.
  */
 import {
+  clearHotelResearch,
   closePool,
   findHotelWebsite,
+  findOtherHotelsWithWebsite,
   findHotelsNeedingResearch,
   replaceResearchClaims,
   saveHotelResearchTarget,
@@ -70,6 +72,8 @@ for (const target of targets) {
     findHotelWebsite,
     saveHotelResearchTarget,
     replaceResearchClaims,
+    findOtherHotelsWithWebsite,
+    clearHotelResearch,
   });
   counts.set(result.outcome, (counts.get(result.outcome) ?? 0) + 1);
   claimsWritten += result.claims.length;

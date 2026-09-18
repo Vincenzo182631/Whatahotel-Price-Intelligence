@@ -16,6 +16,7 @@ import type { BraveClient } from '../adapters/brave/client.js';
 export type ResearchOutcome =
   | 'STORED'
   | 'NO_WEBSITE' // search returned nothing we could corroborate
+  | 'SHARED_HOST' // the domain belongs to a brand, not to this property
   | 'UNREADABLE' // the site would not give us a page
   | 'NOTHING_STATED' // we read it and it said nothing we recognise
   | 'FAILED';
@@ -35,6 +36,17 @@ export interface ResearchDeps {
     hotelId: number,
     claims: readonly { motivator: string; claim: string; sourceUrl: string }[],
   ) => Promise<number>;
+  /**
+   * Other hotels already pointing at this host. A domain claimed by more than
+   * one is a brand domain by definition, because no property's own site is
+   * shared.
+   */
+  readonly findOtherHotelsWithWebsite: (
+    hotelId: number,
+    websiteUrl: string,
+  ) => Promise<readonly number[]>;
+  /** Forget a resolved site and everything read from it. */
+  readonly clearHotelResearch: (hotelId: number) => Promise<void>;
   /** Injected so the decision is testable without a network. */
   readonly fetchPage?: (url: string) => Promise<string | null>;
 }
@@ -98,6 +110,22 @@ export async function researchHotel(
     if (!website) {
       await deps.saveHotelResearchTarget(hotel.hotelId, null);
       return { hotelId: hotel.hotelId, outcome: 'NO_WEBSITE', websiteUrl: null, claims: [] };
+    }
+
+    // A host claimed by another hotel is a BRAND domain, not this property's
+    // site. Measured 2026-09-18: four separate Ritz-Carltons resolved to
+    // ritzcarlton.com and would have shown a guest identical "evidence" for
+    // Key Biscayne, Coconut Grove, Turtle Bay and Waikiki.
+    //
+    // BOTH sides are cleared, not just this one. If two hotels claim one
+    // domain neither claim is right, and keeping the first would simply
+    // reward whichever hotel was researched earliest.
+    const collisions = await deps.findOtherHotelsWithWebsite(hotel.hotelId, website);
+    if (collisions.length > 0) {
+      await deps.clearHotelResearch(hotel.hotelId);
+      for (const other of collisions) await deps.clearHotelResearch(other);
+      await deps.saveHotelResearchTarget(hotel.hotelId, null);
+      return { hotelId: hotel.hotelId, outcome: 'SHARED_HOST', websiteUrl: null, claims: [] };
     }
 
     const html = await fetchPage(website);
