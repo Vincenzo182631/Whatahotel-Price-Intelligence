@@ -341,9 +341,20 @@ if (RESET_RESEARCH) {
     console.log('\nMeasure-only run. Re-run with --apply to clear.');
   } else {
     await sql('DELETE FROM hotel_research_claim');
-    await sql('UPDATE hotel SET website_url = NULL, researched_at = NULL WHERE website_url IS NOT NULL OR researched_at IS NOT NULL');
+    await sql(
+      'UPDATE hotel SET website_url = NULL, researched_at = NULL WHERE website_url IS NOT NULL OR researched_at IS NOT NULL',
+    );
     console.log('\ncleared. The next research run re-resolves from scratch.');
   }
+  // Stop here, the way --coverage does.
+  //
+  // Without this, --apply fell through to the space-reclaim path below and a
+  // 63-row delete sat behind a TRUNCATE and a vacuum loop over a dozen
+  // rate_observation partitions: ten minutes of unrelated work for two
+  // statements that had already finished. Harmless (a plain VACUUM takes no
+  // exclusive lock) and still wrong, because an operator watching a targeted
+  // cleanup should not have to know that.
+  process.exit(0);
 }
 
 const GEO_GAP = process.argv.includes('--geo-gap');
