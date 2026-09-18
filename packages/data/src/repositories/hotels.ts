@@ -392,6 +392,54 @@ export async function listSiblingRoomTypeIds(roomTypeId: number, q?: Queryable):
   return rows.map((r) => r.id as number);
 }
 
+/**
+ * How many catalogued hotels are PHYSICALLY within `radiusKm` of this one.
+ *
+ * Deliberately NOT `findComparableIdentities`. That function answers "who
+ * should this hotel be compared against", and to do so it prefers the CURATED
+ * peer list, which is bound at the ladder's outer rung rather than at the
+ * radius it is handed. Asking it a geographic question gets a curated answer:
+ * measured on Four Seasons Oahu at Ko Olina (2026-09-17), it returned three
+ * "neighbours within five miles" that were Waikiki hotels 30 km away, because
+ * they were the hotel's curated peers. The nearest catalogued hotel is in
+ * fact 30.18 km away and nothing at all lies inside five miles.
+ *
+ * This asks the question the isolation rung actually needs: is there anything
+ * near this hotel, ever, for any comparison? So it joins no rate, respects no
+ * curation, and applies no collection tier (rule 19 — a comparable does not
+ * have to be on the schedule). It requires coordinates on BOTH sides and has
+ * no destination-label fallback, because a label match is exactly what makes
+ * an isolated resort look surrounded.
+ *
+ * A hotel that cannot be booked online is excluded: it could never be a
+ * comparable, so counting it would claim company this hotel does not have.
+ */
+export async function countNearbyHotels(
+  hotelId: number,
+  radiusKm: number,
+  q?: Queryable,
+): Promise<number> {
+  if (!Number.isFinite(radiusKm) || radiusKm <= 0) return 0;
+  const { rows } = await db(q).query(
+    `SELECT count(*)::int AS n
+       FROM hotel h,
+            (SELECT latitude, longitude FROM hotel WHERE id = $1) s
+      WHERE h.is_active
+        AND h.id <> $1
+        AND h.bookable_online IS DISTINCT FROM false
+        AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+        AND h.latitude IS NOT NULL AND h.longitude IS NOT NULL
+        -- Byte-for-byte the predicate findComparableIdentities and the
+        -- comp-set CTE apply, so "in range" means one thing everywhere.
+        AND power(111.32 * (h.latitude - s.latitude)::float8, 2)
+          + power(111.32 * cos(radians(s.latitude::float8))
+              * (h.longitude - s.longitude)::float8, 2)
+          <= power($2::float8, 2)`,
+    [hotelId, radiusKm],
+  );
+  return (rows[0]?.n as number) ?? 0;
+}
+
 /** Facts read from a hotel's public page. See adapters/whatahotel/page.ts. */
 export interface HotelPageFacts {
   readonly streetAddress: string | null;
