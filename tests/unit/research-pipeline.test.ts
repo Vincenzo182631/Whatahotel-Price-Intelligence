@@ -99,6 +99,28 @@ describe('researchHotel', () => {
     expect(result.websiteUrl).toBe('https://pinkpalaceresort.com/');
   });
 
+  it('asks the collision question about the DOMAIN, not the URL', async () => {
+    // Measured 2026-09-18, third run: com-miami.com served three hotels as
+    // w.com-miami.com, east.com-miami.com and ebhotelairport.com-miami.com.
+    // Three distinct URL strings never collided with each other, so a
+    // directory holding three of our hotels was invisible to the check.
+    const d = deps({
+      findHotelWebsite: vi.fn(async () => 'https://east.pinkpalaceresort.com/'),
+    });
+    await researchHotel(hotel, d);
+    expect(d.findOtherHotelsWithWebsite).toHaveBeenCalledWith(7, 'pinkpalaceresort.com');
+  });
+
+  it('honours a rejection of the directory a subdomain belongs to', async () => {
+    // A human rejecting com-miami.com rejects the directory; w.com-miami.com
+    // is the same directory wearing one hotel's subdomain.
+    const d = deps({
+      findHotelWebsite: vi.fn(async () => 'https://east.pinkpalaceresort.com/'),
+      rejectedHosts: new Set(['pinkpalaceresort.com']),
+    });
+    expect((await researchHotel(hotel, d)).outcome).toBe('REJECTED_HOST');
+  });
+
   it('refuses a domain another hotel already claims, and clears both', async () => {
     // Measured 2026-09-18: four separate Ritz-Carltons resolved to
     // ritzcarlton.com and would have shown a guest identical "evidence" for

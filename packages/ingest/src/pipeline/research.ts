@@ -9,7 +9,7 @@
  * single document, which is both better evidence and the difference between
  * 125 and 1,000 hotels inside Brave's free monthly credit.
  */
-import { resolveHotelWebsite } from '../adapters/brave/resolve.js';
+import { registrableDomain, resolveHotelWebsite } from '../adapters/brave/resolve.js';
 import { extractClaims } from '../adapters/brave/evidence.js';
 import type { BraveClient } from '../adapters/brave/client.js';
 
@@ -38,13 +38,13 @@ export interface ResearchDeps {
     claims: readonly { motivator: string; claim: string; sourceUrl: string }[],
   ) => Promise<number>;
   /**
-   * Other hotels already pointing at this host. A domain claimed by more than
-   * one is a brand domain by definition, because no property's own site is
-   * shared.
+   * Other hotels already sitting under this registrable DOMAIN. A domain
+   * claimed by more than one is a brand or directory domain by definition,
+   * because no property's own site is shared.
    */
   readonly findOtherHotelsWithWebsite: (
     hotelId: number,
-    websiteUrl: string,
+    domain: string,
   ) => Promise<readonly number[]>;
   /** Forget a resolved site and everything read from it. */
   readonly clearHotelResearch: (hotelId: number) => Promise<void>;
@@ -94,6 +94,77 @@ async function defaultFetchPage(url: string): Promise<string | null> {
   }
 }
 
+/** The stored URL's host, or '' when it will not parse. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+export interface PurgedWebsite {
+  /** The registrable domain the colliding hotels shared. */
+  readonly domain: string;
+  readonly hotelIds: readonly number[];
+}
+
+export interface PurgeDeps {
+  readonly findAllHotelWebsites: () => Promise<readonly { hotelId: number; websiteUrl: string }[]>;
+  readonly clearResearchForHotels: (hotelIds: readonly number[]) => Promise<void>;
+}
+
+/**
+ * Reconcile the whole catalogue: drop every domain claimed by more than one
+ * hotel, and everything read from it.
+ *
+ * The per-hotel check in `researchHotel` asks "does another hotel already
+ * hold this domain", and that question depends on run ORDER. Measured
+ * 2026-09-18, second run: hotel 3 resolved ritzcarlton.com with nothing to
+ * collide against, hotel 7 collided and cleared both, and hotel 22 then
+ * resolved the same domain into the empty slot and stood. Two Ritz-Carltons
+ * survived on one brand domain, and which two was an accident of sequence.
+ *
+ * Asking the question of the FINISHED state has no such hole: a domain held
+ * by two hotels is a shared domain whatever order they were researched in.
+ * Run this after a sweep.
+ *
+ * The in-flight check stays, because on-demand research for a single hotel
+ * has no batch to reconcile and still needs to catch a domain the catalogue
+ * already holds.
+ *
+ * It groups here rather than in SQL because `registrableDomain` is the
+ * resolver's rule about what counts as one site, and one rule with two
+ * implementations is two rules.
+ *
+ * Returns what it purged so a run can report it rather than silently tidying.
+ */
+export async function purgeSharedWebsites(deps: PurgeDeps): Promise<readonly PurgedWebsite[]> {
+  const byDomain = new Map<string, number[]>();
+  for (const row of await deps.findAllHotelWebsites()) {
+    const host = hostOf(row.websiteUrl);
+    if (!host) continue;
+    const domain = registrableDomain(host);
+    const held = byDomain.get(domain);
+    if (held) held.push(row.hotelId);
+    else byDomain.set(domain, [row.hotelId]);
+  }
+
+  const purged: PurgedWebsite[] = [];
+  for (const [domain, hotelIds] of byDomain) {
+    if (hotelIds.length < 2) continue;
+    purged.push({ domain, hotelIds: [...hotelIds].sort((a, b) => a - b) });
+  }
+  purged.sort((a, b) => a.domain.localeCompare(b.domain));
+
+  const ids = purged.flatMap((p) => p.hotelIds);
+  // researched_at is deliberately left set by the caller's clear, so a hotel
+  // whose answer was wrong backs off instead of spending a search to reach
+  // the same shared domain on the next run (rule 16's principle).
+  await deps.clearResearchForHotels(ids);
+  return purged;
+}
+
 /**
  * Research one hotel. Every outcome is named, because a silent skip is
  * indistinguishable from a property that genuinely offers nothing — the same
@@ -125,14 +196,12 @@ export async function researchHotel(
     // the automated rules cover what generalises, and a person covers the
     // rest without anybody having to invent a pattern for it.
     const rejected = deps.rejectedHosts;
-    if (rejected && rejected.size > 0) {
-      let host = '';
-      try {
-        host = new URL(website).hostname.replace(/^www\./, '').toLowerCase();
-      } catch {
-        host = '';
-      }
-      if (host && rejected.has(host)) {
+    const host = hostOf(website);
+    if (rejected && rejected.size > 0 && host) {
+      // The domain as well as the host: a human rejecting `com-miami.com`
+      // rejects the directory, and `w.com-miami.com` is the same directory
+      // wearing one hotel's subdomain.
+      if (rejected.has(host) || rejected.has(registrableDomain(host))) {
         await deps.saveHotelResearchTarget(hotel.hotelId, null);
         return {
           hotelId: hotel.hotelId,
@@ -151,7 +220,14 @@ export async function researchHotel(
     // BOTH sides are cleared, not just this one. If two hotels claim one
     // domain neither claim is right, and keeping the first would simply
     // reward whichever hotel was researched earliest.
-    const collisions = await deps.findOtherHotelsWithWebsite(hotel.hotelId, website);
+    //
+    // The DOMAIN collides, not the URL. Measured 2026-09-18, third run:
+    // `com-miami.com` served `w.com-miami.com`, `east.com-miami.com` and
+    // `ebhotelairport.com-miami.com` to three different hotels, and three
+    // distinct URL strings never collided with each other.
+    const collisions = host
+      ? await deps.findOtherHotelsWithWebsite(hotel.hotelId, registrableDomain(host))
+      : [];
     if (collisions.length > 0) {
       await deps.clearHotelResearch(hotel.hotelId);
       for (const other of collisions) await deps.clearHotelResearch(other);

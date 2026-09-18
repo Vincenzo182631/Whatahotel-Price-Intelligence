@@ -24,16 +24,17 @@
  */
 import {
   clearHotelResearch,
+  clearResearchForHotels,
   closePool,
+  findAllHotelWebsites,
   findHotelWebsite,
   findOtherHotelsWithWebsite,
   findRejectedHosts,
-  purgeSharedWebsites,
   findHotelsNeedingResearch,
   replaceResearchClaims,
   saveHotelResearchTarget,
 } from '../packages/data/dist/index.js';
-import { BraveClient, researchHotel } from '../packages/ingest/dist/index.js';
+import { BraveClient, purgeSharedWebsites, researchHotel } from '../packages/ingest/dist/index.js';
 
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
@@ -95,15 +96,15 @@ for (const target of targets) {
 
 // Reconcile the FINISHED state, which the per-hotel check cannot.
 //
-// That check asks "does another hotel already hold this URL" and so depends
-// on run order. Measured 2026-09-18: hotel 3 resolved ritzcarlton.com with
-// nothing to collide against, hotel 7 collided and cleared both, hotel 22
-// then resolved the same domain into the empty slot and stood. Two
+// That check asks "does another hotel already hold this domain" and so
+// depends on run order. Measured 2026-09-18: hotel 3 resolved ritzcarlton.com
+// with nothing to collide against, hotel 7 collided and cleared both, hotel
+// 22 then resolved the same domain into the empty slot and stood. Two
 // Ritz-Carltons survived on one brand domain, and which two was an accident
 // of sequence. Asked of the finished state, the question has no such hole.
-const purged = await purgeSharedWebsites();
+const purged = await purgeSharedWebsites({ findAllHotelWebsites, clearResearchForHotels });
 for (const p of purged) {
-  console.log(`  shared domain dropped: ${p.websiteUrl} was claimed by ${p.hotelIds.join(', ')}`);
+  console.log(`  shared domain dropped: ${p.domain} was claimed by ${p.hotelIds.join(', ')}`);
 }
 
 const summary = [...counts.entries()]
