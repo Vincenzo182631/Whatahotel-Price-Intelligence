@@ -374,3 +374,48 @@ describe('band-only stays on the history model, and only there', () => {
     expect(WIDGET).toContain('wahpi__live-score');
   });
 });
+
+/**
+ * Answer now, phrase later — the deferred voice.
+ *
+ * Taken from the WhataHotel advisor's own architecture, where the prose
+ * streams first and the structured payload lands last. We have no streaming
+ * transport, so the same effect is two requests: the sentences the system can
+ * write with no model at all, then the model's wording swapped in if it
+ * arrives and passes validation.
+ *
+ * Text assertions for the reason in this file's header: the behaviour lives
+ * in a framework-free IIFE that talks to the network on load, and what would
+ * break here is a parameter name or a guard, not a DOM path.
+ */
+describe('deferred voice — the preference chip answers instantly', () => {
+  it('asks the server to skip the model on a preference click', () => {
+    expect(WIDGET).toMatch(/next\.deferVoice = true/);
+    expect(WIDGET).toMatch(/params\.set\('voice', 'defer'\)/);
+  });
+
+  it('only chases a wording the server SAID it deferred', () => {
+    // A client that guesses would double the API's work on every request.
+    expect(WIDGET).toMatch(/voice_deferred !== true\) return/);
+  });
+
+  it('never loops: the follow-up request does not defer', () => {
+    expect(WIDGET).toMatch(/plain\.deferVoice = false/);
+  });
+
+  it('repaints only when a model actually wrote the replacement', () => {
+    // Re-rendering identical template sentences is a flicker with nothing
+    // behind it.
+    expect(WIDGET).toMatch(/explanation\.source !== 'MODEL'\) return/);
+  });
+
+  it('honours the generation counter, so a newer click is never overpainted', () => {
+    expect(WIDGET).toMatch(/if \(!fuller \|\| !fresh\(\)\) return/);
+  });
+
+  it('treats a failed upgrade as a non-event', () => {
+    // Nothing is missing from what is already on screen, so there is nothing
+    // to report and nothing to retry.
+    expect(WIDGET).toMatch(/the answer on screen is already complete/);
+  });
+});
