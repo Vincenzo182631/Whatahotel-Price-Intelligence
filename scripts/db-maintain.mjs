@@ -420,15 +420,47 @@ if (REJECT_HOST) {
     console.error('--reject-host needs --reason "why this is not a property site".');
     process.exit(1);
   }
+
+  // A COMMA-SEPARATED LIST, sharing one reason.
+  //
+  // The 300-hotel sweep of 2026-09-18 surfaced 33 directory farms of the
+  // com-miami.com shape — one subdomain per hotel, worldwide. Rejecting them
+  // one dispatch at a time is 33 workflow runs through a concurrency group
+  // that queues exactly one, which is how a queued rejection gets silently
+  // cancelled (measured this morning, on three).
+  //
+  // The reason is SHARED, not generated, and that is the constraint on using
+  // this: every host in one call must be rejected for the same stated
+  // reason, because each row stores that string and a reason that is only
+  // true of some of them teaches the next reader something false. Hosts that
+  // differ in kind go in separate calls.
+  const hosts = REJECT_HOST.split(',')
+    .map((h) => h.trim())
+    .filter((h) => h.length > 0);
+  if (hosts.length === 0) {
+    console.error('--reject-host was given no hostname.');
+    process.exit(1);
+  }
+
   if (!APPLY) {
-    console.log(`\nWould reject ${REJECT_HOST} — "${reason}". Re-run with --apply.`);
+    console.log(`\nWould reject ${hosts.length} host(s) — "${reason}". Re-run with --apply.`);
+    for (const h of hosts) console.log(`  ${h}`);
     process.exit(0);
   }
+
   const { rejectResearchHost } = await import('../packages/data/dist/index.js');
-  const cleared = await rejectResearchHost(REJECT_HOST, reason);
-  console.log(
-    `\nrejected ${REJECT_HOST}; cleared ${cleared.length} hotel(s): ${cleared.join(', ') || 'none'}`,
-  );
+  let clearedTotal = 0;
+  for (const host of hosts) {
+    // Sequential on purpose: each rejection clears rows the next one may
+    // also match, and a reader of the log should be able to attribute every
+    // cleared hotel to the host that cleared it.
+    const cleared = await rejectResearchHost(host, reason);
+    clearedTotal += cleared.length;
+    console.log(
+      `  rejected ${host}; cleared ${cleared.length} hotel(s): ${cleared.join(', ') || 'none'}`,
+    );
+  }
+  console.log(`\n${hosts.length} host(s) rejected; ${clearedTotal} hotel(s) cleared in total.`);
   process.exit(0);
 }
 
