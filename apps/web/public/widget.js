@@ -1871,6 +1871,19 @@
     append(root, renderLivePrice(data));
     append(root, renderLiveVerdict(data));
     append(root, renderLiveWhyChoose(data));
+    // The answer to the chip the guest just pressed, in the open panel.
+    //
+    // It used to sit inside `more`, which is collapsed by default, so
+    // pressing a preference lit the chip and put its answer behind SEE MORE:
+    // the one interaction whose entire purpose is to change what is on
+    // screen changed nothing the guest could see. Measured in a browser
+    // against production, 2026-09-18.
+    //
+    // Moving it costs the default view nothing — `renderLivePersonalization`
+    // returns null for GENERAL_VALUE, which is every unpersonalized panel —
+    // and it puts the answer in the same place HOTEL_ONLY already puts it,
+    // so a guest reads one layout whichever mode answered.
+    append(root, renderLivePersonalization(data));
 
     // HOTEL VALUE MODE: no score means no "how we worked this out" drawer —
     // that drawer itemises the comparison's inputs, and with no comparison
@@ -1885,7 +1898,6 @@
     append(more, renderLivePremium(data));
     append(more, renderLiveReputation(data));
     append(more, renderSuperiorAlternative(data, state));
-    append(more, renderLivePersonalization(data));
     append(more, renderLiveReasons(data));
     if (!valueMode) append(more, renderLiveDetails(data, state));
 

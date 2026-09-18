@@ -434,6 +434,8 @@
 .wahpi__chart-btn {
   font: inherit;
   font-size: 0.82rem;
+  width: auto;
+  flex: 0 0 auto;
   padding: 4px 11px;
   border: 1px solid var(--wahpi-line);
   background: var(--wahpi-bg);
@@ -462,6 +464,7 @@
   font-size: 0.82rem;
   background: none;
   border: none;
+  width: auto;
   padding: 0;
   color: var(--wahpi-accent);
   cursor: pointer;
@@ -753,10 +756,19 @@
   gap: 6px;
 }
 
+/* Host pages routinely carry a bare `button { width: 100% }` rule, and a
+   widget button that declares no width of its own inherits it. Measured on
+   the demo harness, whose own unscoped rule turned the ten preference chips
+   into ten full-width stacked rows and pushed the price below the fold.
+   `.wahpi__alternative-view` already carried the same defence for the same
+   reason; every button meant to sit inline states its width here, so the
+   layout is ours rather than whatever the host happens to declare. */
 .wahpi__pref-chip {
   font-family: inherit;
   font-size: 12.5px;
   line-height: 1.2;
+  width: auto;
+  flex: 0 0 auto;
   padding: 6px 10px;
   border: 1px solid var(--wahpi-line);
   border-radius: 999px;
