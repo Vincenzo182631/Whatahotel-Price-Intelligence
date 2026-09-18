@@ -644,6 +644,24 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     transliterated — an altered name is a different name, which is this
     method's whole risk. `npm run amenities`.
 
+    **A fixture is evidence only if it was MEASURED** (2026-09-18). The first
+    parser read `GUESTROOMS` as an object holding `ROOMRMA`. It is an ARRAY
+    of room blocks, each holding its own `ROOMRMA`, so `.ROOMRMA` came back
+    undefined and every hotel parsed to zero amenities. The first sweep ran
+    over 150 real hotels and stored NOTHING while 138 of them passed the
+    identity check — the guard worked and there was simply nothing behind
+    it. Eight unit tests passed throughout, because the fixture was written
+    from a list of field NAMES rather than from a response: a test against a
+    guessed fixture measures the guess. The evidence was even in the first
+    probe and went unread — its `flatten` recurses into objects and
+    TERMINATES on arrays, so a field reported as `hotel.GUESTROOMS` rather
+    than `hotel.GUESTROOMS.ROOMRMA` was saying that GUESTROOMS is an array.
+    `probe-info.mjs --dump <path>` now prints one branch verbatim for this
+    purpose, restricted to `hotel.*` and `amadeus.*` because the same
+    response carries `cfID`/`cfToken` (rule 10). Dump the branch before
+    writing the parser, and record in the fixture which run the bytes came
+    from.
+
 ## Adding or changing a factor
 
 1. Update `docs/mvp/02-deal-score.md` with the rationale first.

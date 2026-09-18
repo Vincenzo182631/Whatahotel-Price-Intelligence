@@ -1,29 +1,52 @@
 /**
- * `method=info` parsing, against the shapes the real API returned on
- * 2026-09-17 (probe run 35281232720, 20 hotels, 18 answers).
+ * `method=info` parsing, against the shape the real API returned for hotel
+ * 2008 on 2026-09-18 (`npm run probe-info -- --ids 2008 --dump
+ * hotel.GUESTROOMS`, run 35295960983), with the session tokens removed:
+ * `cfID` and `cfToken` are credentials and rule 10 keeps them out of the
+ * repository.
  *
- * Every fixture here is derived from a real response with the session tokens
- * removed — `cfID` and `cfToken` are credentials and rule 10 keeps them out
- * of the repository.
+ * The earlier version of this file said the same thing and it was NOT TRUE.
+ * The first probe reported field NAMES and distinct-value counts, never a
+ * nested shape, so the fixture below was written from what those names
+ * suggested: `GUESTROOMS` as an object holding `ROOMRMA`. It is an ARRAY of
+ * room blocks, each holding its own `ROOMRMA`. Eight tests passed against
+ * the invention, the sweep then ran over 150 real hotels and stored nothing,
+ * and 138 of those had already passed the identity check.
+ *
+ * So: a fixture is evidence only if it was MEASURED. When a shape is not in
+ * hand, dump the branch (`--dump`) before writing the parser, and say in the
+ * fixture where the bytes came from.
  */
 import { describe, expect, it } from 'vitest';
 import { parseInfo } from '../../packages/ingest/src/adapters/whatahotel/info.js';
 
-/** The Ritz-Carlton, Key Biscayne, trimmed. Codes and labels are verbatim. */
+/**
+ * The Royal Hawaiian (hotel 2008), trimmed to the first four amenities.
+ * Structure, codes and labels are verbatim from the dump named above.
+ */
 const REAL = {
-  amadeus: { codes: 'RZMIAKBZ', count: '1' },
+  amadeus: { codes: 'LCHNL376', count: '1' },
   hotel: {
     DESCSTATUS: '1',
     DESCMSG: 'Success',
-    GUESTROOMS: {
-      ROOMRMA: [
-        { RMAVAL: 'Non-smoking', RMACODE: '74' },
-        { RMAVAL: 'Free local calls', RMACODE: '45' },
-        { RMAVAL: 'Bathrobe', RMACODE: '10' },
-        { RMAVAL: 'Sofa bed', RMACODE: '102' },
-      ],
-    },
-    RESTAURANTS: [{ RESTAURANTNAME: 'Dune Beach Bar' }, { RESTAURANTNAME: 'Lightkeepers' }],
+    // An ARRAY of room blocks. This is the part that was guessed wrong.
+    GUESTROOMS: [
+      {
+        ROOMRMA: [
+          { RMAVAL: 'Non-smoking', RMACODE: '74' },
+          { RMAVAL: 'Free local calls', RMACODE: '45' },
+          { RMAVAL: 'Bathrobe', RMACODE: '10' },
+          { RMAVAL: 'Sofa bed', RMACODE: '102' },
+        ],
+      },
+    ],
+    // A FLAT array of name objects, measured the same way (--dump
+    // hotel.RESTAURANTS, run 35296084128). The parser already read it this
+    // way, which was luck rather than evidence until it was dumped.
+    RESTAURANTS: [
+      { RESTAURANTNAME: 'Ahaaina, A Royal Hawaiian Luau' },
+      { RESTAURANTNAME: 'Surf Lanai To Go' },
+    ],
     HOTELINFO: { HOTELDESC: 'Daily resort fee will be added to all stays.' },
   },
   session: { sessionName: 'Guest', sessionID: '0' },
@@ -39,7 +62,7 @@ describe('parseInfo', () => {
       { code: '10', label: 'Bathrobe' },
       { code: '102', label: 'Sofa bed' },
     ]);
-    expect(parsed.restaurants).toEqual(['Dune Beach Bar', 'Lightkeepers']);
+    expect(parsed.restaurants).toEqual(['Ahaaina, A Royal Hawaiian Luau', 'Surf Lanai To Go']);
     expect(parsed.degraded).toBe(false);
   });
 
@@ -47,7 +70,7 @@ describe('parseInfo', () => {
     // There is no hotel name anywhere in the payload. The first version of
     // the probe matched /name/ and found session.sessionName — the constant
     // "Guest" — and reported a mismatch on all 18 hotels that answered.
-    expect(parseInfo(REAL).amadeusCode).toBe('RZMIAKBZ');
+    expect(parseInfo(REAL).amadeusCode).toBe('LCHNL376');
   });
 
   it('treats the literal "NULL" as no identity, not as an identity', () => {
@@ -83,6 +106,9 @@ describe('parseInfo', () => {
         ...REAL.hotel,
         RESTAURANTS: { RESTAURANTNAME: 'Solo' },
         GUESTROOMS: { ROOMRMA: { RMAVAL: 'Bathrobe', RMACODE: '10' } },
+        // Collapsed at BOTH levels: the room-block array and the amenity
+        // array. asArray handles either, so the parser reads the measured
+        // array shape and this one without a special case.
       },
     });
     expect(one.restaurants).toEqual(['Solo']);
@@ -94,17 +120,51 @@ describe('parseInfo', () => {
       ...REAL,
       hotel: {
         ...REAL.hotel,
-        GUESTROOMS: {
-          ROOMRMA: [
-            { RMAVAL: 'Bathrobe', RMACODE: '10' },
-            { RMAVAL: 'Bathrobe', RMACODE: '10' },
-            { RMAVAL: 'No code', RMACODE: '' },
-            { RMACODE: '99' },
-          ],
-        },
+        GUESTROOMS: [
+          {
+            ROOMRMA: [
+              { RMAVAL: 'Bathrobe', RMACODE: '10' },
+              { RMAVAL: 'Bathrobe', RMACODE: '10' },
+              { RMAVAL: 'No code', RMACODE: '' },
+              { RMACODE: '99' },
+            ],
+          },
+        ],
       },
     });
     expect(messy.amenities).toEqual([{ code: '10', label: 'Bathrobe' }]);
+  });
+
+  it('gathers amenities across every room block, deduplicated', () => {
+    // Hotel 2008 answered with a single room block, so the array wrapper was
+    // invisible in one sample and is exactly what the first parser got wrong.
+    // A hotel listing several room types repeats the amenities they share,
+    // and a guest reading "Bathrobe, Bathrobe" would be reading our bug.
+    const multi = parseInfo({
+      ...REAL,
+      hotel: {
+        ...REAL.hotel,
+        GUESTROOMS: [
+          { ROOMRMA: [{ RMAVAL: 'Bathrobe', RMACODE: '10' }] },
+          {
+            ROOMRMA: [
+              { RMAVAL: 'Bathrobe', RMACODE: '10' },
+              { RMAVAL: 'Wet bar', RMACODE: '122' },
+            ],
+          },
+        ],
+      },
+    });
+    expect(multi.amenities).toEqual([
+      { code: '10', label: 'Bathrobe' },
+      { code: '122', label: 'Wet bar' },
+    ]);
+  });
+
+  it('reads nothing from a room block that is not one', () => {
+    for (const bad of [{ GUESTROOMS: ['x'] }, { GUESTROOMS: [{ ROOMRMA: 'x' }] }]) {
+      expect(parseInfo({ ...REAL, hotel: { ...REAL.hotel, ...bad } }).amenities).toEqual([]);
+    }
   });
 
   it('never returns the prose blocks', () => {
