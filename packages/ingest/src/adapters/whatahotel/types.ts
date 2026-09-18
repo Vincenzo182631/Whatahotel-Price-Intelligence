@@ -10,7 +10,19 @@
  * status is `wahData.status.code`. See client.ts.
  */
 
-export type WahMethod = 'rates' | 'hotel' | 'search' | 'info' | 'namerates' | 'cityrates';
+export type WahMethod =
+  | 'rates'
+  | 'hotel'
+  | 'search'
+  // Keyed on hotelName + hotelCity, and its response names no hotel. Retained
+  // because it is still the only way to ask about a property we cannot place
+  // in the id space; `infoid` is what the amenity sync uses (rule 29).
+  | 'info'
+  // The same payload, keyed on the hotel id. Shipped by the source
+  // 2026-09-18 at our request.
+  | 'infoid'
+  | 'namerates'
+  | 'cityrates';
 
 export interface WahStatus {
   /** 1 on success, 0 on every failure. */

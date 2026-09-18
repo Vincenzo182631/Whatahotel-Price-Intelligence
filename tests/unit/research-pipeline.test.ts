@@ -3,7 +3,7 @@
  *
  * Every path is named because a silent skip is indistinguishable from a
  * property that genuinely offers nothing — the same reason
- * syncHotelAmenities names its six (rule 29). And every failure path still
+ * syncHotelAmenities names each of its own (rule 29). And every failure path still
  * stamps researched_at, so a hotel that cannot be resolved backs off rather
  * than costing a search on every page view (rule 16).
  */

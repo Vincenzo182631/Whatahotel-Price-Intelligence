@@ -157,3 +157,35 @@ export async function fetchHotelInfo(
   const data = await client.call<unknown>('info', { hotelName, hotelCity });
   return parseInfo(data);
 }
+
+/**
+ * Ask the source about one hotel BY ID (`method=infoid`, shipped by the
+ * source 2026-09-18 at our request).
+ *
+ * This is the method the amenity sync uses, and it is the one that removes
+ * the identity problem rather than checking around it. `info` is keyed on
+ * name + city and its response carries no hotel name, so an answer could
+ * not say which property it described; `infoid` is keyed on the same id
+ * space as every other part of this system, so attribution comes from the
+ * REQUEST and cannot be wrong.
+ *
+ * Measured before this was written (rule 29's own lesson about fixtures):
+ * the response shape is byte-for-byte the shape `info` returns — `status`,
+ * `session`, `amadeus`, `hotel`, with `GUESTROOMS` an ARRAY of room blocks —
+ * so `parseInfo` is shared unchanged rather than duplicated. Ten hotels were
+ * called both ways and the two methods returned the same `amadeus.codes`
+ * every time, and thirty were checked against the `hotel` method's
+ * `ama-property` with 28 agreements and 0 disagreements (2 ids answered on
+ * neither side and look dead).
+ *
+ * It also has no non-ASCII problem. `info` rejects "Mont d'Arbois" and
+ * "Château Saint-Martin" with a 400 because the NAME goes over the wire;
+ * an id does not.
+ */
+export async function fetchHotelInfoById(
+  client: WahClient,
+  wahHotelId: number,
+): Promise<ParsedInfo> {
+  const data = await client.call<unknown>('infoid', { hotel: wahHotelId });
+  return parseInfo(data);
+}

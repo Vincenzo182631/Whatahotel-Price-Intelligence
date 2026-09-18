@@ -65,7 +65,7 @@ export type {
   AmenitySyncOutcome,
   AmenitySyncResult,
 } from './pipeline/amenities.js';
-export { parseInfo, fetchHotelInfo } from './adapters/whatahotel/info.js';
+export { parseInfo, fetchHotelInfo, fetchHotelInfoById } from './adapters/whatahotel/info.js';
 export type { InfoAmenity, ParsedInfo } from './adapters/whatahotel/info.js';
 
 export { sweepPlaces } from './pipeline/resolvePlaces.js';

@@ -1,0 +1,117 @@
+{
+  "_measured": {
+    "method": "infoid",
+    "hotel": 1421,
+    "name": "Four Seasons Resort Maui at Wailea",
+    "fetchedAt": "2026-09-18T23:03:00Z",
+    "note": "Real response bytes, trimmed in LENGTH only - GUESTROOMS is still an array of room blocks, each with its own ROOMRMA, which is the shape the first info parser got wrong. Session tokens scrubbed (rule 10); the API key was never in the body."
+  },
+  "wahData": {
+    "status": {
+      "connection": 1,
+      "message": "Success",
+      "code": "200",
+      "method": "infoid"
+    },
+    "session": {
+      "cfID": "<scrubbed>",
+      "sessionID": "0",
+      "sessionName": "Guest",
+      "sessionAccess": "0",
+      "cfToken": "<scrubbed>"
+    },
+    "amadeus": {
+      "codes": "FSOGG516",
+      "count": 1
+    },
+    "hotel": {
+      "DESCSTATUS": "1",
+      "RESTAURANTS": [
+        {
+          "RESTAURANTNAME": "Spago"
+        },
+        {
+          "RESTAURANTNAME": "Ferraros Restaurant and Bard"
+        },
+        {
+          "RESTAURANTNAME": "Duo Steak and Seafood"
+        }
+      ],
+      "HOTELINFO": [
+        {
+          "HOTELDESC": "Located in the Wailea resort area on 15 acres of oceanfront. Wailea is on the sunnier southwest shore of the island  minutes from golf  shopping and restaurants.",
+          "HOTELTITLE": "Property location"
+        }
+      ],
+      "DESCMSG": "Success",
+      "AREAINFO": [
+        {
+          "AREATITLE": "Area",
+          "AREADESC": "SUV transfer per way for 5 passengers"
+        }
+      ],
+      "ATTRACTIONINFO": [
+        {
+          "ATTTYPE": "Miscellaneous",
+          "ATTNAME": "Lahaina Civic Center"
+        },
+        {
+          "ATTTYPE": "Miscellaneous",
+          "ATTNAME": "Maui Arts and Cultural Center"
+        }
+      ],
+      "GUESTROOMS": [
+        {
+          "ROOMRMA": [
+            {
+              "RMAVAL": "Color television",
+              "RMACODE": "20"
+            },
+            {
+              "RMAVAL": "Hairdryer",
+              "RMACODE": "50"
+            },
+            {
+              "RMAVAL": "Minibar",
+              "RMACODE": "69"
+            },
+            {
+              "RMAVAL": "Data port",
+              "RMACODE": "27"
+            }
+          ],
+          "ROOMDESC": "Accessible Club Ocean Vw Prime Exec Ste \nwith Club Floor Access King Bed",
+          "ROOMTYPE": "HSK"
+        },
+        {
+          "ROOMRMA": [
+            {
+              "RMAVAL": "Color television",
+              "RMACODE": "20"
+            },
+            {
+              "RMAVAL": "Hairdryer",
+              "RMACODE": "50"
+            },
+            {
+              "RMAVAL": "Minibar",
+              "RMACODE": "69"
+            },
+            {
+              "RMAVAL": "Data port",
+              "RMACODE": "27"
+            }
+          ],
+          "ROOMDESC": "Club Ocean View Rm 2 Queen Beds-Top Floor\nOpen Sided Lanai-Club Floor Lounge Access",
+          "ROOMTYPE": "K2Q"
+        }
+      ],
+      "POLICYINFO": [
+        {
+          "POLICYTITLE": "Policy",
+          "POLICYDESC": "Cancel by 3:00 pm 14 days prior to expected arrival date, or Hotel will retain deposit - Exceptions may apply for specific offers and/or room types."
+        }
+      ]
+    }
+  }
+}
