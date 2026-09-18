@@ -1,0 +1,135 @@
+# Research hotels: find each property's own site, read it, store what it says.
+#
+# Owner requirement (2026-09-18), built the way the owner chose: Brave FINDS
+# the page, we FETCH it, and every stored claim cites the URL we read and the
+# time we read it. One search per hotel rather than one per motivator — all
+# ten are assessed from the one document.
+#
+# Required repository secrets:
+#   DATABASE_URL    the same Postgres everything else writes to
+#   BRAVE_API_KEY   environment only, redacted from every printed line
+#
+# ── Cost, and why the default is small ───────────────────────────────────
+#
+# Brave's free monthly credit is roughly 1,000 requests and the rate limit is
+# about one per second. Each hotel costs ONE search the first time and none
+# thereafter, because the resolved site is stored. The sweep paces itself; a
+# run that ignores the limit looks exactly like a broken key.
+#
+# ── What it never writes ─────────────────────────────────────────────────
+#
+# A hotel whose site cannot be resolved or read stores no claims, never a
+# claim of absence. A cookie wall is not a property without a spa, and
+# rendering that difference would be rule 28's false negative. Nothing here
+# reaches a score either (rule 21): it informs what a guest reads.
+
+name: Research hotel websites
+
+on:
+  # Weekly, and deliberately modest. A hotel's own site changes on the
+  # timescale of a redesign, and the sweep re-reads only what has gone stale.
+  schedule:
+    - cron: '40 4 * * 3'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Max hotels this run (1 Brave search each, first time only)'
+        required: false
+        default: '25'
+      stale_days:
+        description: 'Re-research a hotel older than this many days'
+        required: false
+        default: '90'
+      dry_run:
+        description: 'Show the queue only — call nothing'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: hotel-research
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Which secrets are present
+        # Named explicitly, never enumerated — enumerating the secret store is
+        # what tripped GitHub's malicious-workflow detector on db-setup.yml.
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+          HAS_BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY != '' }}
+        run: |
+          echo "DATABASE_URL present:  $HAS_DATABASE_URL"
+          echo "BRAVE_API_KEY present: $HAS_BRAVE_API_KEY"
+
+      - name: Fail early if a credential is missing
+        run: |
+          # Both are load-bearing. Without either, the run would write nothing
+          # and report a healthy pass.
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Missing repository secret: DATABASE_URL"
+            exit 1
+          fi
+          if [ -z "$BRAVE_API_KEY" ]; then
+            echo "::error::Missing repository secret: BRAVE_API_KEY. Get one at api-dashboard.search.brave.com/register"
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Apply any pending migrations
+        run: node scripts/migrate.mjs
+
+      - name: Research
+        run: |
+          set -o pipefail
+          npm run research -- \
+            --limit "${{ inputs.limit || 25 }}" \
+            --stale-days "${{ inputs.stale_days || 90 }}" \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            2>&1 | tee research.log
+
+      - name: Summarise the run
+        if: always()
+        run: |
+          {
+            echo '### Hotel research'
+            echo
+            echo '```'
+            tail -40 research.log 2>/dev/null || echo 'no output captured'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Nothing stored at all is what a withdrawn key, a rate limit and a
+          # blocked user-agent all look like from the outside.
+          if grep -qE 'research: 0 claim' research.log 2>/dev/null; then
+            echo "::notice::No claims stored. Check the outcome split above before assuming the sites are at fault."
+          fi
+          # Rate limiting is worth naming: it is the one failure that gets
+          # worse if the next run is bigger.
+          if grep -q 'FAILED' research.log 2>/dev/null; then
+            echo "::warning::Some hotels failed. If these are 429s, lower --limit rather than retrying immediately."
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: research-log-${{ github.run_id }}
+          path: research.log
+          retention-days: 14

@@ -42,6 +42,7 @@ import {
   findBenefits,
   findHotelByWahId,
   findDistinctiveAmenities,
+  findResearchClaims,
   findVerifiedReputations,
   findVerifiedReputationsByWahIds,
   isLiveLoadFailure,
@@ -581,18 +582,21 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
     }
   >();
   let subjectRoomAmenities: readonly string[] = [];
+  let subjectWebsiteClaims: readonly { motivator: string; claim: string; sourceUrl: string }[] = [];
   try {
     // Amenities ride with the reputation lookup: both are hotel-level,
     // indexed, and independent of the stay, so this adds a query rather than
     // a round trip. It is also optional in the same way — a failure here
     // thins the card and never breaks the answer.
-    const [subject, comps, amenities] = await Promise.all([
+    const [subject, comps, amenities, research] = await Promise.all([
       findVerifiedReputations([loaded.hotel.id]),
       findVerifiedReputationsByWahIds(loaded.competitorWahIds),
       findDistinctiveAmenities(loaded.hotel.id),
+      findResearchClaims(loaded.hotel.id),
     ]);
     competitorReputations = comps;
     subjectRoomAmenities = amenities.map((a) => a.label);
+    subjectWebsiteClaims = research;
     const mine = subject.get(loaded.hotel.id);
     if (mine && mine.rating !== null) {
       subjectReputation = {
@@ -1174,6 +1178,7 @@ export const liveIntelligenceHandler: Handler = async (_req, res, ctx) => {
       rating: subjectReputation?.rating ?? null,
       comparableMedianRating: bundle.reputation.comparable_median_rating,
       dealScoreOutOfTen: result.outOfTen,
+      websiteClaims: subjectWebsiteClaims,
     }),
 
     /**
@@ -1370,17 +1375,20 @@ async function hotelOnlyAnswer(
   let editorialSummary: string | null = null;
   let reviewThemes: readonly string[] = [];
   let roomAmenities: readonly string[] = [];
+  let websiteClaims: readonly { motivator: string; claim: string; sourceUrl: string }[] = [];
   let perks: string[] = [];
   try {
     // Both are hotel-level and indexed; neither depends on the stay. The
     // benefits query takes the check-in only to honour a perk's validity
     // window, never to price anything.
-    const [reps, benefits, amenities] = await Promise.all([
+    const [reps, benefits, amenities, research] = await Promise.all([
       findVerifiedReputations([hotel.id]),
       findBenefits(hotel.id, null, checkIn),
       findDistinctiveAmenities(hotel.id),
+      findResearchClaims(hotel.id),
     ]);
     roomAmenities = amenities.map((a) => a.label);
+    websiteClaims = research;
     const mine = reps.get(hotel.id);
     if (mine && mine.rating !== null) {
       reputation = {
@@ -1451,6 +1459,7 @@ async function hotelOnlyAnswer(
       rating: reputation?.rating ?? null,
       comparableMedianRating: null,
       dealScoreOutOfTen: null,
+      websiteClaims,
     }),
     hotel_value: {
       headline: value.headline,

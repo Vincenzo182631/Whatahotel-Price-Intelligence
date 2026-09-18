@@ -1,6 +1,7 @@
 export type { RateQuery, RateSourceAdapter, RawRateRecord } from './adapters/RateSourceAdapter.js';
 
 export * from './adapters/whatahotel/index.js';
+export * from './adapters/brave/index.js';
 
 export {
   DEFAULT_SYNTHETIC_OPTIONS,
@@ -51,6 +52,8 @@ export type {
   OnDemandStay,
 } from './pipeline/onDemand.js';
 export { syncHotelAmenities } from './pipeline/amenities.js';
+export { researchHotel } from './pipeline/research.js';
+export type { ResearchDeps, ResearchOutcome, ResearchResult } from './pipeline/research.js';
 export type {
   AmenitySyncDeps,
   AmenitySyncOutcome,

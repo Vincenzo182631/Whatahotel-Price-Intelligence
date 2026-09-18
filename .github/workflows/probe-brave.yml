@@ -1,0 +1,101 @@
+# Measure what Brave Search returns for our hotels, before anything parses it.
+#
+# Brave is the search provider for motivator research (owner decision,
+# 2026-09-18). This probe exists before the parser for the reason every other
+# probe in this repo exists: a documented field is not a populated one (rule
+# 30), and a parser written against a guessed shape passes its own tests while
+# storing nothing — 150 hotels, 0 rows, 8 green tests, this morning.
+#
+# Required repository secret:
+#   BRAVE_API_KEY   environment only, redacted from every printed line
+#
+# READ-ONLY. Issues searches, writes nothing, and needs no database: hotel
+# names come from our own public API. Paced at roughly one request a second
+# because that is Brave's free-tier limit, and a sweep that ignores it looks
+# exactly like a broken key.
+
+name: Probe Brave search
+
+on:
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: 'Comma-separated hotel ids to research'
+        required: false
+        default: '2008,3046,19,1198,1550'
+      limit:
+        description: 'Max hotels from that list (8 queries each, ~1s apart)'
+        required: false
+        default: '3'
+      dump:
+        description: 'Print one response branch verbatim once, e.g. web.results'
+        required: false
+        default: 'web.results'
+
+concurrency:
+  group: probe-brave
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Check the search key is set
+        # Named explicitly, never enumerated — enumerating the secret store is
+        # what tripped GitHub's malicious-workflow detector on db-setup.yml.
+        env:
+          HAS_BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY != '' }}
+        run: |
+          if [ "$HAS_BRAVE_API_KEY" != "true" ]; then
+            echo "::error::BRAVE_API_KEY is not set. Add it as a repository secret on the Actions tab."
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Probe
+        env:
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+        run: |
+          set -o pipefail
+          node scripts/probe-brave.mjs \
+            --ids "${{ inputs.ids }}" \
+            --limit "${{ inputs.limit || 3 }}" \
+            ${{ inputs.dump && format('--dump {0}', inputs.dump) || '' }} \
+            --out brave-probe.json 2>&1 | tee brave-probe.log
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo '### Brave search probe'
+            echo
+            echo '```'
+            tail -60 brave-probe.log 2>/dev/null || echo 'no output captured'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # A run where nothing carries description text is the finding that
+          # matters: a result with a URL and no text is a link, not evidence.
+          if grep -q '0 returned at least one result' brave-probe.log 2>/dev/null; then
+            echo "::warning::No result carried description text. Snippets are what a claim would be extracted from."
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: brave-probe-${{ github.run_id }}
+          path: |
+            brave-probe.json
+            brave-probe.log
+          retention-days: 14
