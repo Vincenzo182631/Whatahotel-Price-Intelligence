@@ -38,6 +38,7 @@ import {
   type Preference,
   type ReputationFact,
   assessMotivators,
+  renderMotivatorAnswer,
 } from '@wahpi/core';
 import {
   findBenefits,
@@ -1474,6 +1475,36 @@ async function hotelOnlyAnswer(
   // Nothing measured, nothing said.
   if (!value) return null;
 
+  const motivators = assessMotivators({
+    roomAmenities,
+    reviewThemes,
+    perks,
+    rating: reputation?.rating ?? null,
+    comparableMedianRating: null,
+    dealScoreOutOfTen: null,
+    websiteClaims,
+  });
+
+  const answered =
+    preference === 'GENERAL_VALUE'
+      ? null
+      : renderMotivatorAnswer(motivators.find((m) => m.motivator === preference));
+  const preferenceAnswer = answered
+    ? {
+        preference,
+        personalized_insight: answered.insight,
+        why_this_hotel_may_fit: answered.reasons,
+        // Empty rather than absent: the shape a client reads is the same in
+        // every mode, and a neutral consideration drawn from a rate is
+        // exactly what this mode does not have.
+        what_to_consider: [],
+        alternative_reason: '',
+        confidence: 'LOW',
+        evidence_used: [],
+        source: 'DETERMINISTIC',
+      }
+    : null;
+
   return {
     generated_at: now.toISOString(),
     model: 'LIVE_MARKET',
@@ -1504,15 +1535,37 @@ async function hotelOnlyAnswer(
     // Same assessment, same shape, thinner inputs: with no rate there is no
     // score, so the two VALUE motivators honestly read LIMITED_EVIDENCE
     // rather than borrowing a number from somewhere else.
-    motivators: assessMotivators({
-      roomAmenities,
-      reviewThemes,
-      perks,
-      rating: reputation?.rating ?? null,
-      comparableMedianRating: null,
-      dealScoreOutOfTen: null,
-      websiteClaims,
-    }),
+    motivators,
+    /**
+     * The answer to the preference the guest clicked, in this mode too.
+     *
+     * The gap this closes, measured against production on 2026-09-18: a
+     * HOTEL_ONLY response carried all ten motivator verdicts and not one
+     * sentence built from them, because personalization is written from the
+     * explanation bundle and a bundle needs a rate. So on precisely the
+     * stays where we have no price — the common outcome during the source
+     * outage — clicking "Family" produced the evidence in the API and
+     * nothing on the page.
+     *
+     * The evidence a motivator rests on is HOTEL-level: amenities, review
+     * themes, perks, a researched page. None of it depends on a rate, so
+     * none of it needed to go missing with one.
+     *
+     * Same renderer as the scored path (`renderMotivatorAnswer`), so a guest
+     * reads one voice whichever mode answered. Same key names as
+     * `personalization`, so the widget renders it with the code it already
+     * has rather than a second block that would drift.
+     *
+     * The mode's one hard rule is kept structurally rather than carefully:
+     * the renderer emits motivator evidence and nothing else, and with no
+     * Deal Score the two VALUE motivators are LIMITED_EVIDENCE, so there is
+     * no price sentence here to suppress.
+     *
+     * Null for GENERAL_VALUE (which personalizes nothing anywhere) and null
+     * when the motivator is thin — the hotel-value card then carries the
+     * answer, exactly as it did before.
+     */
+    personalization: preferenceAnswer,
     hotel_value: {
       headline: value.headline,
       summary: value.summary,

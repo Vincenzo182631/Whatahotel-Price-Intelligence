@@ -21,6 +21,10 @@ import {
   supportingSignals,
 } from '../../packages/core/src/explanation/hotelValue.js';
 import { buildSupportingSignals } from '../../packages/core/src/explanation/liveBundle.js';
+import {
+  assessMotivators,
+  renderMotivatorAnswer,
+} from '../../packages/core/src/explanation/motivators.js';
 
 import { readFileSync } from 'node:fs';
 
@@ -166,6 +170,63 @@ describe('what the widget says when no rate came back', () => {
   it('routes a hotel-only body away from the market renderer', () => {
     // Every block in renderLive describes a rate; this body has none.
     expect(WIDGET_CODE).toMatch(/intelligence_mode === 'HOTEL_ONLY'/);
-    expect(WIDGET_CODE).toMatch(/renderHotelOnly\(root, result\.body\)/);
+    expect(WIDGET_CODE).toMatch(/renderHotelOnly\(root, result\.body, state\)/);
+  });
+});
+
+/**
+ * The preference question, on a stay with no rate.
+ *
+ * Measured against production 2026-09-18: a HOTEL_ONLY response carried all
+ * ten motivator verdicts and not one sentence built from them, and the widget
+ * rendered no way to ask. Personalization is written from the explanation
+ * bundle and a bundle needs a rate — but the evidence a motivator rests on is
+ * hotel-level (amenities, review themes, perks, a researched page) and never
+ * needed a price.
+ */
+describe('HOTEL_ONLY answers a clicked preference', () => {
+  const supported = assessMotivators({
+    roomAmenities: ['Crib available', 'Connecting rooms'],
+    reviewThemes: ['family'],
+    perks: [],
+    rating: null,
+    comparableMedianRating: null,
+    dealScoreOutOfTen: null,
+  });
+
+  it('renders the evidence, with no rate anywhere in it', () => {
+    const answer = renderMotivatorAnswer(supported.find((m) => m.motivator === 'FAMILY'));
+    expect(answer).not.toBeNull();
+    expect(answer?.insight.toLowerCase()).toContain('crib');
+    // The mode's one hard rule, structural rather than careful: this renderer
+    // emits motivator evidence and nothing else, so there is no price
+    // sentence to suppress.
+    expect(answer?.insight).not.toMatch(/\$|per night|median|score|cheaper|saving/i);
+  });
+
+  it('says nothing rather than something soft when the evidence is thin', () => {
+    const thin = assessMotivators({
+      roomAmenities: ['Hairdryer'],
+      reviewThemes: [],
+      perks: [],
+      rating: null,
+      comparableMedianRating: null,
+      dealScoreOutOfTen: null,
+    });
+    expect(renderMotivatorAnswer(thin.find((m) => m.motivator === 'FAMILY'))).toBeNull();
+  });
+
+  it('never renders the verdict word', () => {
+    const answer = renderMotivatorAnswer(supported.find((m) => m.motivator === 'FAMILY'));
+    const all = [answer?.insight, ...(answer?.reasons ?? [])].join(' ');
+    expect(all).not.toMatch(/SUPPORTED|well suited|good for families/i);
+  });
+
+  it('gives the two VALUE motivators nothing to say without a score', () => {
+    // They cite the Deal Score, and there is none — so they stay
+    // LIMITED_EVIDENCE rather than borrowing a number from somewhere else.
+    for (const m of ['GENERAL_VALUE', 'BEST_VALUE'] as const) {
+      expect(renderMotivatorAnswer(supported.find((x) => x.motivator === m))).toBeNull();
+    }
   });
 });

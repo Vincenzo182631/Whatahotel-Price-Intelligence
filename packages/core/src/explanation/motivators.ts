@@ -276,3 +276,48 @@ export function assessMotivators(input: MotivatorInput): readonly MotivatorAsses
 
   return out;
 }
+
+/**
+ * The advisor's answer to a clicked preference, written from the motivator's
+ * own evidence and nothing else.
+ *
+ * Shared on purpose. A scored stay reads it through the personalization
+ * layer, and a stay with NO RATE AT ALL reads the same sentences — the
+ * evidence a motivator rests on is hotel-level (amenities, review themes,
+ * perks, a researched page), so it survives the absence of a price entirely.
+ * Two renderers would be two voices for one question, and the guest clicking
+ * "Family" cannot tell which mode answered them.
+ *
+ * It states the evidence and stops. "Rooms list cribs and connecting rooms"
+ * is checkable and rejectable; "well suited to families" is a conclusion over
+ * a hidden rule, which is rule 30's `goodForChildren` in better clothes. The
+ * verdict word is never rendered for the same reason.
+ *
+ * Null when the motivator is thin or absent, which leaves the caller to say
+ * plainly that the information is limited — the honest answer, and never
+ * dressed up as a soft yes (rule 33).
+ *
+ * Carries no price, no comparison and no score, so a HOTEL_ONLY response can
+ * publish it without the mode's one hard rule being a matter of care: there
+ * is nothing about a rate in here to leak.
+ */
+export function renderMotivatorAnswer(
+  assessment: MotivatorAssessment | null | undefined,
+): { readonly insight: string; readonly reasons: readonly string[] } | null {
+  if (!assessment || assessment.verdict !== 'SUPPORTED') return null;
+  if (assessment.evidence.length === 0) return null;
+
+  const uncap = (t: string): string => (t.length > 0 ? t[0]!.toLowerCase() + t.slice(1) : t);
+  // At most two lead the sentence: the rest are published beside it as
+  // reasons and in the motivators block, so repeating them would pad.
+  const lead = assessment.evidence.slice(0, 2).map((e) => uncap(e.text));
+  const insight =
+    lead.length === 1 ? `For this stay, ${lead[0]}.` : `For this stay, ${lead[0]}, and ${lead[1]}.`;
+
+  return {
+    insight,
+    reasons: assessment.evidence
+      .slice(0, 3)
+      .map((e) => (e.text.endsWith('.') ? e.text : `${e.text}.`)),
+  };
+}
