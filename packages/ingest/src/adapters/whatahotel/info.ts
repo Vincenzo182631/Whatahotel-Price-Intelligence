@@ -101,17 +101,30 @@ export function parseInfo(payload: unknown): ParsedInfo {
   const status = str(hotel.DESCSTATUS);
   const degraded = status !== null && status !== '1';
 
+  // GUESTROOMS is an ARRAY of room blocks, each holding its own ROOMRMA list.
+  // Measured on hotel 2008 (probe --dump hotel.GUESTROOMS, 2026-09-18):
+  //
+  //   hotel.GUESTROOMS: array[1]
+  //   [ { "ROOMRMA": [ { "RMAVAL": "Non-smoking", "RMACODE": "74" }, … ] } ]
+  //
+  // The first version read GUESTROOMS as an object and took .ROOMRMA off it,
+  // which on an array is undefined, so every hotel parsed to zero amenities:
+  // a sweep of 150 stored nothing while 138 of them passed the identity
+  // check. Codes are deduplicated ACROSS room blocks, because a hotel listing
+  // several room types repeats the amenities they share.
   const amenities: InfoAmenity[] = [];
   const seenCodes = new Set<string>();
-  const guestRooms = (hotel.GUESTROOMS ?? {}) as Record<string, unknown>;
-  for (const entry of asArray(guestRooms.ROOMRMA)) {
-    const row = (entry ?? {}) as Record<string, unknown>;
-    const amenityCode = str(row.RMACODE);
-    const label = str(row.RMAVAL);
-    if (amenityCode === null || label === null) continue;
-    if (seenCodes.has(amenityCode)) continue;
-    seenCodes.add(amenityCode);
-    amenities.push({ code: amenityCode, label });
+  for (const roomBlock of asArray(hotel.GUESTROOMS)) {
+    const block = (roomBlock ?? {}) as Record<string, unknown>;
+    for (const entry of asArray(block.ROOMRMA)) {
+      const row = (entry ?? {}) as Record<string, unknown>;
+      const amenityCode = str(row.RMACODE);
+      const label = str(row.RMAVAL);
+      if (amenityCode === null || label === null) continue;
+      if (seenCodes.has(amenityCode)) continue;
+      seenCodes.add(amenityCode);
+      amenities.push({ code: amenityCode, label });
+    }
   }
 
   const restaurants: string[] = [];
