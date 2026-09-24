@@ -92,3 +92,50 @@ describe('a host page does not get to lay out our chips', () => {
       expect(rule(selector)).toMatch(/width:\s*100%/);
   });
 });
+
+/**
+ * The measured comparison, on the face of the card.
+ *
+ * Greg, 2026-09-21: "We're NOT giving any IMPORTANT information to someone
+ * who uses the WhataRate! tab." Verified against production the same day on
+ * The Royal Hawaiian, 15-18 Oct, $447/night. The open card showed a 6/10,
+ * "Market rate / Consider booking", and a paragraph of Google rating, review
+ * themes and perks — every one of which the guest already has on the hotel
+ * page this widget is embedded in. The one thing only we produce, "26% above
+ * comparable rooms nearby", was inside the collapsed SEE MORE block.
+ *
+ * It is the same failure as the personalization placement above, one block
+ * further down the same function, and it was there the whole time that one
+ * was being fixed.
+ */
+describe('the comparison a guest cannot get anywhere else', () => {
+  const renderLive = functionBody(WIDGET, 'renderLive');
+
+  it('is not appended into the collapsed SEE MORE block', () => {
+    expect(renderLive).not.toMatch(/append\(\s*more,\s*renderLiveReasons/);
+  });
+
+  it('sits directly under the score it explains', () => {
+    // Adjacency is the point: the reasons justify the verdict, so anything
+    // between them is something the guest reads first instead.
+    const verdict = renderLive.indexOf('append(root, renderLiveVerdict(data))');
+    const reasons = renderLive.indexOf('append(root, renderLiveReasons(data))');
+    const whyChoose = renderLive.indexOf('append(root, renderLiveWhyChoose(data))');
+    expect(verdict).toBeGreaterThan(-1);
+    expect(reasons).toBeGreaterThan(verdict);
+    expect(reasons).toBeLessThan(whyChoose);
+  });
+
+  it('is above the disclosure, not inside it', () => {
+    const reasons = renderLive.indexOf('append(root, renderLiveReasons(data))');
+    const more = renderLive.indexOf("var more = el('div', 'wahpi__more')");
+    expect(reasons).toBeLessThan(more);
+  });
+
+  it('still renders nothing when the verdict carries no reasons', () => {
+    // Every HOTEL_VALUE response. Moving the block must not put an empty
+    // container on an unscored card.
+    const body = functionBody(WIDGET, 'renderLiveReasons');
+    expect(body).toMatch(/reasons\.length === 0\) return null/);
+  });
+});
