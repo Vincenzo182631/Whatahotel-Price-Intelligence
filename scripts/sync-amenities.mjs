@@ -13,12 +13,19 @@
  * preference layer, which today says "limited information is available" for
  * four of its ten options.
  *
- * What it will NOT do is guess which hotel an answer describes. `info` is
- * keyed on name + city and returns no hotel name, so `syncHotelAmenities`
- * writes only when the response's `amadeus.codes` matches the
- * `ama-property` the by-id lookup stored for that hotel. Every other outcome
- * is counted and named below rather than written, because attaching one
- * hotel's amenities to another is silent and permanent.
+ * It cannot guess which hotel an answer describes, because it no longer has
+ * to. The sweep calls `method=infoid`, which is keyed on the hotel id, so the
+ * REQUEST establishes identity and the response is about that property by
+ * construction. The old name-keyed `info` could not say, which is why this
+ * file used to refuse any answer whose `amadeus.codes` did not match a stored
+ * `ama-property` — and why it skipped most of the catalogue, since that
+ * column was only introduced on 2026-09-18 and is still NULL on rows written
+ * before it.
+ *
+ * The code comparison survives as corroboration: where both sides are
+ * present and disagree, the amenities are still written and the
+ * disagreement is reported below. Measured 2026-09-18 over 30 hotels: 28
+ * agreed, 0 disagreed, 2 answered on neither side.
  *
  * Amenities are not a score. Nothing under packages/core/src/scoring reads
  * this table — rule 21 keeps included value as the only quality evidence
@@ -60,7 +67,7 @@ const client = WahClient.fromEnv({ concurrency });
 
 const counts = new Map();
 let written = 0;
-const mismatches = [];
+const disagreements = [];
 
 const queue = [...targets];
 async function worker() {
@@ -74,11 +81,14 @@ async function worker() {
     });
     counts.set(result.outcome, (counts.get(result.outcome) ?? 0) + 1);
     written += result.written;
-    if (result.outcome === 'CODE_MISMATCH') {
-      // Worth a human's eye: either our stored code is stale or the source
-      // answered about a different property for this name and city. Both are
-      // findings, and both are why nothing was written.
-      mismatches.push(`${target.hotelId} ${target.name}: stored ${result.storedCode} vs info ${result.responseCode}`);
+    if (result.codeDisagreement) {
+      // Not a refusal: infoid is keyed on the id, so the answer is this
+      // hotel's whatever our column says. Almost certainly a stale stored
+      // code, and rare enough (0 of 28 measured) that a run full of them
+      // would mean something changed upstream.
+      disagreements.push(
+        `${target.hotelId} ${target.name}: stored ${result.storedCode} vs infoid ${result.responseCode}`,
+      );
     }
   }
 }
@@ -90,7 +100,8 @@ const summary = [...counts.entries()]
   .map(([outcome, n]) => `${outcome} ${n}`)
   .join(', ');
 console.log(`amenities: ${written} row(s) written across ${targets.length} hotel(s) — ${summary}`);
-for (const line of mismatches.slice(0, 20)) console.log(`  mismatch: ${line}`);
-if (mismatches.length > 20) console.log(`  … and ${mismatches.length - 20} more mismatches`);
+for (const line of disagreements.slice(0, 20)) console.log(`  code disagreement: ${line}`);
+if (disagreements.length > 20)
+  console.log(`  … and ${disagreements.length - 20} more code disagreements`);
 
 await closePool();

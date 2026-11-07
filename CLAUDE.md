@@ -609,26 +609,51 @@ pages`). Two facts are read from it and stored on `hotel` (migration
     this is for — four of its ten options today answer "limited information
     is available" because we hold nothing to say.
 
-    **The difficulty is identity, and it decides the whole design.** `info`
-    is keyed on hotelName plus hotelCity, not on the id every other part of
-    this system uses, and its response contains NO hotel name. The only
-    name-shaped field is `session.sessionName`, the constant string "Guest"
-    — the first probe matched exactly that and reported a mismatch on all 18
-    answers, which was the probe's fault, not the source's. So an answer
-    cannot say which property it describes, and attaching one hotel's
-    amenities to another would be silent and permanent: rule 22's failure,
-    where "Four Seasons Hotel Miami" and "Four Seasons Resort Palm Beach"
-    share most of their words. `amadeus.codes` is the way out — one per
-    hotel, distinct across all 18, and the same identity the by-id `hotel`
-    lookup returns as `ama-property`. `syncHotelAmenities` writes ONLY when
-    the two match, and every other outcome is named rather than written
-    (`NO_STORED_CODE`, `NO_RESPONSE_CODE`, `CODE_MISMATCH`, `DEGRADED`,
-    `EMPTY`, `FAILED`). That deliberately includes holding no stored code
-    yet: an unverifiable answer is not a cheap answer, it is a coin flip on
-    which hotel's amenities a guest reads, and the cost of skipping is one
-    hotel's amenities arriving a day later. The catalogue upsert therefore
-    COALESCEs `amadeus_property` — a `cityrates` row omits it, and an
-    overwrite would disarm the check for that hotel without saying so.
+    **The difficulty was identity, and it decided the whole design — until
+    the source removed it** (`method=infoid`, 2026-09-18, shipped by Matt at
+    our request). `info` is keyed on hotelName plus hotelCity, not on the id
+    every other part of this system uses, and its response contains NO hotel
+    name. The only name-shaped field is `session.sessionName`, the constant
+    string "Guest" — the first probe matched exactly that and reported a
+    mismatch on all 18 answers, which was the probe's fault, not the
+    source's. So an answer could not say which property it described, and
+    attaching one hotel's amenities to another would be silent and
+    permanent: rule 22's failure, where "Four Seasons Hotel Miami" and "Four
+    Seasons Resort Palm Beach" share most of their words. The answer then
+    was `amadeus.codes` — one per hotel, distinct across all 18, the same
+    identity the by-id `hotel` lookup returns as `ama-property` — and
+    `syncHotelAmenities` wrote ONLY when the two matched.
+
+    **`infoid` is keyed on the id, so the REQUEST establishes identity and
+    the guess is gone.** `fetchHotelInfoById` is what the sweep calls; the
+    payload is identical, so `parseInfo` is shared unchanged. Measured
+    before the switch was written: ten hotels called both ways returned the
+    same `amadeus.codes` every time, and thirty checked against the `hotel`
+    method's `ama-property` gave 28 agreements, 0 disagreements and 2 ids
+    that answered on neither side. An id also has no non-ASCII problem —
+    `info` rejects "Mont d'Arbois" with a 400 because the NAME goes over the
+    wire.
+
+    **So the two refusals that existed only for the guessing are gone.**
+    `NO_STORED_CODE` and `NO_RESPONSE_CODE` are retired, and the outcomes
+    are now `STORED`, `DEGRADED`, `EMPTY`, `FAILED` — each of which is a
+    statement about the DATA rather than about our confidence in who
+    answered. Retiring `NO_STORED_CODE` is the one that matters for
+    coverage: `hotel.amadeus_property` was only introduced on 2026-09-18 and
+    the catalogue was built over the preceding month, so most rows hold
+    NULL, and under the old gate every one of those hotels stored nothing —
+    a skip caused entirely by a column of ours, not by anything the source
+    did or did not say.
+
+    **The code comparison survives as corroboration, never as a gate.**
+    Where both sides are present and disagree, the amenities are still
+    written and `codeDisagreement` is reported, because the request named
+    the id and discarding a good answer over a stale bookkeeping value is
+    the same mistake facing the other way. It is rare by measurement (0 of
+    28), so a run full of them means something changed upstream and should
+    be read that way. The catalogue upsert still COALESCEs
+    `amadeus_property` — a `cityrates` row omits it, and an overwrite would
+    silently replace a value the corroboration depends on.
 
     Three more limits. **It never enters the score**: nothing under
     `packages/core/src/scoring` reads `hotel_amenity`, for rule 21's reason

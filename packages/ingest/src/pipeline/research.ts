@@ -205,7 +205,7 @@ export async function purgeSharedWebsites(
 /**
  * Research one hotel. Every outcome is named, because a silent skip is
  * indistinguishable from a property that genuinely offers nothing — the same
- * reason `syncHotelAmenities` names its six (rule 29).
+ * reason `syncHotelAmenities` names each of its own (rule 29).
  *
  * `researched_at` is stamped on EVERY path including the failures, so a hotel
  * whose site cannot be resolved or read backs off instead of costing a search

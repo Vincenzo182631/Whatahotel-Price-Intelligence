@@ -1870,7 +1870,39 @@
     append(root, renderPreferencePicker(data, state));
     append(root, renderLivePrice(data));
     append(root, renderLiveVerdict(data));
+    // The measured comparison, directly under the number it explains.
+    //
+    // This lived inside `more` until 2026-09-24, which meant the one fact a
+    // guest cannot get anywhere else — "26% above comparable rooms nearby" —
+    // sat behind a collapsed toggle while the open card showed the Google
+    // rating, the review themes and the perks, all of which are already on
+    // the hotel page the widget is embedded in. Greg raised it as the
+    // product's central problem and he was right: measured on The Royal
+    // Hawaiian, 15-18 Oct, the face of the card carried nothing the guest
+    // did not already have.
+    //
+    // It belongs here rather than lower down because it is the justification
+    // for the score immediately above it. Same failure and same fix as the
+    // personalization placement in c2e0cc7, one block further down this
+    // function; I moved that one and did not look past it.
+    //
+    // Costs the unscored modes nothing: renderLiveReasons returns null when
+    // the verdict carries no reasons, which is every HOTEL_VALUE response.
+    append(root, renderLiveReasons(data));
     append(root, renderLiveWhyChoose(data));
+    // The answer to the chip the guest just pressed, in the open panel.
+    //
+    // It used to sit inside `more`, which is collapsed by default, so
+    // pressing a preference lit the chip and put its answer behind SEE MORE:
+    // the one interaction whose entire purpose is to change what is on
+    // screen changed nothing the guest could see. Measured in a browser
+    // against production, 2026-09-18.
+    //
+    // Moving it costs the default view nothing — `renderLivePersonalization`
+    // returns null for GENERAL_VALUE, which is every unpersonalized panel —
+    // and it puts the answer in the same place HOTEL_ONLY already puts it,
+    // so a guest reads one layout whichever mode answered.
+    append(root, renderLivePersonalization(data));
 
     // HOTEL VALUE MODE: no score means no "how we worked this out" drawer —
     // that drawer itemises the comparison's inputs, and with no comparison
@@ -1885,8 +1917,6 @@
     append(more, renderLivePremium(data));
     append(more, renderLiveReputation(data));
     append(more, renderSuperiorAlternative(data, state));
-    append(more, renderLivePersonalization(data));
-    append(more, renderLiveReasons(data));
     if (!valueMode) append(more, renderLiveDetails(data, state));
 
     if (more.childNodes.length > 0) {
